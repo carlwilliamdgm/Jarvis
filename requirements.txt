@@ -1,0 +1,4 @@
+ollama
+plyer
+psutil
+rich
