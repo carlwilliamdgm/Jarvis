@@ -43,108 +43,53 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import DANGEROUS_ACTIONS, chemin_autorise, racine_trop_large
+from core.safety import chemin_autorise, racine_trop_large
+from rich.console import Console
+
+_console = Console()
 
 
-def demander_confirmation(outil: str, args: dict, description: str) -> str:
-    if outil not in DANGEROUS_ACTIONS:
-        raise ValueError(f"Action non dangereuse inattendue : {outil}")
-
-    data = normaliser_memoire(charger_memoire())
-    actions = data.get("actions_en_attente", [])
-    action_id = max([a.get("id", 0) for a in actions], default=0) + 1
-    actions.append({
-        "id": action_id,
-        "outil": outil,
-        "args": args,
-        "description": description,
-        "statut": "en attente",
-        "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-    data["actions_en_attente"] = actions[-20:]
-    sauvegarder_memoire(data)
-    return (
-        f"Confirmation requise pour l'action #{action_id} : {description}\n"
-        f"Pour l'executer, appelez confirmer_action(action_id={action_id})."
-    )
-
-
-def confirmer_action(action_id: int) -> str:
-    data = normaliser_memoire(charger_memoire())
-    actions = data.get("actions_en_attente", [])
-    action = next((a for a in actions if a.get("id") == int(action_id) and a.get("statut") == "en attente"), None)
-    if not action:
-        return f"Action #{action_id} introuvable ou deja traitee."
-
-    outil = action["outil"]
-    args = action.get("args", {})
-    try:
-        if outil == "supprimer":
-            resultat = supprimer_direct(**args)
-        elif outil == "vider_temp":
-            resultat = storage.vider_temp()
-        elif outil == "vider_corbeille":
-            resultat = storage.vider_corbeille()
-        elif outil == "executer_commande":
-            resultat = executer_commande_direct(**args)
-        elif outil == "organiser_dossier":
-            resultat = organiser_dossier_direct(**args)
-        else:
-            resultat = f"Outil non confirmable : {outil}"
-    except Exception as e:
-        resultat = f"Erreur : {e}"
-
-    action["statut"] = "execute"
-    action["execute_le"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data["actions_en_attente"] = actions
-    sauvegarder_memoire(data)
-    journaliser_action(outil, args, resultat)
-    return resultat
-
-
-def annuler_action(action_id: int) -> str:
-    data = normaliser_memoire(charger_memoire())
-    actions = data.get("actions_en_attente", [])
-    action = next((a for a in actions if a.get("id") == int(action_id) and a.get("statut") == "en attente"), None)
-    if not action:
-        return f"Action #{action_id} introuvable ou deja traitee."
-    action["statut"] = "annulee"
-    action["annulee_le"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    data["actions_en_attente"] = actions
-    sauvegarder_memoire(data)
-    return f"Action #{action_id} annulee."
+def demander_confirmation(description: str) -> bool:
+    _console.print(f"\n[yellow]⚠️  Action sensible : {description}[/yellow]")
+    choix = _console.input("[bold]Confirmer ? (o/n) >[/bold] ").strip().lower()
+    return choix in {"o", "oui", "yes", "y"}
 
 
 def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
-        return demander_confirmation("supprimer", {"chemin": str(path)}, f"supprimer {path}")
+        if demander_confirmation(f"supprimer {path}"):
+            resultat = supprimer_direct(chemin=str(path))
+            journaliser_action("supprimer", {"chemin": str(path)}, resultat)
+            return resultat
+        return "Suppression annulee."
     except Exception as e:
         return f"Erreur : {e}"
 
 
 def executer_commande(commande: str) -> str:
-    try:
-        return demander_confirmation("executer_commande", {"commande": commande}, f"executer la commande : {commande}")
-    except Exception as e:
-        return f"Erreur : {e}"
+    return executer_commande_direct(commande=commande)
 
 
 def vider_temp() -> str:
-    return demander_confirmation("vider_temp", {}, "vider les fichiers temporaires")
+    return storage.vider_temp()
 
 
 def vider_corbeille() -> str:
-    return demander_confirmation("vider_corbeille", {}, "vider la corbeille")
+    return storage.vider_corbeille()
 
 
 def organiser_dossier(chemin: str) -> str:
     try:
         dossier = chemin_autorise(chemin, doit_exister=True)
         if racine_trop_large(dossier):
-            return f"Organisation refusee pour une racine trop large : {dossier}. Ciblez un sous-dossier precis."
+            return f"Organisation refusee pour une racine trop large : {dossier}."
         plan = analyser_organisation(str(dossier))
-        return demander_confirmation("organiser_dossier", {"chemin": str(dossier)}, f"organiser {dossier}\n{plan}")
+        if demander_confirmation(f"organiser {dossier}\n{plan}"):
+            resultat = organiser_dossier_direct(chemin=str(dossier))
+            journaliser_action("organiser_dossier", {"chemin": str(dossier)}, resultat)
+            return resultat
+        return "Organisation annulee."
     except Exception as e:
         return f"Erreur : {e}"
 
@@ -166,19 +111,6 @@ def signal_autorise(data: dict, cle: str, delai_minutes: int) -> bool:
     return False
 
 
-def action_refusee(action: dict) -> str | None:
-    if action.get("outil") == "organiser_dossier":
-        chemin = action.get("args", {}).get("chemin")
-        if chemin:
-            try:
-                dossier = chemin_autorise(chemin, doit_exister=True)
-            except Exception:
-                return "chemin inaccessible"
-            if racine_trop_large(dossier):
-                return "cible trop large"
-    return None
-
-
 def bilan_proactif(force: bool = False, niveau: str = "normal") -> str:
     lignes = []
 
@@ -195,27 +127,6 @@ def bilan_proactif(force: bool = False, niveau: str = "normal") -> str:
         lignes.append(surveillances)
 
     data = normaliser_memoire(charger_memoire())
-    actions = []
-    refusees = []
-    for action in data.get("actions_en_attente", []):
-        if action.get("statut") != "en attente":
-            continue
-        raison_refus = action_refusee(action)
-        if raison_refus:
-            action["statut"] = "refusee"
-            action["refusee_le"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            action["raison_refus"] = raison_refus
-            refusees.append(f"- #{action['id']} : {raison_refus}")
-            continue
-        actions.append(action)
-
-    if refusees and niveau != "silencieux":
-        lignes.append("Actions en attente refusees automatiquement :\n" + "\n".join(refusees))
-    if actions and (force or signal_autorise(data, "actions_en_attente", 30)):
-        lignes.append(
-            "Actions en attente :\n"
-            + "\n".join(f"- #{a['id']} : {a.get('description', a.get('outil', 'action'))}" for a in actions[:5])
-        )
 
     try:
         libre = storage.get_stockage()
@@ -227,14 +138,14 @@ def bilan_proactif(force: bool = False, niveau: str = "normal") -> str:
         pass
 
     contexte = data.get("contexte", {})
-    if niveau == "complet" and force and not any(contexte.get(categorie) for categorie in CATEGORIES_CONTEXTE):
-        lignes.append("Memoire personnelle peu renseignee : je peux memoriser profil, habitudes, objectifs, projets, contraintes et style.")
+    if niveau == "complet" and force and not any(contexte.get(cat) for cat in CATEGORIES_CONTEXTE):
+        lignes.append("Memoire personnelle peu renseignee.")
 
     if niveau == "complet" and force and not data.get("automatisations"):
-        lignes.append("Aucune automatisation active. Je peux creer des routines locales de verification, rangement ou maintenance.")
+        lignes.append("Aucune automatisation active.")
 
     if niveau == "complet" and force and not data.get("surveillances_dossiers"):
-        lignes.append("Aucune surveillance de dossier active. Je peux surveiller Downloads, Desktop ou Documents discretement.")
+        lignes.append("Aucune surveillance de dossier active.")
 
     sauvegarder_memoire(data)
     return "\n\n".join(lignes) if lignes else "Aucun signal proactif pour le moment."
@@ -256,8 +167,6 @@ OUTILS = {
     "vider_temp": vider_temp,
     "vider_corbeille": vider_corbeille,
     "executer_commande": executer_commande,
-    "confirmer_action": confirmer_action,
-    "annuler_action": annuler_action,
     "analyser_organisation": analyser_organisation,
     "organiser_dossier": organiser_dossier,
     "ajouter_rappel": ajouter_rappel,

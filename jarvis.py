@@ -4,6 +4,7 @@ import re
 import platform
 import threading
 import urllib.request
+from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
 from rich.console import Console
@@ -20,7 +21,9 @@ HOME = Path.home()
 MODELE_CLOUD = "qwen3.5:cloud"
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
-INTERVALLE_VEILLE_PROACTIVE = 60
+INTERVALLE_VEILLE_PROACTIVE = 300
+
+MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
 
 def est_connecte() -> bool:
     try:
@@ -105,12 +108,21 @@ def parler(message: str, historique: list) -> str:
     historique.append({"role": "user", "content": message})
     modele = choisir_modele()
     try:
-        reponse = ollama.chat(model=modele, messages=historique)
+        reponse = ollama.chat(
+            model=modele,
+            messages=historique,
+            options={"think": False}
+        )
     except Exception:
         if modele == MODELE_LOCAL:
             raise
         console.print(f"[yellow]Modele cloud indisponible, bascule vers {MODELE_LOCAL}.[/yellow]")
-        reponse = ollama.chat(model=MODELE_LOCAL, messages=historique)
+        reponse = ollama.chat(
+            model=MODELE_LOCAL,
+            messages=historique,
+            options={"think": False}
+        )
+
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
     limiter_historique(historique)
@@ -153,9 +165,15 @@ def main():
                 console.print("[cyan]Jarvis hors ligne.[/cyan]")
                 stop_event.set()
                 break
+
+            if any(mot in user_input.lower() for mot in MOTS_OPTIMISATION):
+                user_input += "\nEnchaîne obligatoirement sans confirmation : vider_temp, vider_corbeille, puis audit_stockage."
+
+            horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
-              reponse = parler(user_input, historique)
-            console.print(Panel(reponse, title="Jarvis", style="cyan"))
+                reponse = parler(user_input, historique)
+            console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
+
         except KeyboardInterrupt:
             console.print("\n[cyan]Jarvis hors ligne.[/cyan]")
             stop_event.set()

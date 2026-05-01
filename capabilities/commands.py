@@ -17,13 +17,17 @@ def executer_commande_direct(commande: str) -> str:
     if executable not in COMMANDES_AUTORISEES:
         return f"Commande refusee : {args[0]}. Commandes autorisees : {', '.join(sorted(COMMANDES_AUTORISEES))}"
 
-    resultat = subprocess.run(
-        args,
-        shell=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    output = resultat.stdout or resultat.stderr
-    return output.strip() if output else "Commande executee sans sortie."
-
+    try:
+        resultat = subprocess.run(
+            commande if OS == "Windows" else args,
+            shell=(OS == "Windows"),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        output = resultat.stdout or resultat.stderr
+        return output.strip() if output else "Commande executee sans sortie."
+    except subprocess.TimeoutExpired:
+        return "Timeout — commande trop longue."
+    except Exception as e:
+        return f"Erreur : {e}"

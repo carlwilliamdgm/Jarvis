@@ -3,7 +3,12 @@ from pathlib import Path
 from core.paths import ALLOWED_ROOTS, HOME, JARVIS_DIR
 
 DANGEROUS_ACTIONS = {"supprimer", "vider_temp", "vider_corbeille", "executer_commande", "organiser_dossier"}
-COMMANDES_AUTORISEES = {"python", "pip", "git", "where", "whoami", "hostname", "ipconfig"}
+
+COMMANDES_AUTORISEES = {
+    "python", "pip", "git", "where", "whoami", "hostname",
+    "ipconfig", "ollama", "powershell", "mkdir", "rmdir",
+    "del", "copy", "move", "echo", "type", "dir", "ls"
+}
 
 
 def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
@@ -29,4 +34,3 @@ def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
 
 def racine_trop_large(path: Path) -> bool:
     return path == HOME or path == JARVIS_DIR or path in ALLOWED_ROOTS
-
