@@ -55,6 +55,12 @@ def construire_prompt_conversation(memoire: dict) -> str:
         f"Si la conversation nécessite une action, suggère-la poliment. Sinon, discute librement.\n"
         f"Évite les réponses trop longues ; sois concis et précis."
     )
+
+
+
+
+
+def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str:
     """Prompt pour le modèle d'exécution — orienté action et précision."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
@@ -143,26 +149,3 @@ def construire_prompt_conversation(memoire: dict) -> str:
         "- Quand une info durable est donnee : memoriser_contexte ou memoriser_preference\n"
         f"- Tu reponds en {langue}\n"
     )
-
-
-def construire_prompt_conversation(memoire: dict) -> str:
-    """Prompt pour le modèle de conversation — naturel, sans outils."""
-    u = memoire.get("utilisateur", {})
-    nom = u.get("nom", "utilisateur")
-    langue = u.get("langue", "français")
-    contexte_personnel = formater_contexte_personnel(memoire)
-
-    return (
-        f"Tu es Jarvis, le majordome numerique et compagnon cognitif de {nom}.\n"
-        f"Tu es son partenaire de confiance — present, attentif, sobre.\n"
-        f"Tu connais son contexte personnel :\n{contexte_personnel}\n\n"
-        f"Dans ce mode, tu converses naturellement. Tu n'appelles aucun outil.\n"
-        f"Tu ecoutes, tu reponds, tu reflechis avec lui si besoin.\n"
-        f"Tu es direct et sans formules inutiles, mais tu restes chaleureux.\n"
-        f"Tu reponds en {langue}.\n"
-    )
-
-
-def construire_prompt(memoire: dict, taches_en_cours: list = None) -> str:
-    """Prompt principal — utilisé par défaut pour le modèle d'action."""
-    return construire_prompt_action(memoire, taches_en_cours)

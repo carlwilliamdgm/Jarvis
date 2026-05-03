@@ -10,7 +10,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
-from core.prompt import construire_prompt, construire_prompt_conversation
+from core.prompt import construire_prompt_action, construire_prompt_conversation
 from tools import OUTILS
 
 console = Console()
@@ -122,7 +122,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     
     # Ajuster le prompt système selon l'intention
     if intention_action:
-        historique[0]["content"] = construire_prompt(memoire)
+        historique[0]["content"] = construire_prompt_action(memoire)
     else:
         historique[0]["content"] = construire_prompt_conversation(memoire)
     
@@ -186,7 +186,7 @@ def veille_proactive(stop_event: threading.Event):
 def main():
     memoire = initialiser()
     nom = memoire["utilisateur"]["nom"]
-    prompt = construire_prompt(memoire)
+    prompt = construire_prompt_action(memoire)
     historique = [{"role": "system", "content": prompt}]
     console.print(Panel(
         f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.",
