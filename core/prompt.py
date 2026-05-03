@@ -33,7 +33,7 @@ def formater_taches_interrompues(taches: list) -> str:
 
 
 def construire_prompt_conversation(memoire: dict) -> str:
-    """Prompt pour le modèle de conversation — orienté discussion et style J.A.R.V.I.S."""
+    """Prompt pour le modèle de conversation — orienté discussion et style Jarvis"""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
     os_detecte = u.get("os", OS)
@@ -43,7 +43,7 @@ def construire_prompt_conversation(memoire: dict) -> str:
     resume_preferences = "\n".join(f"- {k}: {v}" for k, v in sorted(preferences.items())) or "- Aucune"
 
     return (
-        f"Tu es J.A.R.V.I.S., l'IA assistante de {nom}, inspirée de celle de Tony Stark dans Iron Man.\n"
+        f"Tu es Jarvis., l'IA assistante de {nom}, inspirée de celle de Tony Stark dans Iron Man.\n"
         f"Tu es intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié.\n"
         f"Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.\n\n"
         f"Contexte :\n"

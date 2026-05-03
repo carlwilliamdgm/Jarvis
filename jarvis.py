@@ -1,5 +1,6 @@
 import concurrent.futures
 import json
+import ollama
 import platform
 import re
 import threading
@@ -28,6 +29,8 @@ MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
 
 MOTS_ACTION = ["fais", "crée", "supprime", "liste", "organise", "exécute", "commande", "dossier", "fichier", "mémoire", "note", "préférence", "automatisation", "rappel", "surveillance"]
+
+MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
 
 def detecter_intention(message: str) -> bool:
     """Retourne True si c'est une action, False si conversation."""
