@@ -1,4 +1,9 @@
 import concurrent.futures
+import json
+import platform
+import re
+import threading
+import urllib.request
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
@@ -184,7 +189,7 @@ def main():
     prompt = construire_prompt(memoire)
     historique = [{"role": "system", "content": prompt}]
     console.print(Panel(
-        f"J.A.R.V.I.S. — Assistant IA de {nom}\nSystème d'assistance intelligent et compagnon numérique\nTape 'exit' pour quitter.",
+        f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.",
         style="bold cyan"
     ))
     afficher_evenements(force=False, niveau="silencieux")
@@ -211,7 +216,7 @@ def main():
                 resultat = executer_outil(reponse)
                 reponse = resultat if resultat else reponse
             OUTILS["enregistrer_echange"](user_input, reponse)
-            console.print(Panel(reponse, title=f"J.A.R.V.I.S. — {horodatage}", style="cyan"))
+            console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
 
         except KeyboardInterrupt:
             console.print("\n[cyan]Jarvis hors ligne.[/cyan]")
