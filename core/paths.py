@@ -5,5 +5,3 @@ OS = platform.system()
 HOME = Path.home()
 JARVIS_DIR = Path(__file__).resolve().parent.parent
 MEMORY_PATH = JARVIS_DIR / "memory.json"
-ALLOWED_ROOTS = (HOME.resolve(), JARVIS_DIR.resolve())
-

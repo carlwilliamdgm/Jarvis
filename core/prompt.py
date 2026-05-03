@@ -23,7 +23,17 @@ def formater_contexte_personnel(memoire: dict) -> str:
     return "\n".join(lignes) if lignes else "- Aucun contexte personnel structure pour l'instant"
 
 
-def construire_prompt(memoire: dict) -> str:
+def formater_taches_interrompues(taches: list) -> str:
+    if not taches:
+        return ""
+    lignes = ["Taches interrompues a reprendre :"]
+    for t in taches[:5]:
+        lignes.append(f"- #{t['id']} : {t['description']} (depuis {t['mis_a_jour_le']})")
+    return "\n".join(lignes)
+
+
+def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str:
+    """Prompt pour le modèle d'exécution — orienté action et précision."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
     os_detecte = u.get("os", OS)
@@ -34,43 +44,40 @@ def construire_prompt(memoire: dict) -> str:
     automatisations = memoire.get("automatisations", [])
     surveillances = memoire.get("surveillances_dossiers", [])
     contexte_personnel = formater_contexte_personnel(memoire)
+    taches_str = formater_taches_interrompues(taches_en_cours or [])
     resume_preferences = "\n".join(f"- {k}: {v}" for k, v in sorted(preferences.items())) or "- Aucune"
-    resume_commandes = "\n".join(f"- {nom_cmd}" for nom_cmd in sorted(commandes)) or "- Aucune"
+    resume_commandes = "\n".join(f"- {c}" for c in sorted(commandes)) or "- Aucune"
     resume_automatisations = "\n".join(
         f"- {a.get('nom', 'Sans nom')} ({a.get('outil', 'outil inconnu')})"
-        for a in automatisations
-        if a.get("statut") == "active"
+        for a in automatisations if a.get("statut") == "active"
     ) or "- Aucune"
     resume_surveillances = "\n".join(
         f"- {s.get('chemin', 'dossier inconnu')} ({s.get('recurrence', 'recurrence inconnue')})"
-        for s in surveillances
-        if s.get("statut") == "active"
+        for s in surveillances if s.get("statut") == "active"
     ) or "- Aucune"
+
     return (
-        f"Tu n'es PAS dans un environnement de simulation. Tu es un agent reel qui s'execute localement sur la machine de l'utilisateur. Tes outils s'executent vraiment. Ne jamais dire que tu simules.\n"
-        f"Tu es Jarvis, l'agent IA local de {nom}.\n"
-        f"Ton ideal fonctionnel est J.A.R.V.I.S. : une intelligence personnelle integree, contextuelle et proactive.\n"
-        f"Tu n'imites pas un personnage ; tu incarnes le principe : copilote cognitif et operationnel local.\n"
-        f"Tu es son assistant, son majordome numerique et son compagnon cognitif.\n"
-        f"Tu l'aides a organiser, automatiser, surveiller, decider et agir sur son environnement numerique.\n"
-        f"Tu n'es pas un serviteur : tu es un partenaire d'assistance fiable, sobre et proactif.\n"
-        f"Tu restes local-first, pratique, respectueux de son autonomie et oriente action.\n\n"
+        f"Tu es Jarvis, l'agent IA local de {nom}. Tu executes des actions reelles sur sa machine.\n"
+        f"Tu n'es PAS dans une simulation. Tes outils s'executent vraiment.\n\n"
         f"Contexte systeme :\n"
         f"- OS : {os_detecte}\n"
         f"- Dossier home : {home}\n"
         f"- Langue : {langue}\n"
-        f"- Utilise toujours des chemins absolus bases sur {home}\n\n"
-        f"Memoire personnelle structuree depuis memory.json :\n{contexte_personnel}\n\n"
-        f"Preferences connues :\n{resume_preferences}\n\n"
+        f"- Chemins absolus bases sur {home}\n\n"
+        f"Memoire personnelle :\n{contexte_personnel}\n\n"
+        f"Preferences :\n{resume_preferences}\n\n"
         f"Commandes personnalisees :\n{resume_commandes}\n\n"
         f"Automatisations actives :\n{resume_automatisations}\n\n"
-        f"Surveillances de dossiers actives :\n{resume_surveillances}\n\n"
-        "Quand une action est necessaire, reponds UNIQUEMENT avec ce JSON :\n"
+        f"Surveillances actives :\n{resume_surveillances}\n\n"
+        + (f"{taches_str}\n\n" if taches_str else "")
+        + "Quand une action est necessaire, reponds UNIQUEMENT avec ce JSON exact :\n"
         '{"outil": "nom_outil", "args": {"arg1": "valeur1"}}\n\n'
+        "Pour enchainer plusieurs actions, reponds avec plusieurs JSON sur des lignes separees.\n\n"
         "Outils disponibles :\n"
         "- creer_dossier(chemin)\n"
         "- creer_fichier(chemin, contenu)\n"
         "- lire_fichier(chemin)\n"
+        "- lister_dossier(chemin)\n"
         "- supprimer(chemin)\n"
         "- noter(note)\n"
         "- lire_notes()\n"
@@ -103,22 +110,37 @@ def construire_prompt(memoire: dict) -> str:
         "- executer_surveillance_dossiers(force)\n"
         "- supprimer_surveillance_dossier(watcher_id)\n"
         "- bilan_proactif(force, niveau)\n\n"
-        "Regles :\n"
-        "- Tu agis, tu ne demandes pas inutilement\n"
-        "- Tu restes sobre, local, pratique et oriente execution\n"
-        "- Tu es un agent reel : tes outils s'executent vraiment sur la machine\n"
-        "- Pour les suppressions et organisations de dossiers, l'outil lui-meme demandera confirmation directement dans le terminal — tu n'as pas a le mentionner\n"
-        "- Appelle simplement supprimer(chemin) ou organiser_dossier(chemin) — la confirmation sera demandee automatiquement\n"
-        "- Ne jamais mentionner confirmer_action ou annuler_action — ces outils n'existent plus\n"
-        "- Avant d'organiser un dossier, utilise analyser_organisation si l'utilisateur n'a pas deja demande l'application\n"
-        "- N'organise jamais directement le dossier home complet ; cible un sous-dossier precis\n"
-        "- Quand l'utilisateur veut un raccourci ou une routine, cree une commande personnalisee ou une automatisation\n"
-        "- Quand l'utilisateur exprime une habitude ou preference durable, utilise memoriser_preference\n"
-        "- Quand l'utilisateur donne une information durable sur lui, utilise memoriser_contexte\n"
-        "- Le contexte profond vient de memory.json ; l'historique de conversation ne sert qu'au fil immediat\n"
-        "- \"scan complet\" -> top_fichiers_lourds avec complet=True\n"
-        "- \"scan rapide\" -> top_fichiers_lourds avec complet=False\n"
-        "- Si l'utilisateur demande d'optimiser, liberer, nettoyer -> enchaine : vider_temp, vider_corbeille, audit_stockage\n"
-        "- Tu es direct, efficace, sans formules inutiles\n"
-        f"- Tu reponds en {langue}"
+        "Regles d'execution :\n"
+        "- Tu agis directement — pas de bavardage avant l'action\n"
+        "- Apres chaque action, tu rends compte : ce que tu as fait, le resultat, rien de plus\n"
+        "- supprimer() et organiser_dossier() demandent confirmation automatiquement — appelle-les directement\n"
+        "- Pour les commandes terminal, appelle executer_commande() directement sans restriction\n"
+        "- Pour optimiser/liberer/nettoyer : enchaine vider_temp, vider_corbeille, audit_stockage\n"
+        "- scan complet : top_fichiers_lourds(complet=True)\n"
+        "- scan rapide : top_fichiers_lourds(complet=False)\n"
+        "- Quand une info durable est donnee : memoriser_contexte ou memoriser_preference\n"
+        f"- Tu reponds en {langue}\n"
     )
+
+
+def construire_prompt_conversation(memoire: dict) -> str:
+    """Prompt pour le modèle de conversation — naturel, sans outils."""
+    u = memoire.get("utilisateur", {})
+    nom = u.get("nom", "utilisateur")
+    langue = u.get("langue", "français")
+    contexte_personnel = formater_contexte_personnel(memoire)
+
+    return (
+        f"Tu es Jarvis, le majordome numerique et compagnon cognitif de {nom}.\n"
+        f"Tu es son partenaire de confiance — present, attentif, sobre.\n"
+        f"Tu connais son contexte personnel :\n{contexte_personnel}\n\n"
+        f"Dans ce mode, tu converses naturellement. Tu n'appelles aucun outil.\n"
+        f"Tu ecoutes, tu reponds, tu reflechis avec lui si besoin.\n"
+        f"Tu es direct et sans formules inutiles, mais tu restes chaleureux.\n"
+        f"Tu reponds en {langue}.\n"
+    )
+
+
+def construire_prompt(memoire: dict, taches_en_cours: list = None) -> str:
+    """Prompt principal — utilisé par défaut pour le modèle d'action."""
+    return construire_prompt_action(memoire, taches_en_cours)

@@ -1,17 +1,13 @@
 from pathlib import Path
+from core.paths import HOME, JARVIS_DIR
 
-from core.paths import ALLOWED_ROOTS, HOME, JARVIS_DIR
 
-DANGEROUS_ACTIONS = {"supprimer", "vider_temp", "vider_corbeille", "executer_commande", "organiser_dossier"}
-
-COMMANDES_AUTORISEES = {
-    "python", "pip", "git", "where", "whoami", "hostname",
-    "ipconfig", "ollama", "powershell", "mkdir", "rmdir",
-    "del", "copy", "move", "echo", "type", "dir", "ls"
-}
+# Actions nécessitant confirmation — uniquement l'irréversible
+DANGEROUS_ACTIONS = {"supprimer"}
 
 
 def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
+    """Valide et retourne le chemin. Vérifie l'existence si demandé."""
     if not chemin or not str(chemin).strip():
         raise ValueError("Chemin vide.")
 
@@ -25,12 +21,8 @@ def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
         parent = path.parent.resolve(strict=False)
         path = parent / path.name
 
-    if not any(path == root or root in path.parents for root in ALLOWED_ROOTS):
-        racines = ", ".join(str(root) for root in ALLOWED_ROOTS)
-        raise ValueError(f"Chemin refuse hors zone autorisee : {path}. Zones autorisees : {racines}")
-
     return path
 
 
 def racine_trop_large(path: Path) -> bool:
-    return path == HOME or path == JARVIS_DIR or path in ALLOWED_ROOTS
+    return path == HOME or path == JARVIS_DIR

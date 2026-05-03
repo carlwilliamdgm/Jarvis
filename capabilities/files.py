@@ -1,5 +1,5 @@
 import shutil
-
+from pathlib import Path
 from core.memory import journaliser_action
 from core.safety import chemin_autorise, racine_trop_large
 
@@ -39,15 +39,41 @@ def lire_fichier(chemin: str) -> str:
         return f"Erreur : {e}"
 
 
+def lister_dossier(chemin: str) -> str:
+    try:
+        path = chemin_autorise(chemin, doit_exister=True)
+        if not path.is_dir():
+            return f"Ce chemin n'est pas un dossier : {path}"
+        items = sorted(path.iterdir())
+        if not items:
+            return f"Dossier vide : {path}"
+        lignes = [f"Contenu de {path} :"]
+        dossiers = [i for i in items if i.is_dir()]
+        fichiers = [i for i in items if i.is_file()]
+        for d in dossiers:
+            lignes.append(f"  📁 {d.name}")
+        for f in fichiers:
+            taille = f.stat().st_size
+            taille_str = f"{round(taille/1024/1024, 1)} MB" if taille > 1024*1024 else f"{round(taille/1024, 1)} KB"
+            lignes.append(f"  📄 {f.name} ({taille_str})")
+        lignes.append(f"\n{len(dossiers)} dossier(s), {len(fichiers)} fichier(s)")
+        return "\n".join(lignes)
+    except Exception as e:
+        return f"Erreur : {e}"
+
+
 def supprimer_direct(chemin: str) -> str:
     path = chemin_autorise(chemin, doit_exister=True)
     if racine_trop_large(path):
         raise ValueError(f"Suppression refusee pour une racine protegee : {path}")
     if path.is_file():
         path.unlink()
-        return f"Fichier supprime : {path}"
+        resultat = f"Fichier supprime : {path}"
+        journaliser_action("supprimer", {"chemin": str(path)}, resultat)
+        return resultat
     if path.is_dir():
         shutil.rmtree(path)
-        return f"Dossier supprime : {path}"
+        resultat = f"Dossier supprime : {path}"
+        journaliser_action("supprimer", {"chemin": str(path)}, resultat)
+        return resultat
     return f"Introuvable : {path}"
-

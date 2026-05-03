@@ -18,7 +18,11 @@ console = Console()
 OS = platform.system()
 HOME = Path.home()
 
-MODELE_CLOUD = "qwen3.5:cloud"
+MODELES_CLOUD = [
+    "qwen3.5:cloud",
+    "glm-5.1:cloud",
+    "minimax-m2.7:cloud",
+]
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
@@ -32,10 +36,11 @@ def est_connecte() -> bool:
     except Exception:
         return False
 
-def choisir_modele() -> str:
-    modele = MODELE_CLOUD if est_connecte() else MODELE_LOCAL
-    console.print(f"[dim]→ modèle : {modele}[/dim]")
-    return modele
+# 🔁 MODIFIÉ
+def choisir_modele() -> str | None:
+    if est_connecte():
+        return None  # on tentera les cloud dans l'ordre
+    return MODELE_LOCAL
 
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
@@ -104,24 +109,41 @@ def limiter_historique(historique: list) -> None:
     recents = historique[-MAX_MESSAGES_HISTORIQUE:]
     historique[:] = systeme + recents
 
+# 🔁 MODIFIÉ
 def parler(message: str, historique: list) -> str:
     historique.append({"role": "user", "content": message})
-    modele = choisir_modele()
-    try:
+    
+    modele_local = choisir_modele()
+    
+    if modele_local:
+        console.print(f"[dim]→ modèle : {modele_local}[/dim]")
         reponse = ollama.chat(
-            model=modele,
+            model=modele_local,
             messages=historique,
             options={"think": False}
         )
-    except Exception:
-        if modele == MODELE_LOCAL:
-            raise
-        console.print(f"[yellow]Modele cloud indisponible, bascule vers {MODELE_LOCAL}.[/yellow]")
-        reponse = ollama.chat(
-            model=MODELE_LOCAL,
-            messages=historique,
-            options={"think": False}
-        )
+    else:
+        reponse = None
+        for modele in MODELES_CLOUD:
+            try:
+                console.print(f"[dim]→ modèle : {modele}[/dim]")
+                reponse = ollama.chat(
+                    model=modele,
+                    messages=historique,
+                    options={"think": False}
+                )
+                break
+            except Exception as e:
+                console.print(f"[dim yellow]→ {modele} indisponible ({e}), essai suivant...[/dim yellow]")
+                continue
+        
+        if reponse is None:
+            console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
+            reponse = ollama.chat(
+                model=MODELE_LOCAL,
+                messages=historique,
+                options={"think": False}
+            )
 
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
