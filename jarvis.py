@@ -163,11 +163,29 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     else:
         # Mode conversation pur
         console.print(f"[dim]→ modèle : {MODELE_LOCAL} (conversation)[/dim]")
-        reponse = ollama.chat(
-            model=MODELE_LOCAL,
-            messages=historique,
-            options={"think": False}
-        )
+        try:
+            reponse = ollama.chat(
+                model=MODELE_LOCAL,
+                messages=historique,
+                options={"think": False}
+            )
+        except Exception:
+            console.print(f"[dim yellow]→ {MODELE_LOCAL} indisponible, bascule vers cloud...[/dim yellow]")
+            reponse = None
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
+                futures = {executor.submit(ollama.chat, model=modele, messages=historique, options={"think": False}): modele for modele in MODELES_CLOUD}
+                for future in concurrent.futures.as_completed(futures):
+                    modele = futures[future]
+                    try:
+                        reponse = future.result()
+                        console.print(f"[dim]→ modèle réussi : {modele}[/dim]")
+                        break
+                    except Exception as e:
+                        console.print(f"[dim yellow]→ {modele} indisponible ({e})[/dim yellow]")
+                        continue
+            if reponse is None:
+                console.print(f"[yellow]Aucun modèle disponible.[/yellow]")
+                reponse = {"message": {"content": "Désolé, aucun modèle n'est disponible pour le moment."}}
 
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
