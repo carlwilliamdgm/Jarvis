@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import ollama
+import anthropic
 import platform
 import re
 import threading
@@ -20,9 +21,8 @@ OS = platform.system()
 HOME = Path.home()
 
 MODELES_CLOUD = [
-    "qwen3.5:cloud",
-    "glm-5.1:cloud",
-    "minimax-m2.7:cloud",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-haiku-20240307",
 ]
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
@@ -30,7 +30,21 @@ INTERVALLE_VEILLE_PROACTIVE = 300
 
 MOTS_ACTION = ["fais", "crée", "supprime", "liste", "organise", "exécute", "commande", "dossier", "fichier", "mémoire", "note", "préférence", "automatisation", "rappel", "surveillance"]
 
-MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
+def chat_with_model(modele, messages, options=None):
+    if modele == MODELE_LOCAL:
+        return ollama.chat(model=modele, messages=messages, options=options or {"think": False})
+    else:
+        # Anthropic
+        client = anthropic.Anthropic()
+        system_message = next((m["content"] for m in messages if m["role"] == "system"), "")
+        user_messages = [m for m in messages if m["role"] != "system"]
+        response = client.messages.create(
+            model=modele,
+            max_tokens=1024,
+            system=system_message,
+            messages=user_messages
+        )
+        return {"message": {"content": response.content[0].text}}
 
 def detecter_intention(message: str) -> bool:
     """Retourne True si c'est une action, False si conversation."""
@@ -134,15 +148,11 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         
         if modele_local:
             console.print(f"[dim]→ modèle : {modele_local}[/dim]")
-            reponse = ollama.chat(
-                model=modele_local,
-                messages=historique,
-                options={"think": False}
-            )
+            reponse = chat_with_model(modele_local, historique)
         else:
             reponse = None
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
-                futures = {executor.submit(ollama.chat, model=modele, messages=historique, options={"think": False}): modele for modele in MODELES_CLOUD}
+                futures = {executor.submit(chat_with_model, modele, historique): modele for modele in MODELES_CLOUD}
                 for future in concurrent.futures.as_completed(futures):
                     modele = futures[future]
                     try:
@@ -155,25 +165,17 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
             
             if reponse is None:
                 console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
-                reponse = ollama.chat(
-                    model=MODELE_LOCAL,
-                    messages=historique,
-                    options={"think": False}
-                )
+                reponse = chat_with_model(MODELE_LOCAL, historique)
     else:
         # Mode conversation pur
         console.print(f"[dim]→ modèle : {MODELE_LOCAL} (conversation)[/dim]")
         try:
-            reponse = ollama.chat(
-                model=MODELE_LOCAL,
-                messages=historique,
-                options={"think": False}
-            )
+            reponse = chat_with_model(MODELE_LOCAL, historique)
         except Exception:
             console.print(f"[dim yellow]→ {MODELE_LOCAL} indisponible, bascule vers cloud...[/dim yellow]")
             reponse = None
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
-                futures = {executor.submit(ollama.chat, model=modele, messages=historique, options={"think": False}): modele for modele in MODELES_CLOUD}
+                futures = {executor.submit(chat_with_model, modele, historique): modele for modele in MODELES_CLOUD}
                 for future in concurrent.futures.as_completed(futures):
                     modele = futures[future]
                     try:
