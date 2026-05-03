@@ -32,7 +32,29 @@ def formater_taches_interrompues(taches: list) -> str:
     return "\n".join(lignes)
 
 
-def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str:
+def construire_prompt_conversation(memoire: dict) -> str:
+    """Prompt pour le modèle de conversation — orienté discussion et style J.A.R.V.I.S."""
+    u = memoire.get("utilisateur", {})
+    nom = u.get("nom", "utilisateur")
+    os_detecte = u.get("os", OS)
+    home = u.get("home", str(HOME))
+    langue = u.get("langue", "français")
+    preferences = memoire.get("preferences", {})
+    resume_preferences = "\n".join(f"- {k}: {v}" for k, v in sorted(preferences.items())) or "- Aucune"
+
+    return (
+        f"Tu es J.A.R.V.I.S., l'IA assistante de {nom}, inspirée de celle de Tony Stark dans Iron Man.\n"
+        f"Tu es intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié.\n"
+        f"Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.\n\n"
+        f"Contexte :\n"
+        f"- Utilisateur : {nom}\n"
+        f"- OS : {os_detecte}\n"
+        f"- Dossier home : {home}\n"
+        f"- Langue : {langue}\n"
+        f"- Préférences : {resume_preferences}\n\n"
+        f"Si la conversation nécessite une action, suggère-la poliment. Sinon, discute librement.\n"
+        f"Évite les réponses trop longues ; sois concis et précis."
+    )
     """Prompt pour le modèle d'exécution — orienté action et précision."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")

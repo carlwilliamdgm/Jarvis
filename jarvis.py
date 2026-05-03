@@ -1,16 +1,11 @@
-import ollama
-import json
-import re
-import platform
-import threading
-import urllib.request
+import concurrent.futures
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
-from core.prompt import construire_prompt
+from core.prompt import construire_prompt, construire_prompt_conversation
 from tools import OUTILS
 
 console = Console()
@@ -115,10 +110,16 @@ def limiter_historique(historique: list) -> None:
     historique[:] = systeme + recents
 
 # 🔁 MODIFIÉ
-def parler(message: str, historique: list) -> tuple[str, bool]:
+def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     historique.append({"role": "user", "content": message})
     
     intention_action = detecter_intention(message)
+    
+    # Ajuster le prompt système selon l'intention
+    if intention_action:
+        historique[0]["content"] = construire_prompt(memoire)
+    else:
+        historique[0]["content"] = construire_prompt_conversation(memoire)
     
     if intention_action:
         modele_local = choisir_modele()
@@ -132,18 +133,17 @@ def parler(message: str, historique: list) -> tuple[str, bool]:
             )
         else:
             reponse = None
-            for modele in MODELES_CLOUD:
-                try:
-                    console.print(f"[dim]→ modèle : {modele}[/dim]")
-                    reponse = ollama.chat(
-                        model=modele,
-                        messages=historique,
-                        options={"think": False}
-                    )
-                    break
-                except Exception as e:
-                    console.print(f"[dim yellow]→ {modele} indisponible ({e}), essai suivant...[/dim yellow]")
-                    continue
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
+                futures = {executor.submit(ollama.chat, model=modele, messages=historique, options={"think": False}): modele for modele in MODELES_CLOUD}
+                for future in concurrent.futures.as_completed(futures):
+                    modele = futures[future]
+                    try:
+                        reponse = future.result()
+                        console.print(f"[dim]→ modèle réussi : {modele}[/dim]")
+                        break
+                    except Exception as e:
+                        console.print(f"[dim yellow]→ {modele} indisponible ({e})[/dim yellow]")
+                        continue
             
             if reponse is None:
                 console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
@@ -184,7 +184,7 @@ def main():
     prompt = construire_prompt(memoire)
     historique = [{"role": "system", "content": prompt}]
     console.print(Panel(
-        f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.",
+        f"J.A.R.V.I.S. — Assistant IA de {nom}\nSystème d'assistance intelligent et compagnon numérique\nTape 'exit' pour quitter.",
         style="bold cyan"
     ))
     afficher_evenements(force=False, niveau="silencieux")
@@ -206,12 +206,12 @@ def main():
 
             horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
-                reponse, intention_action = parler(user_input, historique)
+                reponse, intention_action = parler(user_input, historique, memoire)
             if intention_action:
                 resultat = executer_outil(reponse)
                 reponse = resultat if resultat else reponse
             OUTILS["enregistrer_echange"](user_input, reponse)
-            console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
+            console.print(Panel(reponse, title=f"J.A.R.V.I.S. — {horodatage}", style="cyan"))
 
         except KeyboardInterrupt:
             console.print("\n[cyan]Jarvis hors ligne.[/cyan]")
