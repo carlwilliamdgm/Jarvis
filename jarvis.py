@@ -27,7 +27,12 @@ MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
 
-MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
+MOTS_ACTION = ["fais", "crée", "supprime", "liste", "organise", "exécute", "commande", "dossier", "fichier", "mémoire", "note", "préférence", "automatisation", "rappel", "surveillance"]
+
+def detecter_intention(message: str) -> bool:
+    """Retourne True si c'est une action, False si conversation."""
+    message_lower = message.lower()
+    return any(mot in message_lower for mot in MOTS_ACTION)
 
 def est_connecte() -> bool:
     try:
@@ -110,48 +115,56 @@ def limiter_historique(historique: list) -> None:
     historique[:] = systeme + recents
 
 # 🔁 MODIFIÉ
-def parler(message: str, historique: list) -> str:
+def parler(message: str, historique: list) -> tuple[str, bool]:
     historique.append({"role": "user", "content": message})
     
-    modele_local = choisir_modele()
+    intention_action = detecter_intention(message)
     
-    if modele_local:
-        console.print(f"[dim]→ modèle : {modele_local}[/dim]")
-        reponse = ollama.chat(
-            model=modele_local,
-            messages=historique,
-            options={"think": False}
-        )
-    else:
-        reponse = None
-        for modele in MODELES_CLOUD:
-            try:
-                console.print(f"[dim]→ modèle : {modele}[/dim]")
-                reponse = ollama.chat(
-                    model=modele,
-                    messages=historique,
-                    options={"think": False}
-                )
-                break
-            except Exception as e:
-                console.print(f"[dim yellow]→ {modele} indisponible ({e}), essai suivant...[/dim yellow]")
-                continue
+    if intention_action:
+        modele_local = choisir_modele()
         
-        if reponse is None:
-            console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
+        if modele_local:
+            console.print(f"[dim]→ modèle : {modele_local}[/dim]")
             reponse = ollama.chat(
-                model=MODELE_LOCAL,
+                model=modele_local,
                 messages=historique,
                 options={"think": False}
             )
+        else:
+            reponse = None
+            for modele in MODELES_CLOUD:
+                try:
+                    console.print(f"[dim]→ modèle : {modele}[/dim]")
+                    reponse = ollama.chat(
+                        model=modele,
+                        messages=historique,
+                        options={"think": False}
+                    )
+                    break
+                except Exception as e:
+                    console.print(f"[dim yellow]→ {modele} indisponible ({e}), essai suivant...[/dim yellow]")
+                    continue
+            
+            if reponse is None:
+                console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
+                reponse = ollama.chat(
+                    model=MODELE_LOCAL,
+                    messages=historique,
+                    options={"think": False}
+                )
+    else:
+        # Mode conversation pur
+        console.print(f"[dim]→ modèle : {MODELE_LOCAL} (conversation)[/dim]")
+        reponse = ollama.chat(
+            model=MODELE_LOCAL,
+            messages=historique,
+            options={"think": False}
+        )
 
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
     limiter_historique(historique)
-    resultat = executer_outil(contenu)
-    reponse_finale = resultat if resultat else contenu
-    OUTILS["enregistrer_echange"](message, reponse_finale)
-    return reponse_finale
+    return contenu, intention_action
 
 def afficher_evenements(force: bool = False, niveau: str = "normal"):
     resultat = OUTILS["bilan_proactif"](force=force, niveau=niveau)
@@ -193,7 +206,11 @@ def main():
 
             horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
-                reponse = parler(user_input, historique)
+                reponse, intention_action = parler(user_input, historique)
+            if intention_action:
+                resultat = executer_outil(reponse)
+                reponse = resultat if resultat else reponse
+            OUTILS["enregistrer_echange"](user_input, reponse)
             console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
 
         except KeyboardInterrupt:
