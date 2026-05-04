@@ -1,3 +1,4 @@
+import concurrent.futures
 import json
 import ollama
 import platform
@@ -7,6 +8,7 @@ import urllib.request
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
+from groq import Groq as GroqClient
 from rich.console import Console
 from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
@@ -18,8 +20,8 @@ console = Console()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_CLOUD = []
-MODELE_LOCAL = "tinydolphin"
+MODELES_CLOUD = ["llama-3.1-70b-versatile"]
+MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
 
@@ -27,8 +29,33 @@ MOTS_ACTION = ["fais", "crée", "supprime", "liste", "organise", "exécute", "co
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
 
-def chat_with_model(modele, messages, options=None):
-    return ollama.chat(model=modele, messages=messages, options=options or {"think": False})
+def chat_with_cloud(modele, messages):
+    """Appel à Groq pour modèles cloud gratuits."""
+    try:
+        client = GroqClient()
+        # Convertir les messages pour Groq
+        groq_messages = []
+        system_msg = ""
+        for m in messages:
+            if m["role"] == "system":
+                system_msg = m["content"]
+            else:
+                groq_messages.append({"role": m["role"], "content": m["content"]})
+        
+        response = client.chat.completions.create(
+            model=modele,
+            messages=groq_messages,
+            system=system_msg,
+            max_tokens=1024,
+            temperature=0.7
+        )
+        return {"message": {"content": response.choices[0].message.content}}
+    except Exception as e:
+        raise Exception(f"Groq error: {e}")
+
+def chat_with_local(modele, messages):
+    """Appel à Ollama pour modèle local."""
+    return ollama.chat(model=modele, messages=messages, options={"think": False})
 
 def detecter_intention(message: str) -> bool:
     """Retourne True si c'est une action, False si conversation."""
@@ -37,14 +64,10 @@ def detecter_intention(message: str) -> bool:
 
 def est_connecte() -> bool:
     try:
-        urllib.request.urlopen("https://ollama.com", timeout=3).close()
+        urllib.request.urlopen("https://api.groq.com", timeout=3).close()
         return True
     except Exception:
         return False
-
-# 🔁 MODIFIÉ - Toujours utiliser le modèle local
-def choisir_modele() -> str:
-    return MODELE_LOCAL
 
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
@@ -113,8 +136,8 @@ def limiter_historique(historique: list) -> None:
     recents = historique[-MAX_MESSAGES_HISTORIQUE:]
     historique[:] = systeme + recents
 
-# 🔁 MODIFIÉ
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
+    """Parle en utilisant le modèle cloud d'abord, puis fallback sur local."""
     historique.append({"role": "user", "content": message})
     
     intention_action = detecter_intention(message)
@@ -125,15 +148,31 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     else:
         historique[0]["content"] = construire_prompt_conversation(memoire)
     
-    # Utiliser toujours le modèle local
-    modele = choisir_modele()
-    console.print(f"[dim]→ modèle : {modele}[/dim]")
+    reponse = None
     
-    try:
-        reponse = chat_with_model(modele, historique)
-    except Exception as e:
-        console.print(f"[yellow]Erreur modèle : {e}[/yellow]")
-        reponse = {"message": {"content": f"Erreur : {e}"}}
+    # Essayer les modèles cloud en parallèle
+    if est_connecte():
+        console.print(f"[dim]→ tentative modèles cloud...[/dim]")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
+            futures = {executor.submit(chat_with_cloud, modele, historique): modele for modele in MODELES_CLOUD}
+            for future in concurrent.futures.as_completed(futures):
+                modele = futures[future]
+                try:
+                    reponse = future.result()
+                    console.print(f"[dim]→ modèle cloud réussi : {modele}[/dim]")
+                    break
+                except Exception as e:
+                    console.print(f"[dim yellow]→ {modele} indisponible ({e})[/dim yellow]")
+                    continue
+    
+    # Fallback sur modèle local
+    if reponse is None:
+        console.print(f"[dim]→ bascule vers {MODELE_LOCAL}[/dim]")
+        try:
+            reponse = chat_with_local(MODELE_LOCAL, historique)
+        except Exception as e:
+            console.print(f"[yellow]Erreur modèle local : {e}[/yellow]")
+            reponse = {"message": {"content": f"Erreur : {e}"}}
 
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
