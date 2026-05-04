@@ -1,7 +1,5 @@
-import concurrent.futures
 import json
 import ollama
-import anthropic
 import platform
 import re
 import threading
@@ -20,31 +18,17 @@ console = Console()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_CLOUD = [
-    "claude-3-5-sonnet-20241022",
-    "claude-3-haiku-20240307",
-]
+MODELES_CLOUD = []
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
 
 MOTS_ACTION = ["fais", "crée", "supprime", "liste", "organise", "exécute", "commande", "dossier", "fichier", "mémoire", "note", "préférence", "automatisation", "rappel", "surveillance"]
 
+MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
+
 def chat_with_model(modele, messages, options=None):
-    if modele == MODELE_LOCAL:
-        return ollama.chat(model=modele, messages=messages, options=options or {"think": False})
-    else:
-        # Anthropic
-        client = anthropic.Anthropic()
-        system_message = next((m["content"] for m in messages if m["role"] == "system"), "")
-        user_messages = [m for m in messages if m["role"] != "system"]
-        response = client.messages.create(
-            model=modele,
-            max_tokens=1024,
-            system=system_message,
-            messages=user_messages
-        )
-        return {"message": {"content": response.content[0].text}}
+    return ollama.chat(model=modele, messages=messages, options=options or {"think": False})
 
 def detecter_intention(message: str) -> bool:
     """Retourne True si c'est une action, False si conversation."""
@@ -58,10 +42,8 @@ def est_connecte() -> bool:
     except Exception:
         return False
 
-# 🔁 MODIFIÉ
-def choisir_modele() -> str | None:
-    if est_connecte():
-        return None  # on tentera les cloud dans l'ordre
+# 🔁 MODIFIÉ - Toujours utiliser le modèle local
+def choisir_modele() -> str:
     return MODELE_LOCAL
 
 def initialiser() -> dict:
@@ -143,51 +125,15 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     else:
         historique[0]["content"] = construire_prompt_conversation(memoire)
     
-    if intention_action:
-        modele_local = choisir_modele()
-        
-        if modele_local:
-            console.print(f"[dim]→ modèle : {modele_local}[/dim]")
-            reponse = chat_with_model(modele_local, historique)
-        else:
-            reponse = None
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
-                futures = {executor.submit(chat_with_model, modele, historique): modele for modele in MODELES_CLOUD}
-                for future in concurrent.futures.as_completed(futures):
-                    modele = futures[future]
-                    try:
-                        reponse = future.result()
-                        console.print(f"[dim]→ modèle réussi : {modele}[/dim]")
-                        break
-                    except Exception as e:
-                        console.print(f"[dim yellow]→ {modele} indisponible ({e})[/dim yellow]")
-                        continue
-            
-            if reponse is None:
-                console.print(f"[yellow]Tous les modèles cloud indisponibles, bascule vers {MODELE_LOCAL}.[/yellow]")
-                reponse = chat_with_model(MODELE_LOCAL, historique)
-    else:
-        # Mode conversation pur
-        console.print(f"[dim]→ modèle : {MODELE_LOCAL} (conversation)[/dim]")
-        try:
-            reponse = chat_with_model(MODELE_LOCAL, historique)
-        except Exception:
-            console.print(f"[dim yellow]→ {MODELE_LOCAL} indisponible, bascule vers cloud...[/dim yellow]")
-            reponse = None
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_CLOUD)) as executor:
-                futures = {executor.submit(chat_with_model, modele, historique): modele for modele in MODELES_CLOUD}
-                for future in concurrent.futures.as_completed(futures):
-                    modele = futures[future]
-                    try:
-                        reponse = future.result()
-                        console.print(f"[dim]→ modèle réussi : {modele}[/dim]")
-                        break
-                    except Exception as e:
-                        console.print(f"[dim yellow]→ {modele} indisponible ({e})[/dim yellow]")
-                        continue
-            if reponse is None:
-                console.print(f"[yellow]Aucun modèle disponible.[/yellow]")
-                reponse = {"message": {"content": "Désolé, aucun modèle n'est disponible pour le moment."}}
+    # Utiliser toujours le modèle local
+    modele = choisir_modele()
+    console.print(f"[dim]→ modèle : {modele}[/dim]")
+    
+    try:
+        reponse = chat_with_model(modele, historique)
+    except Exception as e:
+        console.print(f"[yellow]Erreur modèle : {e}[/yellow]")
+        reponse = {"message": {"content": f"Erreur : {e}"}}
 
     contenu = reponse["message"]["content"]
     historique.append({"role": "assistant", "content": contenu})
