@@ -19,7 +19,7 @@ OS = platform.system()
 HOME = Path.home()
 
 MODELES_CLOUD = []
-MODELE_LOCAL = "phi3:mini"
+MODELE_LOCAL = "tinydolphin"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
 
