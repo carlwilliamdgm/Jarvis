@@ -2,3 +2,5 @@ ollama
 plyer
 psutil
 rich
+groq
+together
