@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from datetime import datetime
 from json import JSONDecodeError
 
@@ -9,6 +10,7 @@ CATEGORIES_CONTEXTE = {"profil", "habitudes", "objectifs", "projets", "faits", "
 MAX_JOURNAL_CONVERSATION = 20
 MAX_HISTORIQUE_ACTIONS = 100
 MAX_TACHES = 50
+_MEMORY_LOCK = threading.RLock()
 
 
 def schema_contexte() -> dict:
@@ -16,22 +18,26 @@ def schema_contexte() -> dict:
 
 
 def charger_memoire() -> dict:
-    try:
-        with open(MEMORY_PATH, "r", encoding="utf-8") as f:
-            contenu = f.read().strip()
-            return json.loads(contenu) if contenu else {}
-    except (FileNotFoundError, JSONDecodeError):
-        return {}
+    with _MEMORY_LOCK:
+        try:
+            with open(MEMORY_PATH, "r", encoding="utf-8") as f:
+                contenu = f.read().strip()
+                return json.loads(contenu) if contenu else {}
+        except (FileNotFoundError, JSONDecodeError):
+            return {}
 
 
 def sauvegarder_memoire(data: dict):
-    tmp_path = MEMORY_PATH.with_suffix(".json.tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_path, MEMORY_PATH)
+    with _MEMORY_LOCK:
+        tmp_path = MEMORY_PATH.with_suffix(".json.tmp")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, MEMORY_PATH)
 
 
 def normaliser_memoire(data: dict) -> dict:
+    if not isinstance(data, dict):
+        data = {}
     data.setdefault("notes", [])
     data.setdefault("preferences", {})
     data.setdefault("historique_actions", [])

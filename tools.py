@@ -1,12 +1,12 @@
 from datetime import datetime, timedelta
 
-from capabilities.commands import executer_commande_direct
+from capabilities.commands import executer_commande_direct, executer_powershell_direct
 from capabilities.custom_commands import (
     ajouter_commande_personnalisee,
     executer_commande_personnalisee,
     lister_commandes_personnalisees,
 )
-from capabilities.files import creer_dossier, creer_fichier, lire_fichier, supprimer_direct
+from capabilities.files import creer_dossier, creer_fichier, lire_fichier, lister_dossier, supprimer_direct
 from capabilities.memory_tools import (
     lire_contexte,
     lire_notes,
@@ -19,8 +19,10 @@ from capabilities.memory_tools import (
 )
 from capabilities.organization import analyser_organisation, organiser_dossier_direct
 from capabilities.scheduler import (
+    OUTILS_AUTOMATISATION_INTERDITS,
     ajouter_automatisation,
     ajouter_rappel,
+    executer_automatisation,
     executer_automatisations_dues,
     lire_rappels,
     lister_automatisations,
@@ -43,7 +45,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import chemin_autorise, racine_trop_large
+from core.safety import chemin_autorise, racine_trop_large, suppression_requiert_confirmation
 from rich.console import Console
 
 _console = Console()
@@ -58,9 +60,8 @@ def demander_confirmation(description: str) -> bool:
 def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
-        if demander_confirmation(f"supprimer {path}"):
+        if not suppression_requiert_confirmation(path) or demander_confirmation(f"supprimer {path}"):
             resultat = supprimer_direct(chemin=str(path))
-            journaliser_action("supprimer", {"chemin": str(path)}, resultat)
             return resultat
         return "Suppression annulee."
     except Exception as e:
@@ -71,12 +72,49 @@ def executer_commande(commande: str) -> str:
     return executer_commande_direct(commande=commande)
 
 
+def executer_powershell(commande: str) -> str:
+    return executer_powershell_direct(commande=commande)
+
+
 def vider_temp() -> str:
     return storage.vider_temp()
 
 
 def vider_corbeille() -> str:
+    if not demander_confirmation("vider definitivement la corbeille"):
+        return "Vidage de la corbeille annule."
     return storage.vider_corbeille()
+
+
+def notifier_utilisateur(titre: str, message: str, urgence: bool = False) -> str:
+    storage.notifier(titre=titre, message=message, urgence=urgence)
+    return f"Notification envoyee : {titre} - {message}"
+
+
+def terminer_tache(resume: str = "Tache terminee.") -> str:
+    return resume
+
+
+def ajouter_automatisation_confirmee(
+    nom: str,
+    outil: str,
+    args: dict | None = None,
+    recurrence: str = "quotidien",
+    heure: str = "09:00",
+) -> str:
+    if outil in OUTILS_AUTOMATISATION_INTERDITS:
+        return f"Outil non automatisable pour eviter un blocage ou une action sensible : {outil}"
+    description = f"creer une automatisation {recurrence} a {heure} : {nom} -> {outil}({args or {}})"
+    if not demander_confirmation(description):
+        return "Automatisation annulee."
+    return ajouter_automatisation(nom=nom, outil=outil, args=args, recurrence=recurrence, heure=heure)
+
+
+def ajouter_surveillance_dossier_confirmee(chemin: str, recurrence: str = "quotidien", heure: str = "09:00") -> str:
+    description = f"activer une surveillance de dossier {recurrence} a {heure} : {chemin}"
+    if not demander_confirmation(description):
+        return "Surveillance annulee."
+    return ajouter_surveillance_dossier(chemin=chemin, recurrence=recurrence, heure=heure)
 
 
 def organiser_dossier(chemin: str) -> str:
@@ -155,6 +193,7 @@ OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
     "lire_fichier": lire_fichier,
+    "lister_dossier": lister_dossier,
     "supprimer": supprimer,
     "noter": noter,
     "lire_notes": lire_notes,
@@ -166,7 +205,10 @@ OUTILS = {
     "top_fichiers_lourds": storage.top_fichiers_lourds,
     "vider_temp": vider_temp,
     "vider_corbeille": vider_corbeille,
+    "notifier_utilisateur": notifier_utilisateur,
     "executer_commande": executer_commande,
+    "executer_powershell": executer_powershell,
+    "terminer_tache": terminer_tache,
     "analyser_organisation": analyser_organisation,
     "organiser_dossier": organiser_dossier,
     "ajouter_rappel": ajouter_rappel,
@@ -179,11 +221,12 @@ OUTILS = {
     "ajouter_commande_personnalisee": ajouter_commande_personnalisee,
     "lister_commandes_personnalisees": lister_commandes_personnalisees,
     "executer_commande_personnalisee": executer_commande_personnalisee,
-    "ajouter_automatisation": ajouter_automatisation,
+    "ajouter_automatisation": ajouter_automatisation_confirmee,
     "lister_automatisations": lister_automatisations,
+    "executer_automatisation": executer_automatisation,
     "executer_automatisations_dues": executer_automatisations_dues,
     "proposer_surveillance_dossiers": proposer_surveillance_dossiers,
-    "ajouter_surveillance_dossier": ajouter_surveillance_dossier,
+    "ajouter_surveillance_dossier": ajouter_surveillance_dossier_confirmee,
     "lister_surveillance_dossiers": lister_surveillance_dossiers,
     "executer_surveillance_dossiers": executer_surveillance_dossiers,
     "supprimer_surveillance_dossier": supprimer_surveillance_dossier,

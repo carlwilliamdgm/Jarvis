@@ -87,19 +87,22 @@ Jarvis: [dim yellow]→ retry modèles cloud (tentative 2)...[/dim yellow]
         → Audit stockage : 245 GB libres...
 ```
 
-## Outils disponibles (38)
+## Outils disponibles (39)
 
 ### Gestion des fichiers
 - `creer_dossier(chemin)` - Crée un dossier
 - `creer_fichier(chemin, contenu)` - Crée un fichier avec contenu
-- `lire_fichier(chemin)` - Lit le contenu d'un fichier
-- `supprimer(chemin)` - Supprime fichier/dossier (demande confirmation)
+- `lire_fichier(chemin, max_caracteres=200000)` - Lit le contenu d'un fichier avec limite anti-blocage
+- `lister_dossier(chemin, limite=200)` - Liste le contenu d'un dossier avec limite d'affichage
+- `supprimer(chemin)` - Supprime fichier/dossier (confirmation seulement pour racines/zones larges)
 
 ### Gestion du stockage
 - `audit_stockage()` - Analyse complète du disque
-- `top_fichiers_lourds(n=10, complet=False)` - Liste les gros fichiers
+- `top_fichiers_lourds(n=10, complet=False, max_secondes=15)` - Liste les gros fichiers avec limite de temps
 - `vider_temp()` - Nettoie les fichiers temporaires
-- `vider_corbeille()` - Vide la corbeille
+- `vider_corbeille()` - Vide la corbeille (demande confirmation)
+- `notifier_utilisateur(titre, message, urgence=False)` - Envoie une notification système
+- `terminer_tache(resume="Tache terminee.")` - Termine une boucle agentique avec un résumé
 
 ### Mémoire et contexte
 - `noter(note)` - Ajoute une note à la mémoire
@@ -110,6 +113,7 @@ Jarvis: [dim yellow]→ retry modèles cloud (tentative 2)...[/dim yellow]
 - `memoriser_preference(cle, valeur)` - Sauve une préférence
 - `lire_preferences()` - Lit les préférences
 - `oublier_preference(cle)` - Supprime une préférence
+- `enregistrer_echange(utilisateur, jarvis)` - Journalise un échange
 
 ### Organisation
 - `analyser_organisation(chemin)` - Analyse l'ordre d'un dossier
@@ -125,9 +129,10 @@ Jarvis: [dim yellow]→ retry modèles cloud (tentative 2)...[/dim yellow]
 - `lire_rappels()` - Liste les rappels
 - `supprimer_rappel(rappel_id)` - Supprime un rappel
 - `verifier_rappels()` - Vérifie les rappels dus
-- `ajouter_automatisation(nom, outil, args, recurrence, heure)` - Crée une tâche automatisée
+- `ajouter_automatisation(nom, outil, args, recurrence, heure)` - Crée une tâche automatisée (demande confirmation)
 - `lister_automatisations()` - Liste les automatisations
-- `executer_automatisations_dues()` - Exécute les automatisations
+- `executer_automatisation(automation_id, nom)` - Lance une automatisation active immédiatement
+- `executer_automatisations_dues()` - Exécute les automatisations arrivées à échéance
 - `ajouter_commande_personnalisee(nom, commande, description)` - Commande custom
 
 ### Surveillance
@@ -139,6 +144,7 @@ Jarvis: [dim yellow]→ retry modèles cloud (tentative 2)...[/dim yellow]
 
 ### Terminal
 - `executer_commande(commande)` - Exécute une commande système
+- `executer_powershell(commande)` - Exécute une commande PowerShell native
 
 ### Proactif
 - `bilan_proactif(force=False, niveau="normal")` - Affiche les alertes proactives

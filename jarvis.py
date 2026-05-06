@@ -1,13 +1,14 @@
 import concurrent.futures
 import json
 import ollama
+import os
 import platform
-import re
 import threading
 import urllib.request
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
+from typing import Callable
 from groq import Groq as GroqClient
 from together import Together as TogetherClient
 from rich.console import Console
@@ -21,11 +22,13 @@ console = Console()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_GROQ = ["mixtral-8x7b-32768"]  # Ultra-rapide MoE (Mixture of Experts) sur Groq
+MODELES_GROQ = ["llama-3.3-70b-versatile"]  # Modele Groq actuel, avec free tier selon le compte
 MODELES_TOGETHER = ["meta-llama/Llama-3.1-8B-Instruct-Turbo"]  # Modèle 8B rapide et efficace
+MODELES_OPENROUTER = ["openrouter/free"]  # Routeur gratuit OpenRouter, limite selon le compte
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
 INTERVALLE_VEILLE_PROACTIVE = 300
+MAX_ETAPES_AGENT = 5
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "organise", "exécute", "commande", 
@@ -36,6 +39,16 @@ MOTS_ACTION = [
 ]
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
+MOTS_COMPLEXES = [
+    "analyse", "audite", "audit", "corrige", "debug", "diagnostique", "optimise",
+    "refactor", "architecture", "complexe", "plan", "projet", "automatisation",
+    "surveillance", "organise", "plusieurs", "étapes", "etapes", "complet",
+]
+PLAN_OPTIMISATION = (
+    "\nEnchaine les actions suivantes dans cet ordre : "
+    "vider_temp, vider_corbeille, puis audit_stockage. "
+    "Les outils sensibles gereront eux-memes la confirmation Oui/Non."
+)
 
 def detecter_intention(message: str) -> bool:
     """
@@ -56,23 +69,30 @@ def detecter_intention(message: str) -> bool:
         return True
     return False
 
+
+def estimer_complexite(message: str, intention_action: bool) -> str:
+    message_lower = message.lower()
+    score = 0
+    if intention_action:
+        score += 1
+    score += sum(1 for mot in MOTS_COMPLEXES if mot in message_lower)
+    if len(message) > 240:
+        score += 1
+    if any(separateur in message_lower for separateur in [" puis ", " ensuite ", "\n", ";"]):
+        score += 1
+    if len(extraire_json_objets(message)) > 1:
+        score += 1
+    return "complexe" if score >= 2 else "simple"
+
 def chat_with_cloud(modele, messages):
     """Appel à Groq pour modèles cloud gratuits."""
     try:
         client = GroqClient()
-        # Convertir les messages pour Groq
-        groq_messages = []
-        system_msg = ""
-        for m in messages:
-            if m["role"] == "system":
-                system_msg = m["content"]
-            else:
-                groq_messages.append({"role": m["role"], "content": m["content"]})
+        groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
         
         response = client.chat.completions.create(
             model=modele,
             messages=groq_messages,
-            system=system_msg,
             max_tokens=1024,
             temperature=0.7
         )
@@ -99,6 +119,38 @@ def chat_with_together(modele, messages):
     except Exception as e:
         raise Exception(f"Together error: {e}")
 
+
+def chat_with_openrouter(modele, messages):
+    """Appel OpenRouter via REST, compatible sans dependance supplementaire."""
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise Exception("OPENROUTER_API_KEY absente.")
+
+    payload = json.dumps({
+        "model": modele,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
+        "max_tokens": 1024,
+        "temperature": 0.7,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://localhost/jarvis",
+            "X-Title": "Jarvis Local",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return {"message": {"content": data["choices"][0]["message"]["content"]}}
+    except Exception as e:
+        raise Exception(f"OpenRouter error: {e}")
+
+
 def chat_with_local(modele, messages):
     """Appel à Ollama pour modèle local avec gestion d'erreur."""
     try:
@@ -106,14 +158,62 @@ def chat_with_local(modele, messages):
     except Exception as e:
         raise Exception(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.")
 
-def est_connecte() -> bool:
-    """Vérifie la connectivité Internet en testant un endpoint fiable."""
-    try:
-        # Tester avec Google DNS qui est ultra-fiable
-        urllib.request.urlopen("https://www.google.com", timeout=3).close()
-        return True
-    except Exception:
-        return False
+def providers_cloud_disponibles() -> list[dict]:
+    providers = []
+    if os.environ.get("OPENROUTER_API_KEY"):
+        providers.append({
+            "nom": "OpenRouter",
+            "modeles": MODELES_OPENROUTER,
+            "fonction": chat_with_openrouter,
+            "niveau": "simple",
+        })
+    if os.environ.get("GROQ_API_KEY"):
+        providers.append({
+            "nom": "Groq",
+            "modeles": MODELES_GROQ,
+            "fonction": chat_with_cloud,
+            "niveau": "complexe",
+        })
+    if os.environ.get("TOGETHER_API_KEY"):
+        providers.append({
+            "nom": "Together",
+            "modeles": MODELES_TOGETHER,
+            "fonction": chat_with_together,
+            "niveau": "simple",
+        })
+    return providers
+
+
+def ordonner_providers_cloud(providers: list[dict], memoire: dict, complexite: str = "simple") -> list[dict]:
+    """Choisir selon la complexite, puis alterner dans le groupe prioritaire pour repartir les quotas."""
+    if len(providers) <= 1:
+        return providers
+    priorite = ["complexe", "simple"] if complexite == "complexe" else ["simple", "complexe"]
+    routeur = memoire.get("routeur_modeles", {})
+    ordonnes = []
+    for niveau in priorite:
+        groupe = [provider for provider in providers if provider["niveau"] == niveau]
+        if not groupe:
+            continue
+        dernier = routeur.get(f"dernier_provider_{niveau}")
+        noms = [provider["nom"] for provider in groupe]
+        if dernier in noms:
+            index_suivant = (noms.index(dernier) + 1) % len(groupe)
+            groupe = groupe[index_suivant:] + groupe[:index_suivant]
+        ordonnes.extend(groupe)
+    return ordonnes
+
+
+def memoriser_provider_cloud(nom_provider: str) -> None:
+    data = normaliser_memoire(charger_memoire())
+    routeur = data.setdefault("routeur_modeles", {})
+    routeur["dernier_provider_cloud"] = nom_provider
+    for provider in providers_cloud_disponibles():
+        if provider["nom"] == nom_provider:
+            routeur[f"dernier_provider_{provider['niveau']}"] = nom_provider
+            break
+    routeur["maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sauvegarder_memoire(data)
 
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
@@ -147,32 +247,41 @@ def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
     """
     objets = []
     decodeur = json.JSONDecoder()
-    positions = [m.start() for m in re.finditer(r"\{", texte)]
+    position = 0
     
-    for position in positions:
+    while position < len(texte):
+        position = texte.find("{", position)
+        if position == -1:
+            break
         try:
-            objet, _ = decodeur.raw_decode(texte[position:])
+            objet, fin = decodeur.raw_decode(texte[position:])
         except JSONDecodeError:
+            position += 1
             continue
             
         if not isinstance(objet, dict):
+            position += fin
             continue
             
         # Validation stricte
         if "outil" not in objet:
             if verbose:
                 console.print(f"[yellow]⚠️  JSON sans 'outil' : {objet}[/yellow]")
+            position += fin
             continue
         if "args" not in objet:
             if verbose:
                 console.print(f"[yellow]⚠️  JSON sans 'args' : {objet}[/yellow]")
+            position += fin
             continue
         if not isinstance(objet["args"], dict):
             if verbose:
                 console.print(f"[yellow]⚠️  'args' n'est pas un dictionnaire : {objet}[/yellow]")
+            position += fin
             continue
             
         objets.append(objet)
+        position += fin
     
     return objets
 
@@ -208,6 +317,15 @@ def executer_outil(reponse: str) -> str | None:
             resultats.append(f"Erreur outil {data.get('outil')} : {e}")
     return "\n".join(resultats) if resultats else None
 
+
+def reponse_termine_tache(reponse: str) -> bool:
+    return any(objet.get("outil") == "terminer_tache" for objet in extraire_json_objets(reponse))
+
+
+def resultat_indique_erreur(resultat: str) -> bool:
+    marqueurs = ["Erreur", "Outil inconnu", "Arguments invalides", "Timeout"]
+    return any(marqueur in resultat for marqueur in marqueurs)
+
 def limiter_historique(historique: list) -> None:
     if len(historique) <= MAX_MESSAGES_HISTORIQUE + 1:
         return
@@ -220,6 +338,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     historique.append({"role": "user", "content": message})
     
     intention_action = detecter_intention(message)
+    complexite = estimer_complexite(message, intention_action)
     
     # Ajuster le prompt système selon l'intention
     if intention_action:
@@ -228,48 +347,44 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         historique[0]["content"] = construire_prompt_conversation(memoire)
     
     reponse = None
+    provider_cloud_reussi = None
     tentatives = 0
     max_tentatives = 2
     
     while tentatives < max_tentatives:
         tentatives += 1
-        connecte = est_connecte()
+        providers_cloud = ordonner_providers_cloud(providers_cloud_disponibles(), memoire, complexite)
         
-        if connecte:
+        if providers_cloud:
             if tentatives == 1:
-                console.print(f"[dim]→ Internet connecté. Tentative modèles cloud...[/dim]")
+                console.print(f"[dim]→ Cle API cloud detectee. Tentative modeles cloud...[/dim]")
             else:
-                console.print(f"[dim yellow]→ Retry modèles cloud (tentative {tentatives})...[/dim yellow]")
+                console.print(f"[dim yellow]→ Retry modeles cloud (tentative {tentatives})...[/dim yellow]")
             
-            # Essayer Groq
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_GROQ)) as executor:
-                futures = {executor.submit(chat_with_cloud, modele, historique): modele for modele in MODELES_GROQ}
-                for future in concurrent.futures.as_completed(futures):
-                    modele = futures[future]
-                    try:
-                        reponse = future.result()
-                        console.print(f"[dim green]✓ Groq réussi : {modele}[/dim green]")
-                        break
-                    except Exception as e:
-                        console.print(f"[dim yellow]✗ Groq {modele} indisponible : {str(e)[:80]}[/dim yellow]")
-                        continue
-            
-            # Si Groq échoue, essayer Together
-            if reponse is None:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=len(MODELES_TOGETHER)) as executor:
-                    futures = {executor.submit(chat_with_together, modele, historique): modele for modele in MODELES_TOGETHER}
+            for provider in providers_cloud:
+                if reponse is not None:
+                    break
+                nom_provider = provider["nom"]
+                modeles = provider["modeles"]
+                fonction_chat = provider["fonction"]
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(modeles)) as executor:
+                    futures = {executor.submit(fonction_chat, modele, historique): modele for modele in modeles}
                     for future in concurrent.futures.as_completed(futures):
                         modele = futures[future]
                         try:
                             reponse = future.result()
-                            console.print(f"[dim green]✓ Together réussi : {modele}[/dim green]")
+                            provider_cloud_reussi = nom_provider
+                            console.print(f"[dim green]✓ {nom_provider} reussi : {modele}[/dim green]")
                             break
                         except Exception as e:
-                            console.print(f"[dim yellow]✗ Together {modele} indisponible : {str(e)[:80]}[/dim yellow]")
+                            console.print(f"[dim yellow]✗ {nom_provider} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
                             continue
         else:
             if tentatives == 1:
-                console.print(f"[dim yellow]⚠️  Pas d'Internet détecté. Utilisation du modèle local.[/dim yellow]")
+                console.print(
+                    "[dim yellow]⚠️  Aucune cle API cloud detectee "
+                    "(GROQ_API_KEY, TOGETHER_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
+                )
         
         # Fallback sur modèle local
         if reponse is None:
@@ -302,6 +417,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     "content": "Votre réponse précédente n'était pas en JSON. Veuillez UNIQUEMENT répondre avec du JSON au format : {\"outil\": \"nom\", \"args\": {...}}"
                 })
                 reponse = None
+                provider_cloud_reussi = None
                 continue
         else:
             # Conversation valide, on sort
@@ -311,9 +427,55 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         reponse = {"message": {"content": "Erreur : Impossible d'obtenir une réponse du modèle."}}
     
     contenu = reponse["message"]["content"]
+    if provider_cloud_reussi:
+        memoriser_provider_cloud(provider_cloud_reussi)
     historique.append({"role": "assistant", "content": contenu})
     limiter_historique(historique)
     return contenu, intention_action
+
+
+def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[str, bool]:
+    """Boucle agentique courte : action, observation, correction/continuation."""
+    reponse, intention_action = parler(user_input, historique, memoire)
+    if not intention_action:
+        return reponse, False
+
+    complexite = estimer_complexite(user_input, intention_action)
+    max_etapes = MAX_ETAPES_AGENT if complexite == "complexe" else 1
+    observations = []
+
+    for etape in range(1, max_etapes + 1):
+        resultat = executer_outil(reponse)
+        if resultat:
+            observations.append(f"Etape {etape}:\n{resultat}")
+        else:
+            resultat = (
+                "[red]❌ Erreur : Je n'ai pas pu exécuter cette action car je n'ai pas généré la commande correcte.[/red]\n"
+                "[dim]Conseil : Reformulez votre demande ou essayez avec d'autres mots.[/dim]"
+            )
+            observations.append(f"Etape {etape}:\n{resultat}")
+            break
+
+        if reponse_termine_tache(reponse):
+            break
+        if complexite != "complexe" and not resultat_indique_erreur(resultat):
+            break
+        if etape >= max_etapes:
+            break
+
+        observation = (
+            "Observation outil :\n"
+            f"{resultat}\n\n"
+            "Continue la tache si necessaire avec le prochain JSON d'outil. "
+            "Si tout est termine, reponds uniquement avec "
+            '{"outil": "terminer_tache", "args": {"resume": "resume court du resultat"}}.'
+        )
+        reponse, intention_action = parler(observation, historique, memoire)
+        if not intention_action:
+            observations.append(f"Conclusion:\n{reponse}")
+            break
+
+    return "\n\n".join(observations), True
 
 def afficher_evenements(force: bool = False, niveau: str = "normal"):
     resultat = OUTILS["bilan_proactif"](force=force, niveau=niveau)
@@ -351,26 +513,11 @@ def main():
                 break
 
             if any(mot in user_input.lower() for mot in MOTS_OPTIMISATION):
-                user_input += "\nEnchaîne obligatoirement sans confirmation : vider_temp, vider_corbeille, puis audit_stockage."
+                user_input += PLAN_OPTIMISATION
 
             horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
-                reponse, intention_action = parler(user_input, historique, memoire)
-            
-            if intention_action:
-                console.print("[dim]→ Exécution des outils...[/dim]")
-                resultat = executer_outil(reponse)
-                if resultat:
-                    reponse = resultat
-                else:
-                    # Vérifier s'il y avait du JSON
-                    if valider_reponse_json(reponse):
-                        reponse = f"[yellow]⚠️  Outils exécutés mais pas de résultat retourné.[/yellow]\n{reponse}"
-                    else:
-                        reponse = (
-                            "[red]❌ Erreur : Je n'ai pas pu exécuter cette action car je n'ai pas généré la commande correcte.[/red]\n"
-                            "[dim]Conseil : Reformulez votre demande ou essayez avec d'autres mots.[/dim]"
-                        )
+                reponse, intention_action = executer_agent(user_input, historique, memoire)
             
             OUTILS["enregistrer_echange"](user_input, reponse)
             console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))

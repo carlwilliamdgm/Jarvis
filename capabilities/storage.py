@@ -1,4 +1,5 @@
 import heapq
+import json
 import os
 import platform
 import shutil
@@ -34,12 +35,45 @@ def get_stockage() -> float:
     return round(100 - usage.percent, 1)
 
 
+def notifier_windows(titre: str, message: str, urgence: bool = False) -> bool:
+    timeout_ms = 30000 if urgence else 10000
+    script = f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$notify = New-Object System.Windows.Forms.NotifyIcon
+$notify.Icon = [System.Drawing.SystemIcons]::Information
+$notify.BalloonTipTitle = {json.dumps(str(titre))}
+$notify.BalloonTipText = {json.dumps(str(message))}
+$notify.Visible = $true
+$notify.ShowBalloonTip({timeout_ms})
+Start-Sleep -Seconds 1
+$notify.Dispose()
+"""
+    try:
+        subprocess.run(
+            ["PowerShell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            check=False,
+        )
+        return True
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def notifier(titre, message, urgence=False):
-    notification.notify(
-        title=f"Jarvis - {titre}",
-        message=message,
-        timeout=10 if not urgence else 30,
-    )
+    if OS == "Windows":
+        notifier_windows(f"Jarvis - {titre}", message, urgence=urgence)
+    else:
+        try:
+            notification.notify(
+                title=f"Jarvis - {titre}",
+                message=message,
+                timeout=10 if not urgence else 30,
+            )
+        except Exception:
+            pass
     print(f"[Jarvis] {titre} : {message}")
 
 
@@ -90,15 +124,21 @@ def vider_corbeille() -> str:
         return f"Erreur lors du vidage de la corbeille : {e}"
 
 
-def top_fichiers_lourds(n=10, complet=False) -> str:
+def top_fichiers_lourds(n=10, complet=False, max_secondes=15) -> str:
     dossiers = DOSSIERS_SCAN_COMPLET if complet else DOSSIERS_SCAN_PARTIEL
     mode = "complet" if complet else "partiel"
     fichiers = []
     n = max(1, min(int(n), 100))
+    max_secondes = max(1, min(int(max_secondes), 120))
+    debut = time.time()
+    interrompu = False
     for racine in dossiers:
         if not os.path.exists(racine):
             continue
         for root, _, files in os.walk(racine):
+            if time.time() - debut > max_secondes:
+                interrompu = True
+                break
             for f in files:
                 try:
                     chemin = os.path.join(root, f)
@@ -110,10 +150,14 @@ def top_fichiers_lourds(n=10, complet=False) -> str:
                         heapq.heapreplace(fichiers, entree)
                 except OSError:
                     pass
+        if interrompu:
+            break
     fichiers = sorted(fichiers, reverse=True)
     resultat = f"Top {n} fichiers les plus lourds (scan {mode}) :\n"
     for taille, chemin in fichiers[:n]:
         resultat += f"  {round(taille/1024**2, 1)} MB - {chemin}\n"
+    if interrompu:
+        resultat += f"Scan interrompu apres {max_secondes} secondes pour conserver la reactivite.\n"
     return resultat
 
 
@@ -124,4 +168,3 @@ def audit_stockage() -> str:
     total_gb = round(usage.total / (1024**3), 1)
     etat = "CRITIQUE" if libre <= 5 else "BAS" if libre <= 10 else "MOYEN" if libre <= 20 else "OK"
     return f"Stockage {DISQUE} {libre}% libre - {libre_gb} GB / {total_gb} GB - Etat : {etat}"
-

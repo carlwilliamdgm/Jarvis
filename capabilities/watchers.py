@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from capabilities.organization import analyser_organisation
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.paths import HOME
 from core.safety import chemin_autorise, racine_trop_large
+
+FORMAT_DATE_HEURE = "%Y-%m-%d %H:%M"
 
 
 def proposer_surveillance_dossiers() -> str:
@@ -37,7 +38,7 @@ def prochain_declenchement(recurrence: str, heure: str) -> str:
 
     if cible <= maintenant:
         cible += timedelta(days=1 if recurrence == "quotidien" else 7)
-    return cible.strftime("%Y-%m-%d %H:%M")
+    return cible.strftime(FORMAT_DATE_HEURE)
 
 
 def ajouter_surveillance_dossier(chemin: str, recurrence: str = "quotidien", heure: str = "09:00") -> str:
@@ -91,7 +92,7 @@ def executer_surveillance_dossiers(force: bool = False) -> str:
         if watcher.get("statut") != "active":
             continue
         try:
-            due = datetime.strptime(watcher["prochaine_execution"], "%Y-%m-%d %H:%M")
+            due = datetime.strptime(watcher["prochaine_execution"], FORMAT_DATE_HEURE)
         except (KeyError, ValueError):
             watcher["prochaine_execution"] = prochain_declenchement(watcher.get("recurrence", "quotidien"), watcher.get("heure", "09:00"))
             continue
@@ -101,7 +102,7 @@ def executer_surveillance_dossiers(force: bool = False) -> str:
         plan = analyser_organisation(chemin)
         if not plan.startswith("Aucun fichier"):
             resultats.append(f"Surveillance #{watcher['id']} - {chemin}\n{plan}")
-        watcher["derniere_execution"] = maintenant.strftime("%Y-%m-%d %H:%M")
+        watcher["derniere_execution"] = maintenant.strftime(FORMAT_DATE_HEURE)
         watcher["prochaine_execution"] = prochain_declenchement(watcher.get("recurrence", "quotidien"), watcher.get("heure", "09:00"))
     data["surveillances_dossiers"] = surveillances
     sauvegarder_memoire(data)

@@ -3,6 +3,38 @@ from datetime import datetime, timedelta
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 
 
+FORMAT_DATE_HEURE = "%Y-%m-%d %H:%M"
+OUTILS_AUTOMATISATION_INTERDITS = {
+    "ajouter_automatisation",
+    "ajouter_surveillance_dossier",
+    "bilan_proactif",
+    "executer_automatisation",
+    "executer_automatisations_dues",
+    "organiser_dossier",
+    "supprimer",
+    "vider_corbeille",
+}
+
+
+def parser_moment_rappel(heure: str, maintenant: datetime | None = None) -> datetime | None:
+    """Accepte HH:MM ou YYYY-MM-DD HH:MM pour les rappels."""
+    maintenant = maintenant or datetime.now()
+    texte = str(heure).strip()
+    for format_date in (FORMAT_DATE_HEURE, "%Y/%m/%d %H:%M", "%d/%m/%Y %H:%M"):
+        try:
+            return datetime.strptime(texte, format_date)
+        except ValueError:
+            pass
+    try:
+        return datetime.strptime(texte, "%H:%M").replace(
+            year=maintenant.year,
+            month=maintenant.month,
+            day=maintenant.day,
+        )
+    except ValueError:
+        return None
+
+
 def ajouter_rappel(message: str, heure: str) -> str:
     data = normaliser_memoire(charger_memoire())
     rappels = data.get("rappels", [])
@@ -50,17 +82,12 @@ def verifier_rappels() -> str:
         if rappel.get("statut") in {"declenche", "déclenché"}:
             continue
         heure = rappel.get("heure", "")
-        try:
-            moment = datetime.strptime(heure, "%H:%M").replace(
-                year=maintenant.year,
-                month=maintenant.month,
-                day=maintenant.day,
-            )
-        except ValueError:
+        moment = parser_moment_rappel(heure, maintenant)
+        if moment is None:
             continue
         if maintenant >= moment:
             rappel["statut"] = "declenche"
-            rappel["declenche_le"] = maintenant.strftime("%Y-%m-%d %H:%M")
+            rappel["declenche_le"] = maintenant.strftime(FORMAT_DATE_HEURE)
             declenches.append(f"Rappel #{rappel['id']} : {rappel['message']}")
     data["rappels"] = rappels
     if declenches:
@@ -82,7 +109,7 @@ def prochain_declenchement(recurrence: str, heure: str) -> str:
 
     if cible <= maintenant:
         cible += timedelta(days=1 if recurrence == "quotidien" else 7)
-    return cible.strftime("%Y-%m-%d %H:%M")
+    return cible.strftime(FORMAT_DATE_HEURE)
 
 
 def ajouter_automatisation(nom: str, outil: str, args: dict | None = None, recurrence: str = "quotidien", heure: str = "09:00") -> str:
@@ -90,6 +117,8 @@ def ajouter_automatisation(nom: str, outil: str, args: dict | None = None, recur
 
     if outil not in OUTILS:
         return f"Outil inconnu : {outil}"
+    if outil in OUTILS_AUTOMATISATION_INTERDITS:
+        return f"Outil non automatisable pour eviter un blocage ou une action sensible : {outil}"
     if recurrence not in {"quotidien", "hebdomadaire"}:
         return "Recurrence invalide. Utilisez quotidien ou hebdomadaire."
 
@@ -125,6 +154,56 @@ def lister_automatisations() -> str:
     return "\n".join(lignes)
 
 
+def executer_action_automatisation(auto: dict, outils: dict, mettre_a_jour_prochaine: bool = False) -> str:
+    maintenant = datetime.now()
+    outil = auto.get("outil")
+    args = auto.get("args", {})
+    nom = auto.get("nom", "Automatisation")
+
+    if outil not in outils or outil in {"executer_automatisations_dues", "executer_automatisation"}:
+        resultat = f"{nom} : outil indisponible : {outil}"
+    else:
+        try:
+            resultat = f"{nom} : {outils[outil](**args)}"
+        except Exception as e:
+            resultat = f"{nom} : erreur outil {outil} : {e}"
+
+    auto["derniere_execution"] = maintenant.strftime(FORMAT_DATE_HEURE)
+    if mettre_a_jour_prochaine:
+        auto["prochaine_execution"] = prochain_declenchement(auto.get("recurrence", "quotidien"), auto.get("heure", "09:00"))
+    return resultat
+
+
+def executer_automatisation(automation_id: int | None = None, nom: str | None = None) -> str:
+    """Lance manuellement une automatisation active sans modifier sa prochaine execution planifiee."""
+    from tools import OUTILS
+
+    data = normaliser_memoire(charger_memoire())
+    automatisations = data.get("automatisations", [])
+    cible = None
+    for auto in automatisations:
+        if auto.get("statut") != "active":
+            continue
+        if automation_id is not None and auto.get("id") == int(automation_id):
+            cible = auto
+            break
+        if nom and auto.get("nom", "").lower() == str(nom).lower():
+            cible = auto
+            break
+
+    if cible is None:
+        return "Automatisation active introuvable."
+
+    resultat = executer_action_automatisation(cible, OUTILS, mettre_a_jour_prochaine=False)
+    data = normaliser_memoire(charger_memoire())
+    for index, auto in enumerate(data.get("automatisations", [])):
+        if auto.get("id") == cible.get("id"):
+            data["automatisations"][index] = cible
+            break
+    sauvegarder_memoire(data)
+    return resultat
+
+
 def executer_automatisations_dues() -> str:
     from tools import OUTILS
 
@@ -136,19 +215,14 @@ def executer_automatisations_dues() -> str:
         if auto.get("statut") != "active":
             continue
         try:
-            due = datetime.strptime(auto["prochaine_execution"], "%Y-%m-%d %H:%M")
+            due = datetime.strptime(auto["prochaine_execution"], FORMAT_DATE_HEURE)
         except (KeyError, ValueError):
             auto["prochaine_execution"] = prochain_declenchement(auto.get("recurrence", "quotidien"), auto.get("heure", "09:00"))
             continue
         if maintenant < due:
             continue
-        outil = auto.get("outil")
-        args = auto.get("args", {})
-        if outil in OUTILS and outil != "executer_automatisations_dues":
-            resultats.append(f"{auto['nom']} : {OUTILS[outil](**args)}")
-        auto["derniere_execution"] = maintenant.strftime("%Y-%m-%d %H:%M")
-        auto["prochaine_execution"] = prochain_declenchement(auto.get("recurrence", "quotidien"), auto.get("heure", "09:00"))
+        resultats.append(executer_action_automatisation(auto, OUTILS, mettre_a_jour_prochaine=True))
+    data = normaliser_memoire(charger_memoire())
     data["automatisations"] = automatisations
     sauvegarder_memoire(data)
     return "\n\n".join(resultats) if resultats else "Aucune automatisation due."
-

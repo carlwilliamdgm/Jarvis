@@ -9,8 +9,6 @@ from capabilities.storage import (
     get_stockage,
     notifier,
     top_fichiers_lourds,
-    vider_corbeille,
-    vider_temp,
 )
 
 
