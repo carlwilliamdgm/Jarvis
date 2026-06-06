@@ -1,6 +1,5 @@
 import shlex
 import subprocess
-from core.paths import OS
 
 
 def executer_commande_direct(commande: str) -> str:
@@ -8,23 +7,12 @@ def executer_commande_direct(commande: str) -> str:
         return "Commande vide."
 
     try:
-        if OS == "Windows":
-            resultat = subprocess.run(
-                commande,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        else:
-            args = shlex.split(commande, posix=True)
-            resultat = subprocess.run(
-                args,
-                shell=False,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+        resultat = subprocess.run(
+            shlex.split(commande),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
         output = resultat.stdout or resultat.stderr
         return output.strip() if output else "Commande executee sans sortie."
     except subprocess.TimeoutExpired:
@@ -36,6 +24,11 @@ def executer_commande_direct(commande: str) -> str:
 def executer_powershell_direct(commande: str) -> str:
     if not commande or not commande.strip():
         return "Commande PowerShell vide."
+    commande = commande.strip()
+    commande_lower = commande.lower()
+    patterns_destructifs = ("rm -rf", "del /f /s /q", "format", "rd /s /q")
+    if any(pattern in commande_lower for pattern in patterns_destructifs):
+        return "Commande bloquée : pattern destructif détecté."
 
     try:
         resultat = subprocess.run(

@@ -17,6 +17,13 @@ from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.prompt import construire_prompt_action, construire_prompt_conversation
 from tools import OUTILS
 
+try:
+    import psutil
+except ImportError:
+    import subprocess
+    subprocess.run(["pip", "install", "psutil", "-q"])
+    import psutil
+
 console = Console()
 
 OS = platform.system()
@@ -27,7 +34,6 @@ MODELES_TOGETHER = ["meta-llama/Llama-3.1-8B-Instruct-Turbo"]  # Modèle 8B rapi
 MODELES_OPENROUTER = ["openrouter/free"]  # Routeur gratuit OpenRouter, limite selon le compte
 MODELE_LOCAL = "phi3:mini"
 MAX_MESSAGES_HISTORIQUE = 20
-INTERVALLE_VEILLE_PROACTIVE = 300
 MAX_ETAPES_AGENT = 5
 
 MOTS_ACTION = [
@@ -477,17 +483,208 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
 
     return "\n\n".join(observations), True
 
-def afficher_evenements(force: bool = False, niveau: str = "normal"):
-    resultat = OUTILS["bilan_proactif"](force=force, niveau=niveau)
-    if not resultat.startswith("Aucun"):
-        console.print(Panel(resultat, title="Jarvis proactif", style="yellow"))
 
-def veille_proactive(stop_event: threading.Event):
-    while not stop_event.wait(INTERVALLE_VEILLE_PROACTIVE):
-        try:
-            afficher_evenements(force=False, niveau="normal")
-        except Exception as e:
-            console.print(f"[dim yellow]Veille proactive indisponible : {e}[/dim yellow]")
+class AutonomousAgent:
+    def __init__(self, memoire, outils, console):
+        self.memoire = memoire
+        self.outils = outils
+        self.console = console
+        self.observation_interval = 60
+        self.last_observations = {}
+        self.consecutive_silence = 0
+        self.signal_counts = {}
+        self.notification_results = []
+
+    def observer_machine(self) -> dict:
+        top_processes = []
+        for proc in psutil.process_iter(["name", "cpu_percent", "username"]):
+            try:
+                info = proc.info
+                cpu = info.get("cpu_percent") or 0
+                if cpu == 0:
+                    continue
+                top_processes.append({
+                    "name": info.get("name") or "processus inconnu",
+                    "cpu_percent": cpu,
+                    "username": info.get("username"),
+                })
+            except psutil.Error:
+                continue
+        top_processes = sorted(top_processes, key=lambda p: p["cpu_percent"], reverse=True)[:5]
+        return {
+            "cpu": psutil.cpu_percent(interval=1),
+            "ram": psutil.virtual_memory().percent,
+            "disk_free_gb": psutil.disk_usage(str(HOME)).free / 1e9,
+            "top_processes": top_processes,
+            "net": psutil.net_io_counters()._asdict(),
+        }
+
+    def detecter_signaux(self, etat: dict) -> list[str]:
+        signaux = []
+        detected = {}
+        if etat["cpu"] > 85:
+            detected["cpu"] = f"CPU critique: {etat['cpu']}%"
+        if etat["ram"] > 90:
+            detected["ram"] = f"RAM critique: {etat['ram']}%"
+        if etat["disk_free_gb"] < 5:
+            detected["disk"] = f"Stockage critique: {etat['disk_free_gb']:.1f}GB libres"
+
+        previous_names = {
+            proc.get("name")
+            for proc in self.last_observations.get("top_processes", [])
+            if proc.get("name")
+        }
+        for proc in etat.get("top_processes", []):
+            name = proc.get("name")
+            cpu = proc.get("cpu_percent") or 0
+            if cpu > 50 and name not in previous_names:
+                detected[f"process:{name}"] = f"Nouveau processus intensif: {name} ({cpu}%)"
+
+        for key in list(self.signal_counts):
+            if key not in detected:
+                self.signal_counts[key] = 0
+        for key, message in detected.items():
+            self.signal_counts[key] = self.signal_counts.get(key, 0) + 1
+            if self.signal_counts[key] >= 2:
+                signaux.append(message)
+
+        rappels = self.outils["verifier_rappels"]()
+        if not rappels.startswith("Aucun"):
+            signaux.append(f"[routine] {rappels}")
+
+        automatisations = self.outils["executer_automatisations_dues"]()
+        if not automatisations.startswith("Aucune"):
+            signaux.append(f"[routine] {automatisations}")
+
+        return signaux
+
+    def raisonner(self, signaux: list[str], memoire: dict) -> list[dict]:
+        if not signaux:
+            return []
+        self.notification_results = [
+            signal.removeprefix("[routine] ").strip()
+            for signal in signaux
+            if signal.startswith("[routine] ")
+        ]
+        signaux_non_routine = [signal for signal in signaux if not signal.startswith("[routine] ")]
+        if not signaux_non_routine:
+            return []
+
+        messages = [
+            {"role": "system", "content": construire_prompt_action(memoire)},
+            {
+                "role": "user",
+                "content": (
+                    "Signaux détectés:\n"
+                    + "\n".join(signaux_non_routine)
+                    + "\nDécide quelles actions prendre de manière autonome. "
+                    "Réponds uniquement en JSON. Si rien à faire, réponds: "
+                    '{"outil": "terminer_tache", "args": {"resume": "RAS"}}'
+                ),
+            },
+        ]
+
+        reponse = None
+        provider_cloud_reussi = None
+        providers_cloud = ordonner_providers_cloud(
+            providers_cloud_disponibles(),
+            memoire,
+            complexite="complexe",
+        )
+        for provider in providers_cloud:
+            if reponse is not None:
+                break
+            nom_provider = provider["nom"]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(provider["modeles"])) as executor:
+                futures = {
+                    executor.submit(provider["fonction"], modele, messages): modele
+                    for modele in provider["modeles"]
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        reponse = future.result()
+                        provider_cloud_reussi = nom_provider
+                        break
+                    except Exception:
+                        continue
+
+        if reponse is None:
+            try:
+                reponse = chat_with_local(MODELE_LOCAL, messages)
+            except Exception as e:
+                self.console.print(f"[dim yellow]Agent autonome modele indisponible : {e}[/dim yellow]")
+                return []
+
+        if provider_cloud_reussi:
+            memoriser_provider_cloud(provider_cloud_reussi)
+
+        contenu = reponse["message"]["content"]
+        actions = []
+        for action in extraire_json_objets(contenu):
+            if action.get("outil") == "terminer_tache" and action.get("args", {}).get("resume") == "RAS":
+                continue
+            actions.append(action)
+        return actions
+
+    def agir(self, actions: list[dict]) -> list[str]:
+        from core.safety import action_bloquee
+
+        resultats = []
+        path_keys = {"chemin", "path", "dossier", "fichier"}
+        for action in actions:
+            outil = action.get("outil")
+            args = action.get("args", {})
+            if outil not in self.outils or not isinstance(args, dict):
+                continue
+            blocked = False
+            for key in path_keys:
+                if key in args and action_bloquee(Path(args[key]).expanduser()):
+                    blocked = True
+                    break
+            if blocked:
+                continue
+            try:
+                resultats.append(str(self.outils[outil](**args)))
+            except Exception as e:
+                resultats.append(f"Erreur outil {outil} : {e}")
+        return resultats
+
+    def adapter_intervalle(self, signaux: list[str]):
+        if signaux:
+            self.observation_interval = 30
+            self.consecutive_silence = 0
+        else:
+            self.consecutive_silence += 1
+            if self.consecutive_silence >= 3:
+                self.observation_interval = 120
+            else:
+                self.observation_interval = 60
+
+    def run(self, stop_event: threading.Event):
+        while not stop_event.wait(self.observation_interval):
+            try:
+                etat = self.observer_machine()
+                signaux = self.detecter_signaux(etat)
+                self.adapter_intervalle(signaux)
+                if signaux:
+                    actions = self.raisonner(signaux, self.memoire)
+                    resultats = []
+                    if actions:
+                        resultats = self.agir(actions)
+                    meaningful = [
+                        r for r in self.notification_results + resultats
+                        if r and "Erreur" not in r
+                    ]
+                    if meaningful:
+                        self.console.print(Panel(
+                            "\n".join(meaningful),
+                            title="Jarvis — Action autonome",
+                            style="yellow"
+                        ))
+                    self.notification_results = []
+                self.last_observations = etat
+            except Exception as e:
+                self.console.print(f"[dim yellow]Agent autonome: {e}[/dim yellow]")
 
 def main():
     memoire = initialiser()
@@ -498,9 +695,9 @@ def main():
         f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.",
         style="bold cyan"
     ))
-    afficher_evenements(force=False, niveau="silencieux")
     stop_event = threading.Event()
-    veille = threading.Thread(target=veille_proactive, args=(stop_event,), daemon=True)
+    agent = AutonomousAgent(memoire=memoire, outils=OUTILS, console=console)
+    veille = threading.Thread(target=agent.run, args=(stop_event,), daemon=True)
     veille.start()
     while True:
         try:
@@ -519,6 +716,7 @@ def main():
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
                 reponse, intention_action = executer_agent(user_input, historique, memoire)
             
+            reponse = reponse if isinstance(reponse, str) else ""
             OUTILS["enregistrer_echange"](user_input, reponse)
             console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
 

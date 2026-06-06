@@ -57,28 +57,30 @@ def normaliser_memoire(data: dict) -> dict:
 
 
 def journaliser_action(outil: str, args: dict, resultat: str) -> None:
-    data = normaliser_memoire(charger_memoire())
-    historique = data.get("historique_actions", [])
-    historique.append({
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "outil": outil,
-        "args": args,
-        "resultat": resultat[:300],
-    })
-    data["historique_actions"] = historique[-MAX_HISTORIQUE_ACTIONS:]
-    sauvegarder_memoire(data)
+    with _MEMORY_LOCK:
+        data = normaliser_memoire(charger_memoire())
+        historique = data.get("historique_actions", [])
+        historique.append({
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "outil": outil,
+            "args": args,
+            "resultat": resultat[:300],
+        })
+        data["historique_actions"] = historique[-MAX_HISTORIQUE_ACTIONS:]
+        sauvegarder_memoire(data)
 
 
 def enregistrer_echange(utilisateur: str, jarvis: str) -> str:
-    data = normaliser_memoire(charger_memoire())
-    journal = data.get("journal_conversation", [])
-    journal.append({
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "utilisateur": utilisateur[:500],
-        "jarvis": jarvis[:500],
-    })
-    data["journal_conversation"] = journal[-MAX_JOURNAL_CONVERSATION:]
-    sauvegarder_memoire(data)
+    with _MEMORY_LOCK:
+        data = normaliser_memoire(charger_memoire())
+        journal = data.get("journal_conversation", [])
+        journal.append({
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "utilisateur": utilisateur[:500],
+            "jarvis": jarvis[:500],
+        })
+        data["journal_conversation"] = journal[-MAX_JOURNAL_CONVERSATION:]
+        sauvegarder_memoire(data)
     return "Echange journalise."
 
 

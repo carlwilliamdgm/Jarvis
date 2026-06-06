@@ -1,10 +1,12 @@
 import shutil
+import sys
 import unittest
 from pathlib import Path
 
 import tools
 import jarvis
 import core.prompt
+import core.safety
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.paths import JARVIS_DIR, MEMORY_PATH
 from jarvis import extraire_json_objets
@@ -25,12 +27,15 @@ class ToolSmokeTests(unittest.TestCase):
         shutil.rmtree(cls.workspace, ignore_errors=True)
 
     def setUp(self):
+        self.protected_roots = core.safety.ZONE_MAP.protected_roots
+        core.safety.ZONE_MAP.protected_roots = frozenset()
         sauvegarder_memoire({})
         shutil.rmtree(self.workspace, ignore_errors=True)
         self.workspace.mkdir(parents=True)
 
     def tearDown(self):
         shutil.rmtree(self.workspace, ignore_errors=True)
+        core.safety.ZONE_MAP.protected_roots = self.protected_roots
 
     def test_file_tools_lifecycle(self):
         dossier = self.workspace / "docs"
@@ -177,8 +182,8 @@ class ToolSmokeTests(unittest.TestCase):
         old_confirm = tools.demander_confirmation
         tools.demander_confirmation = lambda description: self.fail("confirmation inutile pour le terminal Windows")
         try:
-            self.assertIn("smoke", tools.OUTILS["executer_commande"]("echo smoke"))
-            self.assertIn("del", tools.OUTILS["executer_commande"]("echo del"))
+            self.assertIn("smoke", tools.OUTILS["executer_commande"](f'"{sys.executable}" -c "print(\\"smoke\\")"'))
+            self.assertIn("del", tools.OUTILS["executer_commande"](f'"{sys.executable}" -c "print(\\"del\\")"'))
         finally:
             tools.demander_confirmation = old_confirm
 
@@ -195,22 +200,18 @@ class ToolSmokeTests(unittest.TestCase):
         dossier.mkdir()
         fichier = dossier / "victim.txt"
         fichier.write_text("bye", encoding="utf-8")
-        old_confirm = tools.demander_confirmation
-        tools.demander_confirmation = lambda description: self.fail("confirmation inutile pour un fichier concret dans le workspace")
+        old_roots = core.safety.ZONE_MAP.protected_roots
+        core.safety.ZONE_MAP.protected_roots = frozenset()
         try:
             self.assertIn("Fichier supprime", tools.OUTILS["supprimer"](str(fichier)))
         finally:
-            tools.demander_confirmation = old_confirm
+            core.safety.ZONE_MAP.protected_roots = old_roots
 
-    def test_deleting_broad_root_requires_confirmation(self):
-        old_confirm = tools.demander_confirmation
-        confirmations = []
-        tools.demander_confirmation = lambda description: confirmations.append(description) and False
-        try:
-            self.assertEqual("Suppression annulee.", tools.OUTILS["supprimer"](str(JARVIS_DIR)))
-        finally:
-            tools.demander_confirmation = old_confirm
-        self.assertEqual(1, len(confirmations))
+    def test_deleting_broad_root_is_blocked(self):
+        core.safety.ZONE_MAP.protected_roots = self.protected_roots
+        resultat = tools.OUTILS["supprimer"](str(JARVIS_DIR))
+        resultat_normalise = resultat.lower().replace("é", "e").replace("è", "e")
+        self.assertTrue("bloquee" in resultat_normalise or "protegee" in resultat_normalise)
 
     def test_optimization_plan_does_not_bypass_confirmations(self):
         self.assertNotIn("sans confirmation", jarvis.PLAN_OPTIMISATION.lower())

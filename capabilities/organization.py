@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from core.safety import chemin_autorise, racine_trop_large
+from core.safety import action_bloquee, chemin_autorise
 
 DOSSIERS_ORGANISATION = {
     "Images": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"},
@@ -66,8 +66,8 @@ def organiser_dossier_direct(chemin: str) -> str:
     dossier = chemin_autorise(chemin, doit_exister=True)
     if not dossier.is_dir():
         return f"Ce chemin n'est pas un dossier : {dossier}"
-    if racine_trop_large(dossier):
-        return f"Organisation refusee pour une racine trop large : {dossier}"
+    if action_bloquee(dossier):
+        return "Action bloquée : zone système protégée."
 
     deplacements = []
     for item in dossier.iterdir():
@@ -83,4 +83,3 @@ def organiser_dossier_direct(chemin: str) -> str:
     if not deplacements:
         return f"Aucun fichier a organiser dans {dossier}."
     return "Organisation terminee :\n" + "\n".join(deplacements[:100])
-

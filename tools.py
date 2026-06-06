@@ -45,7 +45,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import chemin_autorise, racine_trop_large, suppression_requiert_confirmation
+from core.safety import action_bloquee, action_requiert_confirmation, chemin_autorise
 from rich.console import Console
 
 _console = Console()
@@ -60,10 +60,9 @@ def demander_confirmation(description: str) -> bool:
 def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
-        if not suppression_requiert_confirmation(path) or demander_confirmation(f"supprimer {path}"):
-            resultat = supprimer_direct(chemin=str(path))
-            return resultat
-        return "Suppression annulee."
+        if action_bloquee(path):
+            return "Action bloquée : zone système protégée."
+        return supprimer_direct(chemin=str(path))
     except Exception as e:
         return f"Erreur : {e}"
 
@@ -81,8 +80,6 @@ def vider_temp() -> str:
 
 
 def vider_corbeille() -> str:
-    if not demander_confirmation("vider definitivement la corbeille"):
-        return "Vidage de la corbeille annule."
     return storage.vider_corbeille()
 
 
@@ -95,7 +92,7 @@ def terminer_tache(resume: str = "Tache terminee.") -> str:
     return resume
 
 
-def ajouter_automatisation_confirmee(
+def ajouter_automatisation_tool(
     nom: str,
     outil: str,
     args: dict | None = None,
@@ -104,30 +101,22 @@ def ajouter_automatisation_confirmee(
 ) -> str:
     if outil in OUTILS_AUTOMATISATION_INTERDITS:
         return f"Outil non automatisable pour eviter un blocage ou une action sensible : {outil}"
-    description = f"creer une automatisation {recurrence} a {heure} : {nom} -> {outil}({args or {}})"
-    if not demander_confirmation(description):
-        return "Automatisation annulee."
     return ajouter_automatisation(nom=nom, outil=outil, args=args, recurrence=recurrence, heure=heure)
 
 
-def ajouter_surveillance_dossier_confirmee(chemin: str, recurrence: str = "quotidien", heure: str = "09:00") -> str:
-    description = f"activer une surveillance de dossier {recurrence} a {heure} : {chemin}"
-    if not demander_confirmation(description):
-        return "Surveillance annulee."
+def ajouter_surveillance_dossier_tool(chemin: str, recurrence: str = "quotidien", heure: str = "09:00") -> str:
     return ajouter_surveillance_dossier(chemin=chemin, recurrence=recurrence, heure=heure)
 
 
 def organiser_dossier(chemin: str) -> str:
     try:
         dossier = chemin_autorise(chemin, doit_exister=True)
-        if racine_trop_large(dossier):
-            return f"Organisation refusee pour une racine trop large : {dossier}."
+        if action_bloquee(dossier):
+            return "Action bloquée : zone système protégée."
         plan = analyser_organisation(str(dossier))
-        if demander_confirmation(f"organiser {dossier}\n{plan}"):
-            resultat = organiser_dossier_direct(chemin=str(dossier))
-            journaliser_action("organiser_dossier", {"chemin": str(dossier)}, resultat)
-            return resultat
-        return "Organisation annulee."
+        resultat = organiser_dossier_direct(chemin=str(dossier))
+        journaliser_action("organiser_dossier", {"chemin": str(dossier)}, f"{plan}\n{resultat}")
+        return resultat
     except Exception as e:
         return f"Erreur : {e}"
 
@@ -221,12 +210,12 @@ OUTILS = {
     "ajouter_commande_personnalisee": ajouter_commande_personnalisee,
     "lister_commandes_personnalisees": lister_commandes_personnalisees,
     "executer_commande_personnalisee": executer_commande_personnalisee,
-    "ajouter_automatisation": ajouter_automatisation_confirmee,
+    "ajouter_automatisation": ajouter_automatisation_tool,
     "lister_automatisations": lister_automatisations,
     "executer_automatisation": executer_automatisation,
     "executer_automatisations_dues": executer_automatisations_dues,
     "proposer_surveillance_dossiers": proposer_surveillance_dossiers,
-    "ajouter_surveillance_dossier": ajouter_surveillance_dossier_confirmee,
+    "ajouter_surveillance_dossier": ajouter_surveillance_dossier_tool,
     "lister_surveillance_dossiers": lister_surveillance_dossiers,
     "executer_surveillance_dossiers": executer_surveillance_dossiers,
     "supprimer_surveillance_dossier": supprimer_surveillance_dossier,

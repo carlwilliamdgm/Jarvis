@@ -1,11 +1,13 @@
 import shutil
 from core.memory import journaliser_action
-from core.safety import chemin_autorise, racine_trop_large
+from core.safety import action_bloquee, chemin_autorise, racine_trop_large
 
 
 def creer_dossier(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin)
+        if action_bloquee(path):
+            return "Action bloquée : zone système protégée."
         path.mkdir(parents=True, exist_ok=True)
         resultat = f"Dossier cree : {path}"
         journaliser_action("creer_dossier", {"chemin": str(path)}, resultat)
@@ -17,6 +19,8 @@ def creer_dossier(chemin: str) -> str:
 def creer_fichier(chemin: str, contenu: str = "") -> str:
     try:
         path = chemin_autorise(chemin)
+        if action_bloquee(path):
+            return "Action bloquée : zone système protégée."
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(contenu)
@@ -30,6 +34,8 @@ def creer_fichier(chemin: str, contenu: str = "") -> str:
 def lire_fichier(chemin: str, max_caracteres: int = 200_000) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
+        if action_bloquee(path):
+            return "Action bloquée : zone système protégée."
         max_caracteres = max(1_000, min(int(max_caracteres), 2_000_000))
         with open(path, "r", encoding="utf-8") as f:
             contenu = f.read(max_caracteres + 1)
@@ -45,6 +51,8 @@ def lire_fichier(chemin: str, max_caracteres: int = 200_000) -> str:
 def lister_dossier(chemin: str, limite: int = 200) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
+        if action_bloquee(path):
+            return "Action bloquée : zone système protégée."
         if not path.is_dir():
             return f"Ce chemin n'est pas un dossier : {path}"
         limite = max(1, min(int(limite), 1000))
