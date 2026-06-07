@@ -4,6 +4,7 @@ import ollama
 import os
 import platform
 import threading
+import time
 import urllib.request
 from datetime import datetime
 from json import JSONDecodeError
@@ -30,9 +31,9 @@ OS = platform.system()
 HOME = Path.home()
 
 MODELES_GROQ = ["llama-3.3-70b-versatile"]  # Modele Groq actuel, avec free tier selon le compte
-MODELES_TOGETHER = ["meta-llama/Llama-3.1-8B-Instruct-Turbo"]  # Modèle 8B rapide et efficace
+MODELES_TOGETHER = ["meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"]  # Modèle 8B rapide et efficace
 MODELES_OPENROUTER = ["openrouter/free"]  # Routeur gratuit OpenRouter, limite selon le compte
-MODELE_LOCAL = "phi3:mini"
+MODELE_LOCAL = "phi4-mini"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
 
@@ -494,6 +495,7 @@ class AutonomousAgent:
         self.consecutive_silence = 0
         self.signal_counts = {}
         self.notification_results = []
+        self.last_action_time = {}
 
     def observer_machine(self) -> dict:
         top_processes = []
@@ -520,14 +522,15 @@ class AutonomousAgent:
         }
 
     def detecter_signaux(self, etat: dict) -> list[str]:
+        COOLDOWN = 1800
         signaux = []
         detected = {}
         if etat["cpu"] > 85:
-            detected["cpu"] = f"CPU critique: {etat['cpu']}%"
+            detected["cpu_critique"] = f"CPU critique: {etat['cpu']}%"
         if etat["ram"] > 90:
-            detected["ram"] = f"RAM critique: {etat['ram']}%"
+            detected["ram_critique"] = f"RAM critique: {etat['ram']}%"
         if etat["disk_free_gb"] < 5:
-            detected["disk"] = f"Stockage critique: {etat['disk_free_gb']:.1f}GB libres"
+            detected["stockage_critique"] = f"Stockage critique: {etat['disk_free_gb']:.1f}GB libres"
 
         previous_names = {
             proc.get("name")
@@ -538,14 +541,14 @@ class AutonomousAgent:
             name = proc.get("name")
             cpu = proc.get("cpu_percent") or 0
             if cpu > 50 and name not in previous_names:
-                detected[f"process:{name}"] = f"Nouveau processus intensif: {name} ({cpu}%)"
+                detected[f"process_{name}"] = f"Nouveau processus intensif: {name} ({cpu}%)"
 
         for key in list(self.signal_counts):
             if key not in detected:
                 self.signal_counts[key] = 0
         for key, message in detected.items():
             self.signal_counts[key] = self.signal_counts.get(key, 0) + 1
-            if self.signal_counts[key] >= 2:
+            if self.signal_counts[key] >= 2 and time.time() - self.last_action_time.get(key, 0) >= COOLDOWN:
                 signaux.append(message)
 
         rappels = self.outils["verifier_rappels"]()
@@ -630,6 +633,7 @@ class AutonomousAgent:
         from core.safety import action_bloquee
 
         resultats = []
+        executed_actions = []
         path_keys = {"chemin", "path", "dossier", "fichier"}
         for action in actions:
             outil = action.get("outil")
@@ -645,8 +649,18 @@ class AutonomousAgent:
                 continue
             try:
                 resultats.append(str(self.outils[outil](**args)))
+                executed_actions.append(action)
             except Exception as e:
                 resultats.append(f"Erreur outil {outil} : {e}")
+        now = time.time()
+        stockage_tools = {"vider_temp", "vider_corbeille", "audit_stockage", "top_fichiers_lourds"}
+        for action in executed_actions:
+            outil = action.get("outil")
+            args = action.get("args", {})
+            if outil in stockage_tools:
+                self.last_action_time["stockage_critique"] = now
+            if outil == "notifier_utilisateur" and "ram" in str(args.get("message", "")).lower():
+                self.last_action_time["ram_critique"] = now
         return resultats
 
     def adapter_intervalle(self, signaux: list[str]):
