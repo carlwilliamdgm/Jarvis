@@ -280,10 +280,9 @@ class ToolSmokeTests(unittest.TestCase):
             jarvis.parler = old_parler
 
         self.assertTrue(intention)
-        self.assertIn("Etape 1", resultat)
-        self.assertIn("Note enregistree", resultat)
-        self.assertIn("Etape 2", resultat)
-        self.assertIn("ok", resultat)
+        self.assertIn("J'ai enregistré la note demandée.", resultat)
+        self.assertNotIn('{"outil"', resultat)
+        self.assertNotIn("Etape", resultat)
 
 
 if __name__ == "__main__":

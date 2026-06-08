@@ -45,7 +45,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import action_bloquee, action_requiert_confirmation, chemin_autorise
+from core.safety import action_bloquee, action_requiert_confirmation, action_requiert_verrou, chemin_autorise
 from rich.console import Console
 
 _console = Console()
@@ -61,7 +61,9 @@ def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
         if action_bloquee(path):
-            return "Action bloquée : zone système protégée."
+            return "Action bloquée : zone système."
+        if action_requiert_verrou(path) and not demander_confirmation(f"supprimer {path}"):
+            return "Suppression annulee."
         return supprimer_direct(chemin=str(path))
     except Exception as e:
         return f"Erreur : {e}"
@@ -112,8 +114,10 @@ def organiser_dossier(chemin: str) -> str:
     try:
         dossier = chemin_autorise(chemin, doit_exister=True)
         if action_bloquee(dossier):
-            return "Action bloquée : zone système protégée."
+            return "Action bloquée : zone système."
         plan = analyser_organisation(str(dossier))
+        if action_requiert_verrou(dossier) and not demander_confirmation(f"organiser {dossier}\n{plan}"):
+            return "Organisation annulee."
         resultat = organiser_dossier_direct(chemin=str(dossier))
         journaliser_action("organiser_dossier", {"chemin": str(dossier)}, f"{plan}\n{resultat}")
         return resultat

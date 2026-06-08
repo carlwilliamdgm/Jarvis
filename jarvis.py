@@ -11,7 +11,6 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Callable
 from groq import Groq as GroqClient
-from together import Together as TogetherClient
 from rich.console import Console
 from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
@@ -31,18 +30,37 @@ OS = platform.system()
 HOME = Path.home()
 
 MODELES_GROQ = ["llama-3.3-70b-versatile"]  # Modele Groq actuel, avec free tier selon le compte
-MODELES_TOGETHER = ["meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"]  # Modèle 8B rapide et efficace
 MODELES_OPENROUTER = ["openrouter/free"]  # Routeur gratuit OpenRouter, limite selon le compte
 MODELE_LOCAL = "phi4-mini"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
 
 MOTS_ACTION = [
-    "fais", "crée", "supprime", "liste", "organise", "exécute", "commande", 
-    "dossier", "fichier", "mémoire", "note", "préférence", "automatisation", 
-    "rappel", "surveillance", "creer", "lire", "audit", "scan", "vider", 
+    "fais", "crée", "supprime", "liste", "exécute", "commande",
+    "dossier", "fichier", "mémoire", "note", "préférence",
+    "rappel", "creer", "lire", "audit", "vider",
     "ajouter", "noter", "memoriser", "nettoyer", "liberer", "optimise",
     "renomme", "deplace", "copie", "synchronise", "planifie", "rappelle"
+]
+
+MOTS_CONVERSATION = [
+    "que se passe",
+    "pourquoi",
+    "comment",
+    "qu'est-ce",
+    "explique",
+    "dis-moi",
+    "raconte",
+    "d'accord",
+    "ok",
+    "merci",
+    "qui es-tu",
+    "es-tu",
+    "sais-tu",
+    "savais-tu",
+    "veille",
+    "surveille",
+    "mode veille",
 ]
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
@@ -63,6 +81,8 @@ def detecter_intention(message: str) -> bool:
     Retourne True si c'est une action, False si c'est juste de la conversation.
     """
     message_lower = message.lower()
+    if any(mot in message_lower for mot in MOTS_CONVERSATION):
+        return False
     # Chercher les mots-clés d'action
     if any(mot in message_lower for mot in MOTS_ACTION):
         return True
@@ -107,26 +127,6 @@ def chat_with_cloud(modele, messages):
     except Exception as e:
         raise Exception(f"Groq error: {e}")
 
-def chat_with_together(modele, messages):
-    """Appel à Together AI pour modèles cloud gratuits."""
-    try:
-        client = TogetherClient()
-        # Convertir les messages pour Together
-        together_messages = []
-        for m in messages:
-            together_messages.append({"role": m["role"], "content": m["content"]})
-        
-        response = client.chat.completions.create(
-            model=modele,
-            messages=together_messages,
-            max_tokens=1024,
-            temperature=0.7
-        )
-        return {"message": {"content": response.choices[0].message.content}}
-    except Exception as e:
-        raise Exception(f"Together error: {e}")
-
-
 def chat_with_openrouter(modele, messages):
     """Appel OpenRouter via REST, compatible sans dependance supplementaire."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -167,25 +167,18 @@ def chat_with_local(modele, messages):
 
 def providers_cloud_disponibles() -> list[dict]:
     providers = []
-    if os.environ.get("OPENROUTER_API_KEY"):
-        providers.append({
-            "nom": "OpenRouter",
-            "modeles": MODELES_OPENROUTER,
-            "fonction": chat_with_openrouter,
-            "niveau": "simple",
-        })
     if os.environ.get("GROQ_API_KEY"):
         providers.append({
             "nom": "Groq",
             "modeles": MODELES_GROQ,
             "fonction": chat_with_cloud,
-            "niveau": "complexe",
+            "niveau": "simple",
         })
-    if os.environ.get("TOGETHER_API_KEY"):
+    if os.environ.get("OPENROUTER_API_KEY"):
         providers.append({
-            "nom": "Together",
-            "modeles": MODELES_TOGETHER,
-            "fonction": chat_with_together,
+            "nom": "OpenRouter",
+            "modeles": MODELES_OPENROUTER,
+            "fonction": chat_with_openrouter,
             "niveau": "simple",
         })
     return providers
@@ -333,6 +326,50 @@ def resultat_indique_erreur(resultat: str) -> bool:
     marqueurs = ["Erreur", "Outil inconnu", "Arguments invalides", "Timeout"]
     return any(marqueur in resultat for marqueur in marqueurs)
 
+
+def extraire_resume_terminer_tache(reponse: str) -> str | None:
+    for objet in extraire_json_objets(reponse):
+        if objet.get("outil") == "terminer_tache":
+            resume = objet.get("args", {}).get("resume")
+            if resume:
+                return str(resume)
+    return None
+
+
+def resumer_resultats_outils(resultats: list[str], reponses: list[str]) -> str:
+    texte = "\n".join(resultats)
+    if resultat_indique_erreur(texte):
+        premiere_erreur = next((ligne for ligne in texte.splitlines() if resultat_indique_erreur(ligne)), texte)
+        return f"Je n'ai pas pu terminer l'action demandée : {premiere_erreur}"
+
+    resumes = [
+        resume for resume in (extraire_resume_terminer_tache(reponse) for reponse in reponses)
+        if resume and resume.upper() != "RAS"
+    ]
+
+    if "Note enregistree" in texte:
+        return "J'ai enregistré la note demandée."
+    if "Fichier cree" in texte:
+        return "J'ai créé le fichier demandé."
+    if "Dossier cree" in texte:
+        return "J'ai créé le dossier demandé."
+    if "Fichier supprime" in texte or "Dossier supprime" in texte:
+        return "J'ai supprimé l'élément demandé."
+    if "Fichiers temporaires" in texte or "Corbeille videe" in texte:
+        return "J'ai effectué le nettoyage demandé."
+    if "Stockage " in texte:
+        return "J'ai effectué l'audit du stockage."
+    if "Notification envoyee" in texte:
+        return "J'ai envoyé la notification demandée."
+    if "Automatisation #" in texte:
+        return "J'ai créé l'automatisation demandée."
+    if "Surveillance #" in texte:
+        return "J'ai mis à jour la surveillance demandée."
+    if resumes:
+        return resumes[-1]
+    return "J'ai exécuté l'action demandée avec succès."
+
+
 def limiter_historique(historique: list) -> None:
     if len(historique) <= MAX_MESSAGES_HISTORIQUE + 1:
         return
@@ -390,7 +427,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
             if tentatives == 1:
                 console.print(
                     "[dim yellow]⚠️  Aucune cle API cloud detectee "
-                    "(GROQ_API_KEY, TOGETHER_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
+                    "(GROQ_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
                 )
         
         # Fallback sur modèle local
@@ -421,7 +458,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                 historique.append({"role": "assistant", "content": contenu})
                 historique.append({
                     "role": "user", 
-                    "content": "Votre réponse précédente n'était pas en JSON. Veuillez UNIQUEMENT répondre avec du JSON au format : {\"outil\": \"nom\", \"args\": {...}}"
+                    "content": "Votre réponse précédente ne contenait pas de JSON d'outil valide. Veuillez répondre avec une ligne JSON au format {\"outil\": \"nom\", \"args\": {...}}, puis une phrase naturelle."
                 })
                 reponse = None
                 provider_cloud_reussi = None
@@ -449,18 +486,16 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
 
     complexite = estimer_complexite(user_input, intention_action)
     max_etapes = MAX_ETAPES_AGENT if complexite == "complexe" else 1
-    observations = []
+    resultats_outils = []
+    reponses_outils = []
 
     for etape in range(1, max_etapes + 1):
         resultat = executer_outil(reponse)
         if resultat:
-            observations.append(f"Etape {etape}:\n{resultat}")
+            resultats_outils.append(resultat)
+            reponses_outils.append(reponse)
         else:
-            resultat = (
-                "[red]❌ Erreur : Je n'ai pas pu exécuter cette action car je n'ai pas généré la commande correcte.[/red]\n"
-                "[dim]Conseil : Reformulez votre demande ou essayez avec d'autres mots.[/dim]"
-            )
-            observations.append(f"Etape {etape}:\n{resultat}")
+            resultats_outils.append("Erreur : aucune commande d'outil valide n'a été générée.")
             break
 
         if reponse_termine_tache(reponse):
@@ -479,10 +514,10 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
         )
         reponse, intention_action = parler(observation, historique, memoire)
         if not intention_action:
-            observations.append(f"Conclusion:\n{reponse}")
+            resultats_outils.append(reponse)
             break
 
-    return "\n\n".join(observations), True
+    return resumer_resultats_outils(resultats_outils, reponses_outils), True
 
 
 class AutonomousAgent:
@@ -718,7 +753,7 @@ def main():
             user_input = console.input("[bold green]Toi >[/bold green] ").strip()
             if not user_input:
                 continue
-            if user_input.lower() == "exit":
+            if user_input.lower() in ("au revoir", "exit", "bye") : 
                 console.print("[cyan]Jarvis hors ligne.[/cyan]")
                 stop_event.set()
                 break

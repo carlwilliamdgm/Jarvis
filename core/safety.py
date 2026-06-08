@@ -72,7 +72,6 @@ class ZoneMapper:
             if value:
                 roots.append(Path(value).expanduser())
 
-        roots.append(Path.home())
         roots.append(JARVIS_DIR)
 
         resolved = []
@@ -168,6 +167,16 @@ def action_bloquee(path: Path) -> bool:
 
 def action_requiert_confirmation(path: Path) -> bool:
     return False
+
+
+def action_requiert_verrou(path: Path) -> bool:
+    sensitive = {
+        Path.home().resolve(),
+        (Path.home() / "Desktop").resolve(),
+        (Path.home() / "Documents").resolve(),
+        (Path.home() / "Downloads").resolve(),
+    }
+    return Path(path).resolve(strict=False) in sensitive
 
 
 def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
