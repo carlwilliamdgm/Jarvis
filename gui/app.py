@@ -25,11 +25,16 @@ class JarvisGUI:
         self.send_button = tk.Button(self.root, text="Send", command=self.send_message, bg="#1e1e1e", fg="white")
         self.send_button.pack(side=tk.LEFT, padx=10)
 
+        self.root.bind("<Return>", self.send_message_enter)
+
     def send_message(self):
         message = self.input_field.get()
         self.input_field.delete(0, tk.END)
 
         threading.Thread(target=self.post_message, args=(message,)).start()
+
+    def send_message_enter(self, event):
+        self.send_message()
 
     def post_message(self, message):
         try:
