@@ -47,6 +47,9 @@ class JarvisGUI:
             self.conversation_zone.insert(tk.END, "Jarvis hors ligne.\n")
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = JarvisGUI(root)
-    root.mainloop()
+    import pyinstaller
+    pyinstaller.run([
+        '--onefile',
+        '--windowed',
+        'gui/app.py'
+    ])
