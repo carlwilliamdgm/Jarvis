@@ -58,9 +58,6 @@ MOTS_CONVERSATION = [
     "es-tu",
     "sais-tu",
     "savais-tu",
-    "veille",
-    "surveille",
-    "mode veille",
 ]
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
