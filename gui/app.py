@@ -6,20 +6,20 @@ class JarvisGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Jarvis —")
-        self.root.configure(bg="#1e1e1e")
+        self.root.configure(bg="black")
         self.root.geometry("600x700")
 
         # Header
-        self.label = tk.Label(self.root, text="JARVIS", bg="#1e1e1e", fg="white", font=("Segoe UI", 24))
+        self.label = tk.Label(self.root, text="JARVIS", bg="black", fg="white", font=("Segoe UI", 24))
         self.label.pack(pady=20)
 
-        self.subtitle = tk.Label(self.root, text="GreatOS v0.1", bg="#1e1e1e", fg="#cccccc", font=("Segoe UI", 12))
+        self.subtitle = tk.Label(self.root, text="by Carl-William", bg="black", fg="white", font=("Edwardian Script ITC", 17))
         self.subtitle.pack()
 
         # Conversation zone with scroll
-        self.canvas = tk.Canvas(self.root, bg="#1e1e1e", highlightthickness=0)
+        self.canvas = tk.Canvas(self.root, bg="black", highlightthickness=0)
         self.scrollbar = tk.Scrollbar(self.root, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = tk.Frame(self.canvas, bg="#1e1e1e")
+        self.scrollable_frame = tk.Frame(self.canvas, bg="black")
 
         self.scrollable_frame.bind(
             "<Configure>",
@@ -35,20 +35,20 @@ class JarvisGUI:
         self.scrollbar.pack(side="right", fill="y")
 
         # Input + buttons
-        bottom_frame = tk.Frame(self.root, bg="#1e1e1e")
+        bottom_frame = tk.Frame(self.root, bg="black")
         bottom_frame.pack(pady=10)
 
-        self.input_field = tk.Entry(bottom_frame, width=40, bg="#1e1e1e", fg="white", insertbackground="white", font=("Segoe UI", 12))
+        self.input_field = tk.Entry(bottom_frame, width=40, bg="black", fg="white", insertbackground="white", font=("Segoe UI", 12))
         self.input_field.pack(side=tk.LEFT, padx=5)
         self.input_field.bind("<Return>", self.send_message_enter)
 
-        self.send_button = tk.Button(bottom_frame, text="Send", command=self.send_message, bg="#1e1e1e", fg="white", font=("Segoe UI", 12))
+        self.send_button = tk.Button(bottom_frame, text="Send", command=self.send_message, bg="black", fg="white", font=("Segoe UI", 12))
         self.send_button.pack(side=tk.LEFT, padx=5)
 
-        self.clear_button = tk.Button(bottom_frame, text="Clear", command=self.clear_conversation, bg="#1e1e1e", fg="white", font=("Segoe UI", 12))
+        self.clear_button = tk.Button(bottom_frame, text="Clear", command=self.clear_conversation, bg="black", fg="white", font=("Segoe UI", 12))
         self.clear_button.pack(side=tk.LEFT, padx=5)
 
-        self.typing_label = tk.Label(self.root, text="", bg="#1e1e1e", fg="white", font=("Segoe UI", 12))
+        self.typing_label = tk.Label(self.root, text="", bg="black", fg="white", font=("Segoe UI", 12))
         self.typing_label.pack()
 
     def send_message(self):
@@ -82,7 +82,7 @@ class JarvisGUI:
 
         except requests.exceptions.RequestException:
             error_label = tk.Label(self.scrollable_frame, text="Jarvis hors ligne.",
-                                   bg="#1e1e1e", fg="red", font=("Segoe UI", 12))
+                                   bg="black", fg="red", font=("Segoe UI", 12))
             error_label.pack(anchor="w", padx=10, pady=5)
         finally:
             self.typing_label.config(text="")
