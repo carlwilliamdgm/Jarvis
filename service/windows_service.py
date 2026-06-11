@@ -22,6 +22,7 @@ class JarvisService(win32serviceutil.ServiceFramework):
             subprocess.Popen(['taskkill', '/im', 'uvicorn.exe'], shell=True)
         except Exception as e:
             print(f"Erreur lors de l'arrêt du service : {e}")
+        self.stop_event.set()
         win32event.SetEvent(self.hWaitStop)
 
     def SvcDoRun(self):
@@ -30,8 +31,29 @@ class JarvisService(win32serviceutil.ServiceFramework):
             os.chdir(os.path.dirname(os.path.abspath(__file__)))
             os.chdir('../')
             subprocess.Popen(['uvicorn', 'api.server:app', '--host', '0.0.0.0', '--port', '8000'], shell=True)
-            import jarvis
-            jarvis.main()
+            import sys
+            sys.path.insert(0, os.getcwd())
+            from core.memory import charger_memoire, normaliser_memoire
+            from tools import OUTILS
+            from jarvis import AutonomousAgent, initialiser
+            from rich.console import Console
+    
+            console = Console()
+            memoire = initialiser()
+    
+            agent = AutonomousAgent(
+                memoire=memoire,
+                outils=OUTILS,
+                console=console
+            )
+    
+            self.stop_event = threading.Event()
+            agent_thread = threading.Thread(
+                target=agent.run,
+                args=(self.stop_event,),
+                daemon=True
+            )
+            agent_thread.start()
         except Exception as e:
             print(f"Erreur lors du démarrage du service : {e}")
         win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
