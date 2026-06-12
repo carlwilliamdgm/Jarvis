@@ -3,13 +3,13 @@ import json
 import ollama
 import os
 import platform
+import re
 import threading
 import time
 import urllib.request
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Callable
 from groq import Groq as GroqClient
 from rich.console import Console
 from rich.panel import Panel
@@ -29,9 +29,9 @@ console = Console()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_GROQ = ["llama-3.3-70b-versatile"]  # Modele Groq actuel, avec free tier selon le compte
-MODELES_OPENROUTER = ["openrouter/free"]  # Routeur gratuit OpenRouter, limite selon le compte
-MODELE_LOCAL = "phi4-mini"
+MODELES_GROQ = ["llama-3.3-70b-versatile"]
+MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
+MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
 
@@ -44,20 +44,9 @@ MOTS_ACTION = [
 ]
 
 MOTS_CONVERSATION = [
-    "que se passe",
-    "pourquoi",
-    "comment",
-    "qu'est-ce",
-    "explique",
-    "dis-moi",
-    "raconte",
-    "d'accord",
-    "ok",
-    "merci",
-    "qui es-tu",
-    "es-tu",
-    "sais-tu",
-    "savais-tu",
+    "que se passe", "pourquoi", "comment", "qu'est-ce",
+    "explique", "dis-moi", "raconte", "d'accord", "ok",
+    "merci", "qui es-tu", "es-tu", "sais-tu", "savais-tu",
 ]
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
@@ -72,26 +61,41 @@ PLAN_OPTIMISATION = (
     "Les outils sensibles gereront eux-memes la confirmation Oui/Non."
 )
 
+
 def detecter_intention(message: str) -> bool:
-    """
-    Détecte si le message contient une intention d'action.
-    Retourne True si c'est une action, False si c'est juste de la conversation.
-    """
+    import re
     message_lower = message.lower()
-    if any(mot in message_lower for mot in MOTS_CONVERSATION):
-        return False
-    # Chercher les mots-clés d'action
-    if any(mot in message_lower for mot in MOTS_ACTION):
-        return True
-    # Patterns supplémentaires qui indiquent une action
-    if any(pattern in message_lower for pattern in [
-        "peux-tu", "peux tu", "pourrais-tu", "pourrais tu", 
-        "would you", "can you", "please", "s'il te plaît",
-        " fais ", " crée ", " supprime ", " ouvre ",
-        "? oui" # question + réponse anticipée
-    ]):
-        return True
-    return False
+    PATTERNS_CONVERSATION = [
+        r"\bpourquoi\b", r"\bcomment\b", r"\bqu[' ]est-ce\b",
+        r"\bexplique\b", r"\bdis-moi\b", r"\bqui es-tu\b",
+        r"\bes-tu\b", r"\bsais-tu\b", r"\bmerci\b",
+        r"\bd[' ]accord\b", r"\bok\b", r"\bbonjour\b",
+        r"\bque se passe\b", r"\bvide\b", r"\bcontient\b",
+        r"\bsouviens\b", r"\braconte\b", r"\bqu[' ]as-tu\b",
+        r"\bl[' ]as-tu\b", r"\bqu[' ]y a-t-il\b"
+    ]
+    for pattern in PATTERNS_CONVERSATION:
+        if re.search(pattern, message_lower):
+            return False
+    VERBES_ACTION = [
+        "ouvre", "ferme", "lance", "crée", "supprime", "déplace",
+        "copie", "liste", "lis", "écris", "exécute", "installe",
+        "trouve", "cherche", "analyse", "surveille", "démarre", "arrête",
+        "organise", "note", "mémorise", "rappelle", "vide", "notifie"
+    ]
+    CIBLES_SYSTEME = [
+        r"\b\w+\.\w{2,4}\b",
+        r"[A-Z]:\\", r"/home/", r"/mnt/",
+        r"\bprocessus\b", r"\bpid\b",
+        r"\bram\b", r"\bcpu\b", r"\bdisque\b", r"\bstockage\b",
+        r"\bdossier\b", r"\brépertoire\b", r"\bfichier\b",
+        r"\btemp\b", r"\bcorbeille\b",
+        r"\brappel\b", r"\bautomatisation\b", r"\bsurveillance\b",
+        r"\bnote\b", r"\bpréférence\b", r"\bmémoire\b"
+    ]
+    has_verb = any(v in message_lower for v in VERBES_ACTION)
+    has_target = any(re.search(p, message_lower) for p in CIBLES_SYSTEME)
+    return has_verb and has_target
 
 
 def estimer_complexite(message: str, intention_action: bool) -> str:
@@ -108,12 +112,12 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
         score += 1
     return "complexe" if score >= 2 else "simple"
 
+
 def chat_with_cloud(modele, messages):
     """Appel à Groq pour modèles cloud gratuits."""
     try:
         client = GroqClient()
         groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-        
         response = client.chat.completions.create(
             model=modele,
             messages=groq_messages,
@@ -124,18 +128,35 @@ def chat_with_cloud(modele, messages):
     except Exception as e:
         raise Exception(f"Groq error: {e}")
 
+
 def chat_with_openrouter(modele, messages):
-    """Appel OpenRouter via REST, compatible sans dependance supplementaire."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise Exception("OPENROUTER_API_KEY absente.")
 
+    systeme = next((m["content"] for m in messages if m["role"] == "system"), "")
+    autres = [m for m in messages if m["role"] != "system"]
+
+    messages_envoyes = []
+    if systeme:
+        messages_envoyes.append({"role": "system", "content": systeme})
+
+    if autres and systeme:
+        premier_user = autres[0]["content"]
+        autres[0] = {
+            "role": "user",
+            "content": f"[INSTRUCTIONS SYSTÈME - À RESPECTER STRICTEMENT]\n{systeme}\n[FIN INSTRUCTIONS]\n\n{premier_user}"
+        }
+
+    messages_envoyes.extend([{"role": m["role"], "content": m["content"]} for m in autres])
+
     payload = json.dumps({
         "model": modele,
-        "messages": [{"role": m["role"], "content": m["content"]} for m in messages],
-        "max_tokens": 1024,
+        "messages": messages_envoyes,
+        "max_tokens": 2048,
         "temperature": 0.7,
     }).encode("utf-8")
+
     request = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
         data=payload,
@@ -161,6 +182,7 @@ def chat_with_local(modele, messages):
         return ollama.chat(model=modele, messages=messages, options={"think": False})
     except Exception as e:
         raise Exception(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.")
+
 
 def providers_cloud_disponibles() -> list[dict]:
     providers = []
@@ -212,6 +234,7 @@ def memoriser_provider_cloud(nom_provider: str) -> None:
     routeur["maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sauvegarder_memoire(data)
 
+
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
     if "utilisateur" not in memoire:
@@ -235,17 +258,16 @@ def initialiser() -> dict:
     sauvegarder_memoire(memoire)
     return memoire
 
+
 def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
     """
     Extrait les objets JSON du texte.
     Valide strictement que chaque objet a "outil" et "args" avec "args" dict.
-    Retourne une liste d'objets JSON valides.
-    verbose=True pour afficher les avertissements de validation.
     """
     objets = []
     decodeur = json.JSONDecoder()
     position = 0
-    
+
     while position < len(texte):
         position = texte.find("{", position)
         if position == -1:
@@ -255,12 +277,11 @@ def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
         except JSONDecodeError:
             position += 1
             continue
-            
+
         if not isinstance(objet, dict):
             position += fin
             continue
-            
-        # Validation stricte
+
         if "outil" not in objet:
             if verbose:
                 console.print(f"[yellow]⚠️  JSON sans 'outil' : {objet}[/yellow]")
@@ -276,19 +297,17 @@ def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
                 console.print(f"[yellow]⚠️  'args' n'est pas un dictionnaire : {objet}[/yellow]")
             position += fin
             continue
-            
+
         objets.append(objet)
         position += fin
-    
+
     return objets
 
+
 def valider_reponse_json(reponse: str) -> bool:
-    """
-    Valide que la réponse contient au moins un JSON valide avec "outil" et "args".
-    Retourne True si valide, False sinon.
-    """
-    objets = extraire_json_objets(reponse)
-    return len(objets) > 0
+    """Valide que la réponse contient au moins un JSON valide avec "outil" et "args"."""
+    return len(extraire_json_objets(reponse)) > 0
+
 
 def executer_outil(reponse: str) -> str | None:
     objets = extraire_json_objets(reponse, verbose=True)
@@ -333,38 +352,50 @@ def extraire_resume_terminer_tache(reponse: str) -> str | None:
     return None
 
 
-def resumer_resultats_outils(resultats: list[str], reponses: list[str]) -> str:
-    texte = "\n".join(resultats)
-    if resultat_indique_erreur(texte):
-        premiere_erreur = next((ligne for ligne in texte.splitlines() if resultat_indique_erreur(ligne)), texte)
-        return f"Je n'ai pas pu terminer l'action demandée : {premiere_erreur}"
+def extraire_reponse_naturelle(reponse: str) -> str:
+    """Extrait la réponse naturelle du LLM en supprimant les JSON d'outils."""
+    lignes = reponse.split('\n')
+    lignes_naturelles = []
+    skip_json = False
 
-    resumes = [
-        resume for resume in (extraire_resume_terminer_tache(reponse) for reponse in reponses)
-        if resume and resume.upper() != "RAS"
-    ]
+    for ligne in lignes:
+        ligne_strip = ligne.strip()
+        if ligne_strip.startswith('{') and '"outil"' in ligne_strip:
+            skip_json = True
+            continue
+        if skip_json and ligne_strip.startswith('}'):
+            skip_json = False
+            continue
+        if skip_json:
+            continue
+        if not ligne_strip and lignes_naturelles and lignes_naturelles[-1].strip().startswith('}'):
+            continue
+        lignes_naturelles.append(ligne)
 
-    if "Note enregistree" in texte:
-        return "J'ai enregistré la note demandée."
-    if "Fichier cree" in texte:
-        return "J'ai créé le fichier demandé."
-    if "Dossier cree" in texte:
-        return "J'ai créé le dossier demandé."
-    if "Fichier supprime" in texte or "Dossier supprime" in texte:
-        return "J'ai supprimé l'élément demandé."
-    if "Fichiers temporaires" in texte or "Corbeille videe" in texte:
-        return "J'ai effectué le nettoyage demandé."
-    if "Stockage " in texte:
-        return "J'ai effectué l'audit du stockage."
-    if "Notification envoyee" in texte:
-        return "J'ai envoyé la notification demandée."
-    if "Automatisation #" in texte:
-        return "J'ai créé l'automatisation demandée."
-    if "Surveillance #" in texte:
-        return "J'ai mis à jour la surveillance demandée."
-    if resumes:
-        return resumes[-1]
-    return "J'ai exécuté l'action demandée avec succès."
+    return '\n'.join(lignes_naturelles).strip()
+
+
+def construire_reponse_finale(reponses_llm: list[str], resultats_outils: list[str]) -> str:
+    """Construit la réponse finale en combinant la réponse naturelle du LLM et les résultats des outils."""
+    if not reponses_llm:
+        return "\n".join(resultats_outils) if resultats_outils else "Erreur : aucune réponse générée."
+
+    reponse_naturelle = extraire_reponse_naturelle(reponses_llm[-1])
+    texte_resultats = "\n".join(resultats_outils)
+
+    if resultat_indique_erreur(texte_resultats):
+        premiere_erreur = next(
+            (ligne for ligne in texte_resultats.splitlines() if resultat_indique_erreur(ligne)),
+            texte_resultats
+        )
+        return f"{reponse_naturelle}\n\nErreur : {premiere_erreur}"
+
+    if reponse_naturelle and texte_resultats:
+        return f"{reponse_naturelle}\n\n{texte_resultats}"
+    elif reponse_naturelle:
+        return reponse_naturelle
+    else:
+        return texte_resultats or "Action terminée."
 
 
 def limiter_historique(historique: list) -> None:
@@ -374,34 +405,34 @@ def limiter_historique(historique: list) -> None:
     recents = historique[-MAX_MESSAGES_HISTORIQUE:]
     historique[:] = systeme + recents
 
+
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     """Parle en utilisant le modèle cloud d'abord, puis fallback sur local."""
     historique.append({"role": "user", "content": message})
-    
+
     intention_action = detecter_intention(message)
     complexite = estimer_complexite(message, intention_action)
-    
-    # Ajuster le prompt système selon l'intention
+
     if intention_action:
         historique[0]["content"] = construire_prompt_action(memoire)
     else:
         historique[0]["content"] = construire_prompt_conversation(memoire)
-    
+
     reponse = None
     provider_cloud_reussi = None
     tentatives = 0
     max_tentatives = 2
-    
+
     while tentatives < max_tentatives:
         tentatives += 1
         providers_cloud = ordonner_providers_cloud(providers_cloud_disponibles(), memoire, complexite)
-        
+
         if providers_cloud:
             if tentatives == 1:
                 console.print(f"[dim]→ Cle API cloud detectee. Tentative modeles cloud...[/dim]")
             else:
                 console.print(f"[dim yellow]→ Retry modeles cloud (tentative {tentatives})...[/dim yellow]")
-            
+
             for provider in providers_cloud:
                 if reponse is not None:
                     break
@@ -426,8 +457,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     "[dim yellow]⚠️  Aucune cle API cloud detectee "
                     "(GROQ_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
                 )
-        
-        # Fallback sur modèle local
+
         if reponse is None:
             if tentatives == 1:
                 console.print(f"[dim]→ Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
@@ -440,33 +470,31 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                 if tentatives < max_tentatives:
                     continue
                 reponse = {"message": {"content": f"Erreur : {e}"}}
-        
+
         if reponse is None:
             continue
-            
+
         contenu = reponse["message"]["content"]
-        
-        # Valider la réponse si c'est une action
+
         if intention_action:
             if valider_reponse_json(contenu):
-                break  # JSON valide, on sort
+                break
             elif tentatives < max_tentatives:
                 console.print(f"[yellow]⚠️  Réponse invalide (pas de JSON). Nouvelle tentative...[/yellow]")
                 historique.append({"role": "assistant", "content": contenu})
                 historique.append({
-                    "role": "user", 
+                    "role": "user",
                     "content": "Votre réponse précédente ne contenait pas de JSON d'outil valide. Veuillez répondre avec une ligne JSON au format {\"outil\": \"nom\", \"args\": {...}}, puis une phrase naturelle."
                 })
                 reponse = None
                 provider_cloud_reussi = None
                 continue
         else:
-            # Conversation valide, on sort
             break
-    
+
     if reponse is None:
         reponse = {"message": {"content": "Erreur : Impossible d'obtenir une réponse du modèle."}}
-    
+
     contenu = reponse["message"]["content"]
     if provider_cloud_reussi:
         memoriser_provider_cloud(provider_cloud_reussi)
@@ -484,13 +512,13 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
     complexite = estimer_complexite(user_input, intention_action)
     max_etapes = MAX_ETAPES_AGENT if complexite == "complexe" else 1
     resultats_outils = []
-    reponses_outils = []
+    reponses_llm = []
 
     for etape in range(1, max_etapes + 1):
         resultat = executer_outil(reponse)
         if resultat:
             resultats_outils.append(resultat)
-            reponses_outils.append(reponse)
+            reponses_llm.append(reponse)
         else:
             resultats_outils.append("Erreur : aucune commande d'outil valide n'a été générée.")
             break
@@ -512,9 +540,10 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
         reponse, intention_action = parler(observation, historique, memoire)
         if not intention_action:
             resultats_outils.append(reponse)
+            reponses_llm.append(reponse)
             break
 
-    return resumer_resultats_outils(resultats_outils, reponses_outils), True
+    return construire_reponse_finale(reponses_llm, resultats_outils), True
 
 
 class AutonomousAgent:
@@ -732,6 +761,7 @@ class AutonomousAgent:
             except Exception as e:
                 self.console.print(f"[dim yellow]Agent autonome: {e}[/dim yellow]")
 
+
 def main():
     memoire = initialiser()
     nom = memoire["utilisateur"]["nom"]
@@ -750,7 +780,7 @@ def main():
             user_input = console.input("[bold green]Toi >[/bold green] ").strip()
             if not user_input:
                 continue
-            if user_input.lower() in ("au revoir", "exit", "bye") : 
+            if user_input.lower() in ("au revoir", "exit", "bye"):
                 console.print("[cyan]Jarvis hors ligne.[/cyan]")
                 stop_event.set()
                 break
@@ -761,7 +791,7 @@ def main():
             horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
                 reponse, intention_action = executer_agent(user_input, historique, memoire)
-            
+
             reponse = reponse if isinstance(reponse, str) else ""
             OUTILS["enregistrer_echange"](user_input, reponse)
             console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
@@ -771,5 +801,7 @@ def main():
             stop_event.set()
             break
 
+
 if __name__ == "__main__":
     main()
+    

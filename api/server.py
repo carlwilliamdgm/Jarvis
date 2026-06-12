@@ -35,6 +35,7 @@ def traiter_message(message: str) -> Dict:
         reponse, intention_action = executer_agent(message, historique, memoire)
         return {
             "response": reponse if isinstance(reponse, str) else str(reponse),
+            "is_action": intention_action,
             "actions_executed": [1] if intention_action else []
         }
     except Exception as e:

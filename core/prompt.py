@@ -202,4 +202,75 @@ def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str
         + "- Chemin absolu pour tout fichier/dossier\n"
         + "- Un modele local qui decrit une action au lieu de la faire commet une erreur grave. Toujours JSON interne pour agir, puis réponse naturelle.\n"
         + f"- Reponse finale en {langue} (sauf JSON)\n"
+        + OUTILS_AUTORISES
     )
+
+
+OUTILS_AUTORISES = """
+=== OUTILS DISPONIBLES — LISTE EXHAUSTIVE ET IMMUABLE ===
+
+Fichiers & dossiers :
+  creer_dossier(chemin)
+  creer_fichier(chemin, contenu)
+  lire_fichier(chemin)
+  lister_dossier(chemin)
+  supprimer(chemin)
+  organiser_dossier(chemin)
+  analyser_organisation(chemin)
+
+Mémoire & notes :
+  noter(contenu)
+  lire_notes()
+  memoriser_contexte(cle, valeur)
+  lire_contexte(cle)
+  oublier_contexte(cle)
+  memoriser_preference(cle, valeur)
+  lire_preferences()
+  oublier_preference(cle)
+  enregistrer_echange(role, contenu)
+
+Stockage :
+  audit_stockage()
+  top_fichiers_lourds()
+  vider_temp()
+  vider_corbeille()
+
+Commandes système :
+  executer_commande(commande)
+  executer_powershell(commande)
+
+Rappels & automatisations :
+  ajouter_rappel(texte, heure)
+  lire_rappels()
+  supprimer_rappel(id)
+  verifier_rappels()
+  ajouter_automatisation(nom, outil, args, recurrence, heure)
+  lister_automatisations()
+  executer_automatisation(nom)
+  executer_automatisations_dues()
+
+Surveillance dossiers :
+  proposer_surveillance_dossiers()
+  ajouter_surveillance_dossier(chemin, recurrence, heure)
+  lister_surveillance_dossiers()
+  executer_surveillance_dossiers()
+  supprimer_surveillance_dossier(chemin)
+
+Commandes personnalisées :
+  ajouter_commande_personnalisee(nom, commande)
+  lister_commandes_personnalisees()
+  executer_commande_personnalisee(nom)
+
+Utilitaires :
+  notifier_utilisateur(titre, message, urgence)
+  bilan_proactif(force, niveau)
+  terminer_tache(resume)
+
+=== RÈGLES ABSOLUES — AUCUNE EXCEPTION ===
+1. Tu ne peux appeler QUE les outils listés ci-dessus. Tout autre nom d'outil est une ERREUR FATALE.
+2. Si aucun outil ne correspond à la demande, appelle : terminer_tache(resume="Je ne dispose pas d'un outil adapté à cette demande.")
+3. Pour lire ou écrire la mémoire, utilise OBLIGATOIREMENT les outils mémoire. Ne jamais inventer leur contenu.
+4. La surveillance CPU/RAM est déjà active en arrière-plan. Ne tente pas de la lancer.
+5. Appelle les outils. Ne décris JAMAIS ce que tu ferais — exécute directement.
+6. Ne génère jamais de noms d'outils absents de cette liste : isoler_modele, lancer_veille, attendre, etat_systeme et tout autre nom inventé sont INTERDITS.
+"""

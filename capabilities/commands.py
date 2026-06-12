@@ -1,4 +1,3 @@
-import shlex
 import subprocess
 
 
@@ -8,10 +7,12 @@ def executer_commande_direct(commande: str) -> str:
 
     try:
         resultat = subprocess.run(
-            shlex.split(commande),
+            ["cmd", "/c", commande],
             capture_output=True,
             text=True,
             timeout=60,
+            encoding="utf-8",
+            errors="replace",
         )
         output = resultat.stdout or resultat.stderr
         return output.strip() if output else "Commande executee sans sortie."
