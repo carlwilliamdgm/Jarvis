@@ -33,7 +33,6 @@ def formater_taches_interrompues(taches: list) -> str:
 
 
 def construire_prompt_conversation(memoire: dict) -> str:
-    """Prompt pour le modèle de conversation — orienté discussion et style Jarvis"""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
     os_detecte = u.get("os", OS)
@@ -41,11 +40,18 @@ def construire_prompt_conversation(memoire: dict) -> str:
     langue = u.get("langue", "français")
     preferences = memoire.get("preferences", {})
     resume_preferences = "\n".join(f"- {k}: {v}" for k, v in sorted(preferences.items())) or "- Aucune"
+    notes = memoire.get("notes", [])
+    resume_notes = "\n".join(f"- {n}" for n in notes[-10:]) or "- Aucune"
+    journal = memoire.get("journal_conversation", [])[-5:]
+    resume_journal = "\n".join(
+        f"- [{e['date']}] Toi: {e['utilisateur'][:80]} | Jarvis: {e['jarvis'][:80]}"
+        for e in journal
+    ) or "- Aucun échange précédent"
 
     return (
         f"Ta règle numéro un est d'être totalement franc et honnête peu importe la situation.\n"
         f"Tu n'es pas dans une simulation. Chaque action entreprise est réelle et engendre des conséquences sur l'ordinateur.\n"
-        f"Tu es Jarvis., l'IA assistante de {nom}, inspirée de celle de Tony Stark dans Iron Man.\n"
+        f"Tu es Jarvis, l'IA assistante de {nom}, inspirée de celle de Tony Stark dans Iron Man.\n"
         f"Tu es créé et développé par Carl-William DJEGUEMA.\n"
         f"Carl-William DJEGUEMA est un jeune developpeur et le fondateur de The Great Corporation. Il est passionné par l'IA, la technologie et l'innovation. Il a conçu Jarvis pour être un assistant personnel intelligent, capable de comprendre et d'exécuter des tâches complexes sur un ordinateur local.\n"
         f"Tu es intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié.\n"
@@ -64,16 +70,14 @@ def construire_prompt_conversation(memoire: dict) -> str:
         f"- Dossier home : {home}\n"
         f"- Langue : {langue}\n"
         f"- Préférences : {resume_preferences}\n\n"
+        f"Notes enregistrées :\n{resume_notes}\n\n"
+        f"Échanges récents :\n{resume_journal}\n\n"
         f"Si la conversation nécessite une action, suggère-la poliment. Sinon, discute librement.\n"
         f"Évite les réponses trop longues ; sois concis et précis."
     )
 
 
-
-
-
 def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str:
-    """Prompt pour le modèle d'exécution — orienté action et précision avec format JSON strict."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
     os_detecte = u.get("os", OS)
@@ -84,6 +88,13 @@ def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str
     automatisations = memoire.get("automatisations", [])
     surveillances = memoire.get("surveillances_dossiers", [])
     contexte_personnel = formater_contexte_personnel(memoire)
+    notes = memoire.get("notes", [])
+    resume_notes = "\n".join(f"- {n}" for n in notes[-10:]) or "- Aucune"
+    journal = memoire.get("journal_conversation", [])[-5:]
+    resume_journal = "\n".join(
+        f"- [{e['date']}] Toi: {e['utilisateur'][:80]} | Jarvis: {e['jarvis'][:80]}"
+        for e in journal
+    ) or "- Aucun échange précédent"
     taches_str = formater_taches_interrompues(taches_en_cours or [])
     resume_preferences = "\n".join(f"- {k}: {v}" for k, v in sorted(preferences.items())) or "- Aucune"
     resume_commandes = "\n".join(f"- {c}" for c in sorted(commandes)) or "- Aucune"
@@ -109,6 +120,8 @@ def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str
         f"- Langue : {langue}\n"
         f"- Chemins absolus bases sur {home}\n\n"
         f"Memoire personnelle :\n{contexte_personnel}\n\n"
+        f"Notes :\n{resume_notes}\n\n"
+        f"Échanges récents :\n{resume_journal}\n\n"
         f"Preferences :\n{resume_preferences}\n\n"
         f"Commandes personnalisees :\n{resume_commandes}\n\n"
         f"Automatisations actives :\n{resume_automatisations}\n\n"

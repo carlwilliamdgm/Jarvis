@@ -61,7 +61,6 @@ PLAN_OPTIMISATION = (
     "Les outils sensibles gereront eux-memes la confirmation Oui/Non."
 )
 
-# Mots de validation : l'utilisateur confirme une action proposée par Jarvis
 MOTS_VALIDATION = [
     "oui", "vas-y", "soit", "fais-le", "fais le", "ok fais", "lance",
     "go", "allez", "parfait fais", "fais", "procède", "execute",
@@ -105,19 +104,11 @@ def detecter_intention(message: str) -> bool:
 
 
 def detecter_validation(message: str, historique: list) -> bool:
-    """
-    Retourne True si l'utilisateur valide une action proposée par Jarvis
-    dans le tour précédent. Evite de basculer en mode action sur un simple
-    "oui" hors contexte d'action.
-    """
     message_lower = message.lower().strip()
-    # Le message doit être court (validation courte, pas une nouvelle demande)
     if len(message_lower) > 60:
         return False
-    # Vérifier que c'est un mot de validation
     if not any(message_lower == v or message_lower.startswith(v + " ") for v in MOTS_VALIDATION):
         return False
-    # Vérifier que le dernier message de Jarvis proposait une action
     for msg in reversed(historique):
         if msg["role"] == "assistant":
             contenu = msg["content"].lower()
@@ -146,7 +137,6 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
 
 
 def chat_with_cloud(modele, messages):
-    """Appel à Groq pour modèles cloud gratuits."""
     try:
         client = GroqClient()
         groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
@@ -209,7 +199,6 @@ def chat_with_openrouter(modele, messages):
 
 
 def chat_with_local(modele, messages):
-    """Appel à Ollama pour modèle local avec gestion d'erreur."""
     try:
         return ollama.chat(model=modele, messages=messages, options={"think": False})
     except Exception as e:
@@ -236,7 +225,6 @@ def providers_cloud_disponibles() -> list[dict]:
 
 
 def ordonner_providers_cloud(providers: list[dict], memoire: dict, complexite: str = "simple") -> list[dict]:
-    """Choisir selon la complexite, puis alterner dans le groupe prioritaire pour repartir les quotas."""
     if len(providers) <= 1:
         return providers
     priorite = ["complexe", "simple"] if complexite == "complexe" else ["simple", "complexe"]
@@ -292,10 +280,6 @@ def initialiser() -> dict:
 
 
 def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
-    """
-    Extrait les objets JSON du texte.
-    Valide strictement que chaque objet a "outil" et "args" avec "args" dict.
-    """
     objets = []
     decodeur = json.JSONDecoder()
     position = 0
@@ -337,7 +321,6 @@ def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
 
 
 def valider_reponse_json(reponse: str) -> bool:
-    """Valide que la réponse contient au moins un JSON valide avec "outil" et "args"."""
     return len(extraire_json_objets(reponse)) > 0
 
 
@@ -385,7 +368,6 @@ def extraire_resume_terminer_tache(reponse: str) -> str | None:
 
 
 def extraire_reponse_naturelle(reponse: str) -> str:
-    """Extrait la réponse naturelle du LLM en supprimant les JSON d'outils."""
     lignes = reponse.split('\n')
     lignes_naturelles = []
     skip_json = False
@@ -408,7 +390,6 @@ def extraire_reponse_naturelle(reponse: str) -> str:
 
 
 def construire_reponse_finale(reponses_llm: list[str], resultats_outils: list[str]) -> str:
-    """Construit la réponse finale en combinant la réponse naturelle du LLM et les résultats des outils."""
     if not reponses_llm:
         return "\n".join(resultats_outils) if resultats_outils else "Erreur : aucune réponse générée."
 
@@ -439,11 +420,12 @@ def limiter_historique(historique: list) -> None:
 
 
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
-    """Parle en utilisant le modèle cloud d'abord, puis fallback sur local."""
     historique.append({"role": "user", "content": message})
 
     intention_action = detecter_intention(message) or detecter_validation(message, historique)
     complexite = estimer_complexite(message, intention_action)
+
+    memoire.update(normaliser_memoire(charger_memoire()))
 
     if intention_action:
         historique[0]["content"] = construire_prompt_action(memoire)
@@ -536,7 +518,6 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
 
 
 def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[str, bool]:
-    """Boucle agentique courte : action, observation, correction/continuation."""
     reponse, intention_action = parler(user_input, historique, memoire)
     if not intention_action:
         return reponse, False
