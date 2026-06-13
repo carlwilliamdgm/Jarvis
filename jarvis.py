@@ -61,9 +61,15 @@ PLAN_OPTIMISATION = (
     "Les outils sensibles gereront eux-memes la confirmation Oui/Non."
 )
 
+# Mots de validation : l'utilisateur confirme une action proposée par Jarvis
+MOTS_VALIDATION = [
+    "oui", "vas-y", "soit", "fais-le", "fais le", "ok fais", "lance",
+    "go", "allez", "parfait fais", "fais", "procède", "execute",
+    "continue", "confirme", "d'accord fais", "oui jarvis",
+]
+
 
 def detecter_intention(message: str) -> bool:
-    import re
     message_lower = message.lower()
     PATTERNS_CONVERSATION = [
         r"\bpourquoi\b", r"\bcomment\b", r"\bqu[' ]est-ce\b",
@@ -96,6 +102,32 @@ def detecter_intention(message: str) -> bool:
     has_verb = any(v in message_lower for v in VERBES_ACTION)
     has_target = any(re.search(p, message_lower) for p in CIBLES_SYSTEME)
     return has_verb and has_target
+
+
+def detecter_validation(message: str, historique: list) -> bool:
+    """
+    Retourne True si l'utilisateur valide une action proposée par Jarvis
+    dans le tour précédent. Evite de basculer en mode action sur un simple
+    "oui" hors contexte d'action.
+    """
+    message_lower = message.lower().strip()
+    # Le message doit être court (validation courte, pas une nouvelle demande)
+    if len(message_lower) > 60:
+        return False
+    # Vérifier que c'est un mot de validation
+    if not any(message_lower == v or message_lower.startswith(v + " ") for v in MOTS_VALIDATION):
+        return False
+    # Vérifier que le dernier message de Jarvis proposait une action
+    for msg in reversed(historique):
+        if msg["role"] == "assistant":
+            contenu = msg["content"].lower()
+            indicateurs_proposition = [
+                "je peux", "voulez-vous", "souhaitez-vous", "je vais",
+                "est-ce que", "dois-je", "permettez-moi", "si vous le souhaitez",
+                "je pourrais", "ouvrir", "ajuster", "modifier", "lancer",
+            ]
+            return any(ind in contenu for ind in indicateurs_proposition)
+    return False
 
 
 def estimer_complexite(message: str, intention_action: bool) -> str:
@@ -410,7 +442,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     """Parle en utilisant le modèle cloud d'abord, puis fallback sur local."""
     historique.append({"role": "user", "content": message})
 
-    intention_action = detecter_intention(message)
+    intention_action = detecter_intention(message) or detecter_validation(message, historique)
     complexite = estimer_complexite(message, intention_action)
 
     if intention_action:
@@ -804,4 +836,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
