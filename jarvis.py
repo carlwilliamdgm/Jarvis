@@ -67,28 +67,77 @@ MOTS_VALIDATION = [
     "continue", "confirme", "d'accord fais", "oui jarvis",
 ]
 
+# ─── MODE ACTION FORCÉ ────────────────────────────────────────────────────────
+mode_action_force = False
+
+PATTERNS_ACTIVATION_MODE_ACTION = [
+    r"\bpasse en mode action\b",
+    r"\bmode action\b",
+]
+PATTERNS_DESACTIVATION_MODE_ACTION = [
+    r"\bpasse en mode conversation\b",
+    r"\bmode conversation\b",
+    r"\bmode conv\b",
+]
+RACCOURCI_MODE_ACTION = "!a"
+
+def detecter_commande_mode(message: str) -> str | None:
+    """Retourne 'action', 'conv', ou None."""
+    m = message.lower().strip()
+    if m == RACCOURCI_MODE_ACTION:
+        return "action"
+    if any(re.search(p, m) for p in PATTERNS_ACTIVATION_MODE_ACTION):
+        return "action"
+    if any(re.search(p, m) for p in PATTERNS_DESACTIVATION_MODE_ACTION):
+        return "conv"
+    return None
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 def detecter_intention(message: str) -> bool:
+    global mode_action_force
+
+    # Court-circuit : mode action one-shot activé
+    if mode_action_force:
+        return True
+
     message_lower = message.lower()
+
+    # Patterns conversation pure — NETTOYÉS des faux positifs
     PATTERNS_CONVERSATION = [
         r"\bpourquoi\b", r"\bcomment\b", r"\bqu[' ]est-ce\b",
         r"\bexplique\b", r"\bdis-moi\b", r"\bqui es-tu\b",
         r"\bes-tu\b", r"\bsais-tu\b", r"\bmerci\b",
-        r"\bd[' ]accord\b", r"\bok\b", r"\bbonjour\b",
-        r"\bque se passe\b", r"\bvide\b", r"\bcontient\b",
-        r"\bsouviens\b", r"\braconte\b", r"\bqu[' ]as-tu\b",
-        r"\bl[' ]as-tu\b", r"\bqu[' ]y a-t-il\b"
+        r"\bd[' ]accord\b", r"\bbonjour\b",
+        r"\bque se passe\b", r"\braconte\b",
+        # RETIRÉS volontairement : r"\bvide\b", r"\bcontient\b",
+        # r"\bsouviens\b", r"\bqu[' ]as-tu\b", r"\bl[' ]as-tu\b",
+        # r"\bqu[' ]y a-t-il\b", r"\bok\b"
+        # → bloquaient des intentions légitimes
     ]
     for pattern in PATTERNS_CONVERSATION:
         if re.search(pattern, message_lower):
             return False
+
     VERBES_ACTION = [
+        # existants
         "ouvre", "ferme", "lance", "crée", "supprime", "déplace",
-        "copie", "liste", "lis", "écris", "exécute", "installe",
+        "copie", "liste", "écris", "exécute", "installe",
         "trouve", "cherche", "analyse", "surveille", "démarre", "arrête",
-        "organise", "note", "mémorise", "rappelle", "vide", "notifie"
+        "organise", "note", "mémorise", "rappelle", "vide", "notifie",
+        # ajouts
+        "fouille", "vérifie", "verifie", "check", "affiche", "montre",
+        "scanne", "inspecte", "ajoute", "enregistre", "sauvegarde",
+        "efface", "nettoie", "libère", "libere",
+        "consulte", "accède", "accede",
+        "demarre", "stoppe", "tue", "kill",
+        "planifie", "programme", "automatise",
+        "renomme", "deplace",
+        "audite", "optimise", "diagnostique", "recherche",
     ]
+
     CIBLES_SYSTEME = [
+        # existantes
         r"\b\w+\.\w{2,4}\b",
         r"[A-Z]:\\", r"/home/", r"/mnt/",
         r"\bprocessus\b", r"\bpid\b",
@@ -96,11 +145,68 @@ def detecter_intention(message: str) -> bool:
         r"\bdossier\b", r"\brépertoire\b", r"\bfichier\b",
         r"\btemp\b", r"\bcorbeille\b",
         r"\brappel\b", r"\bautomatisation\b", r"\bsurveillance\b",
-        r"\bnote\b", r"\bpréférence\b", r"\bmémoire\b"
+        r"\bnote\b", r"\bpréférence\b", r"\bmémoire\b",
+        # ajouts — mémoire & contexte
+        r"\bmemoire\b", r"\bcontexte\b", r"\bprofil\b",
+        r"\bpreference\b", r"\bpreferences\b",
+        # ajouts — système & apps
+        r"\blogs?\b", r"\bjournal\b", r"\bévenements?\b", r"\bevenements?\b",
+        r"\bservices?\b", r"\bparamètres?\b", r"\bparametres?\b",
+        r"\bapplication\b", r"\bappli\b", r"\bapp\b",
+        r"\bexplorateur\b", r"\bterminal\b", r"\bconsole\b",
+        r"\btâche\b", r"\btache\b", r"\bregistre\b",
+        r"\bprogramme\b", r"\bperformance\b", r"\bprocesseur\b",
+        r"\bwindows\b", r"\bsystème\b", r"\bsysteme\b",
+        r"\bhistorique\b", r"\bconfiguration\b", r"\bconfig\b",
+        # ajouts — outils réels
+        r"\bcommande\b", r"\bscript\b", r"\bpowershell\b",
+        r"\bautomatisations?\b", r"\bplanification\b",
+        r"\bsurveillances?\b", r"\bwatcher\b",
+        r"\bbilan\b", r"\baudit\b", r"\brapport\b",
+        r"\bespace\b", r"\boccupation\b",
+        r"\bnotification\b", r"\balerte\b",
+        r"\béchange\b", r"\bechange\b",
     ]
+
+    # Cibles fortes : déclenchent action même sans verbe explicite
+    # Limitées aux mots qui n'apparaissent JAMAIS en conversation pure
+    CIBLES_FORTES = [
+        r"\brappels?\b",
+        r"\bautomatisations?\b",
+        r"\bbilan\b",
+        r"\baudit\b",
+        r"\bpowershell\b",
+        r"\bwatcher\b",
+        r"\bpreferences?\b",
+        r"\bplanification\b",
+    ]
+
+    # Patterns interrogation d'état : "Y'a-t-il des rappels ?", "Ai-je des notes ?"
+    # Combinés à une cible système → action
+    PATTERNS_INTERROGATION_ETAT = [
+        r"\by[' ]a[\s-]t[\s-]il\b",
+        r"\bai-je\b",
+        r"\best-ce qu[' ]il y a\b",
+        r"\bqu[' ]est-ce qu[' ]il y a\b",
+        r"\bmontre[\s-]moi\b",
+        r"\bc[' ]est quoi\b",
+        r"\bqu[' ]as-tu\b",
+        r"\bl[' ]as-tu\b",
+    ]
+
     has_verb = any(v in message_lower for v in VERBES_ACTION)
     has_target = any(re.search(p, message_lower) for p in CIBLES_SYSTEME)
-    return has_verb and has_target
+    has_strong_target = any(re.search(p, message_lower) for p in CIBLES_FORTES)
+    has_interrogation_etat = any(re.search(p, message_lower) for p in PATTERNS_INTERROGATION_ETAT)
+
+    # Logique de décision
+    if has_verb and has_target:
+        return True
+    if has_strong_target:
+        return True
+    if has_interrogation_etat and has_target:
+        return True
+    return False
 
 
 def detecter_validation(message: str, historique: list) -> bool:
@@ -420,9 +526,37 @@ def limiter_historique(historique: list) -> None:
 
 
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
+    global mode_action_force
+
+    # ── Gestion commandes de mode ─────────────────────────────────────────────
+    commande_mode = detecter_commande_mode(message)
+    if commande_mode == "action":
+        mode_action_force = True
+        msg_confirm = "Mode action activé, Sir. Prochain message traité comme commande directe."
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": msg_confirm})
+        return msg_confirm, False
+    elif commande_mode == "conv":
+        mode_action_force = False
+        msg_confirm = "Mode conversation rétabli, Sir."
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": msg_confirm})
+        return msg_confirm, False
+    # ─────────────────────────────────────────────────────────────────────────
+
     historique.append({"role": "user", "content": message})
 
+    # Si mode action one-shot : forcer intention, puis reset immédiat
+    etait_mode_action_force = mode_action_force
+    if mode_action_force:
+        mode_action_force = False  # reset one-shot avant même le LLM
+        console.print("[dim magenta]⚡ Mode action one-shot actif[/dim magenta]")
+
     intention_action = detecter_intention(message) or detecter_validation(message, historique)
+    # detecter_intention a déjà court-circuité via le flag si etait_mode_action_force
+    if etait_mode_action_force:
+        intention_action = True
+
     complexite = estimer_complexite(message, intention_action)
 
     memoire.update(normaliser_memoire(charger_memoire()))
@@ -781,7 +915,8 @@ def main():
     prompt = construire_prompt_action(memoire)
     historique = [{"role": "system", "content": prompt}]
     console.print(Panel(
-        f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.",
+        f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.\n"
+        f"Mode action one-shot : 'Jarvis, passe en mode action' ou '!a'",
         style="bold cyan"
     ))
     stop_event = threading.Event()
@@ -790,7 +925,8 @@ def main():
     veille.start()
     while True:
         try:
-            user_input = console.input("[bold green]Toi >[/bold green] ").strip()
+            mode_label = "[bold magenta]⚡ACTION > [/bold magenta]" if mode_action_force else "[bold green]Toi > [/bold green]"
+            user_input = console.input(mode_label).strip()
             if not user_input:
                 continue
             if user_input.lower() in ("au revoir", "exit", "bye"):
