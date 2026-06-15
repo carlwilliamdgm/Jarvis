@@ -242,19 +242,54 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
     return "complexe" if score >= 2 else "simple"
 
 
+def get_groq_clients():
+    """Retourne une liste de clients Groq, un par cle API disponible.
+
+    Cherche GROQ_API_KEY_1, GROQ_API_KEY_2, ... dans l'environnement.
+    Si aucune n'est definie, retombe sur GROQ_API_KEY (compatibilite).
+    """
+    clients = []
+    i = 1
+    while True:
+        key = os.environ.get(f"GROQ_API_KEY_{i}")
+        if not key:
+            break
+        clients.append(GroqClient(api_key=key))
+        i += 1
+    if not clients and os.environ.get("GROQ_API_KEY"):
+        clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY")))
+    return clients
+
+
 def chat_with_cloud(modele, messages):
-    try:
-        client = GroqClient()
-        groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-        response = client.chat.completions.create(
-            model=modele,
-            messages=groq_messages,
-            max_tokens=1024,
-            temperature=0.7
-        )
-        return {"message": {"content": response.choices[0].message.content}}
-    except Exception as e:
-        raise Exception(f"Groq error: {e}")
+    """Appel a Groq pour modeles cloud gratuits.
+
+    Essaie chaque cle API disponible (GROQ_API_KEY_1, _2, ...) dans l'ordre.
+    Si une cle renvoie une erreur de rate limit (429), passe a la suivante.
+    Toute autre erreur est levee immediatement.
+    """
+    groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+    clients = get_groq_clients()
+    if not clients:
+        raise Exception("Aucune cle Groq configuree.")
+
+    derniere_erreur = None
+    for client in clients:
+        try:
+            response = client.chat.completions.create(
+                model=modele,
+                messages=groq_messages,
+                max_tokens=1024,
+                temperature=0.7
+            )
+            return {"message": {"content": response.choices[0].message.content}}
+        except Exception as e:
+            derniere_erreur = e
+            if "429" in str(e):
+                continue
+            raise Exception(f"Groq error: {e}")
+
+    raise Exception(f"Groq error (toutes cles epuisees): {derniere_erreur}")
 
 
 def chat_with_openrouter(modele, messages):
@@ -313,7 +348,7 @@ def chat_with_local(modele, messages):
 
 def providers_cloud_disponibles() -> list[dict]:
     providers = []
-    if os.environ.get("GROQ_API_KEY"):
+    if get_groq_clients():
         providers.append({
             "nom": "Groq",
             "modeles": MODELES_GROQ,
@@ -603,7 +638,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
             if tentatives == 1:
                 console.print(
                     "[dim yellow]⚠️  Aucune cle API cloud detectee "
-                    "(GROQ_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
+                    "(GROQ_API_KEY_1/GROQ_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
                 )
 
         if reponse is None:
