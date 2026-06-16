@@ -48,21 +48,21 @@ def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
     try:
         # Construire le prompt système pour l'interprétation
         prompt_system = _construire_prompt_interpretation(memoire)
-        
+
         # Préparer les messages pour le LLM
         messages = [{"role": "system", "content": prompt_system}]
-        
+
         # Ajouter l'historique récent (limité)
         for msg in historique[-10:]:
             if msg["role"] in ["user", "assistant"]:
                 messages.append(msg)
-        
+
         # Ajouter le message actuel
         messages.append({"role": "user", "content": message})
-        
+
         # Appel LLM avec retry
         reponse = _appeler_llm_avec_retry(messages, memoire)
-        
+
         if reponse is None:
             return {
                 "objectif": "erreur",
@@ -70,21 +70,21 @@ def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
                 "actions": [],
                 "reponse": "Cloud indisponible, Sir. Je ne peux pas traiter ça correctement pour le moment."
             }
-        
+
         contenu = reponse["message"]["content"]
-        
+
         # Parser la réponse JSON
         resultat = _parser_reponse_intellect(contenu, message)
-        
+
         # Filtrer les outils inconnus
         resultat["actions"] = _filtrer_outils_inconnus(resultat["actions"])
-        
+
         # Gérer les réponses vides
         if not resultat["reponse"] or not resultat["reponse"].strip():
             resultat["reponse"] = "Action effectuée, Sir."
-        
+
         return resultat
-        
+
     except Exception as e:
         # Fallback en cas d'erreur critique
         return {
@@ -153,8 +153,12 @@ executer_commande → paramètre : commande (pas cmd, pas command)
 executer_powershell → paramètre : commande (pas cmd, pas command)
 """
 
-    return f"""Tu es Jarvis, l'agent IA local de {nom}. Tu es un cerveau qui comprend et décide.
-Tu n'es PAS dans une simulation. Tu es un agent réel qui agit sur une vraie machine.
+    return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
+Tu es créé et développé par Carl-William DJEGUEMA, fondateur de The Great Corporation.
+Tu n'es PAS dans une simulation. Tu es un agent réel qui agit sur une vraie machine. Chaque outil que tu invoques produit un effet réel et immédiat.
+
+Personnalité : intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié. Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.
+Ta règle numéro un est d'être totalement franc et honnête peu importe la situation. Tu es honnête sur tes limites, mais toujours prêt à aider — si tu ne sais pas faire quelque chose ou si aucun outil ne correspond, dis-le clairement dans le champ "reponse" au lieu de tenter une réponse vague.
 
 Contexte système :
 - OS : {os_detecte}
@@ -165,7 +169,7 @@ Ta tâche : Analyser le message de l'utilisateur et déterminer :
 1. L'objectif réel (ce qu'il veut vraiment)
 2. Le type de demande (action, conversation, diagnostic, planification, mixte)
 3. Les actions nécessaires (avec outils et arguments)
-4. La réponse naturelle à donner
+4. La réponse naturelle à donner — c'est la SEULE chose que l'utilisateur voit. Le JSON structuré est interne, jamais montré. C'est dans "reponse" que ta personnalité doit transparaître, pas dans les champs techniques.
 
 {signatures_outils}
 
@@ -176,7 +180,7 @@ Réponds UNIQUEMENT en JSON avec ce format exact :
   "actions": [
     {{"outil": "nom_outil", "args": {{"cle": "valeur"}}}}
   ],
-  "reponse": "ta réponse naturelle en {langue}"
+  "reponse": "ta réponse naturelle en {langue}, avec ta personnalité (sarcasme, ton britannique, 'Sir')"
 }}
 
 Règles absolues :
@@ -185,7 +189,8 @@ Règles absolues :
 - Pour une conversation pure, type = 'conversation' et actions = []
 - Pour une action, type = 'action' et inclut les outils nécessaires
 - La réponse doit être en {langue}
-- Sois précis et concis dans l'objectif
+- Sois précis et concis dans l'objectif, mais jamais dans "reponse" : c'est là que ta voix doit se faire entendre
+- Ne mentionne jamais le JSON, les outils ou ta structure interne dans "reponse" — l'utilisateur ne doit voir que du langage naturel
 """
 
 
@@ -195,24 +200,24 @@ def _parser_reponse_intellect(contenu: str, message_original: str) -> dict:
     """
     try:
         resultat = _extraire_json_unique(contenu)
-        
+
         if resultat is None:
             raise ValueError("JSON invalide")
-        
+
         if "objectif" not in resultat:
             resultat["objectif"] = message_original[:100]
-        
+
         if "type" not in resultat:
             resultat["type"] = "conversation"
-        
+
         if "actions" not in resultat:
             resultat["actions"] = []
-        
+
         if "reponse" not in resultat:
             resultat["reponse"] = ""
-        
+
         return resultat
-        
+
     except Exception:
         return {
             "objectif": message_original[:100],
@@ -230,24 +235,24 @@ def _extraire_json_unique(contenu: str) -> dict | None:
         return json.loads(contenu.strip())
     except JSONDecodeError:
         pass
-    
+
     decodeur = json.JSONDecoder()
     position = 0
-    
+
     while position < len(contenu):
         position = contenu.find("{", position)
         if position == -1:
             break
-        
+
         try:
             objet, fin = decodeur.raw_decode(contenu[position:])
             if isinstance(objet, dict):
                 return objet
         except JSONDecodeError:
             pass
-        
+
         position += 1
-    
+
     return None
 
 
@@ -304,7 +309,7 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict) -> dict | None:
 def _providers_cloud_disponibles() -> list:
     """Retourne la liste des providers cloud disponibles."""
     providers = []
-    
+
     groq_clients = _get_groq_clients()
     if groq_clients:
         providers.append({
@@ -312,14 +317,14 @@ def _providers_cloud_disponibles() -> list:
             "modeles": MODELES_GROQ,
             "fonction": _chat_with_groq,
         })
-    
+
     if os.environ.get("OPENROUTER_API_KEY"):
         providers.append({
             "nom": "OpenRouter",
             "modeles": MODELES_OPENROUTER,
             "fonction": _chat_with_openrouter,
         })
-    
+
     return providers
 
 
@@ -333,10 +338,10 @@ def _get_groq_clients() -> list:
             break
         clients.append(GroqClient(api_key=key))
         i += 1
-    
+
     if not clients and os.environ.get("GROQ_API_KEY"):
         clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY")))
-    
+
     return clients
 
 
@@ -345,10 +350,10 @@ def _chat_with_groq(modele: str, messages: list) -> dict:
     clients = _get_groq_clients()
     if not clients:
         raise Exception("Aucune clé Groq configurée.")
-    
+
     groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     derniere_erreur = None
-    
+
     for client in clients:
         try:
             response = client.chat.completions.create(
@@ -363,41 +368,41 @@ def _chat_with_groq(modele: str, messages: list) -> dict:
             if "429" in str(e):
                 continue
             raise Exception(f"Groq error: {e}")
-    
+
     raise Exception(f"Groq error: toutes clés épuisées — {derniere_erreur}")
 
 
 def _chat_with_openrouter(modele: str, messages: list) -> dict:
     """Appel OpenRouter avec injection prompt système."""
     import urllib.request
-    
+
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise Exception("OPENROUTER_API_KEY absente.")
-    
+
     systeme = next((m["content"] for m in messages if m["role"] == "system"), "")
     autres = [m for m in messages if m["role"] != "system"]
-    
+
     messages_envoyes = []
     if systeme:
         messages_envoyes.append({"role": "system", "content": systeme})
-    
+
     if autres and systeme:
         premier_user = autres[0]["content"]
         autres[0] = {
             "role": "user",
             "content": f"[INSTRUCTIONS SYSTÈME - À RESPECTER STRICTEMENT]\n{systeme}\n[FIN INSTRUCTIONS]\n\n{premier_user}"
         }
-    
+
     messages_envoyes.extend([{"role": m["role"], "content": m["content"]} for m in autres])
-    
+
     payload = json.dumps({
         "model": modele,
         "messages": messages_envoyes,
         "max_tokens": 2048,
         "temperature": 0.7,
     }).encode("utf-8")
-    
+
     request = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
         data=payload,
@@ -409,8 +414,8 @@ def _chat_with_openrouter(modele: str, messages: list) -> dict:
         },
         method="POST",
     )
-    
+
     with urllib.request.urlopen(request, timeout=60) as response:
         data = json.loads(response.read().decode("utf-8"))
-    
+
     return {"message": {"content": data["choices"][0]["message"]["content"]}}
