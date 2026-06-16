@@ -16,7 +16,6 @@ from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.prompt import construire_prompt_action, construire_prompt_conversation
 from core.intellect import interpreter_objectif
-from core.translator import traduire_message, match_fort
 from core.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
 from tools import OUTILS
 
@@ -37,6 +36,7 @@ MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
+MAX_ETAPES_STARK = 10
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "exécute", "commande",
@@ -70,7 +70,18 @@ MOTS_VALIDATION = [
     "continue", "confirme", "d'accord fais", "oui jarvis",
 ]
 
-# ─── MODE ACTION FORCÉ ────────────────────────────────────────────────────────
+# ─── MODES : ACTION (!a) ET STARK (!S) — INDÉPENDANTS ET COMBINABLES ─────────
+#
+# !a  → one-shot, intention forcée pour le prochain message uniquement,
+#       zones d'accès normales.
+# !S <objectif> → boucle agentique complète : Jarvis planifie, exécute,
+#       observe, itère jusqu'à atteindre l'objectif ou être bloqué.
+#       Accès étendu (zones système/sensibles) actif uniquement pendant
+#       la durée de la boucle, désactivé automatiquement à la sortie.
+# !a + !S combinés : possible si !S est suivi d'un objectif one-shot —
+#       les deux flags sont indépendants dans le code, pas de conflit.
+# ───────────────────────────────────────────────────────────────────────────
+
 mode_action_force = False
 
 PATTERNS_ACTIVATION_MODE_ACTION = [
@@ -81,157 +92,30 @@ PATTERNS_DESACTIVATION_MODE_ACTION = [
     r"\bpasse en mode conversation\b",
     r"\bmode conversation\b",
     r"\bmode conv\b",
-    r"\bonv\b",
 ]
 RACCOURCI_MODE_ACTION = "!a"
-RACCOURCI_MODE_STARK = "!S"
 
-def detecter_commande_mode(message: str) -> str | None:
-    """Retourne 'action', 'conv', 'stark', 'stark_off', ou None."""
-    m = message.lower().strip()
-    if m == RACCOURCI_MODE_ACTION:
+# Mode Stark : "!S <objectif>" — l'objectif est extrait du message
+PATTERN_MODE_STARK = re.compile(r"^!s\s+(.+)$", re.IGNORECASE)
+
+
+def detecter_commande_mode(message: str):
+    """Retourne ('stark', objectif), 'action', 'conv', ou None."""
+    m_brut = message.strip()
+    m_lower = m_brut.lower()
+
+    match_stark = PATTERN_MODE_STARK.match(m_brut)
+    if match_stark:
+        return ("stark", match_stark.group(1).strip())
+
+    if m_lower == RACCOURCI_MODE_ACTION:
         return "action"
-    if m == RACCOURCI_MODE_STARK:
-        return "stark"
-    if any(re.search(p, m) for p in PATTERNS_ACTIVATION_MODE_ACTION):
+    if any(re.search(p, m_lower) for p in PATTERNS_ACTIVATION_MODE_ACTION):
         return "action"
-    if any(re.search(p, m) for p in PATTERNS_DESACTIVATION_MODE_ACTION):
+    if any(re.search(p, m_lower) for p in PATTERNS_DESACTIVATION_MODE_ACTION):
         return "conv"
     return None
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def detecter_intention(message: str) -> bool:
-    global mode_action_force
-
-    # Court-circuit : mode action one-shot activé
-    if mode_action_force:
-        return True
-
-    message_lower = message.lower()
-
-    # Patterns conversation pure — NETTOYÉS des faux positifs
-    PATTERNS_CONVERSATION = [
-        r"\bpourquoi\b", r"\bcomment\b", r"\bqu[' ]est-ce\b",
-        r"\bexplique\b", r"\bdis-moi\b", r"\bqui es-tu\b",
-        r"\bes-tu\b", r"\bsais-tu\b", r"\bmerci\b",
-        r"\bd[' ]accord\b", r"\bbonjour\b",
-        r"\bque se passe\b", r"\braconte\b",
-        # RETIRÉS volontairement : r"\bvide\b", r"\bcontient\b",
-        # r"\bsouviens\b", r"\bqu[' ]as-tu\b", r"\bl[' ]as-tu\b",
-        # r"\bqu[' ]y a-t-il\b", r"\bok\b"
-        # → bloquaient des intentions légitimes
-    ]
-    for pattern in PATTERNS_CONVERSATION:
-        if re.search(pattern, message_lower):
-            return False
-
-    VERBES_ACTION = [
-        # existants
-        "ouvre", "ferme", "lance", "crée", "supprime", "déplace",
-        "copie", "liste", "écris", "exécute", "installe",
-        "trouve", "cherche", "analyse", "surveille", "démarre", "arrête",
-        "organise", "note", "mémorise", "rappelle", "vide", "notifie",
-        # ajouts
-        "fouille", "vérifie", "verifie", "check", "affiche", "montre",
-        "scanne", "inspecte", "ajoute", "enregistre", "sauvegarde",
-        "efface", "nettoie", "libère", "libere",
-        "consulte", "accède", "accede",
-        "demarre", "stoppe", "tue", "kill",
-        "planifie", "programme", "automatise",
-        "renomme", "deplace",
-        "audite", "optimise", "diagnostique", "recherche",
-    ]
-
-    CIBLES_SYSTEME = [
-        # existantes
-        r"\b\w+\.\w{2,4}\b",
-        r"[A-Z]:\\", r"/home/", r"/mnt/",
-        r"\bprocessus\b", r"\bpid\b",
-        r"\bram\b", r"\bcpu\b", r"\bdisque\b", r"\bstockage\b",
-        r"\bdossier\b", r"\brépertoire\b", r"\bfichier\b",
-        r"\btemp\b", r"\bcorbeille\b",
-        r"\brappel\b", r"\bautomatisation\b", r"\bsurveillance\b",
-        r"\bnote\b", r"\bpréférence\b", r"\bmémoire\b",
-        # ajouts — mémoire & contexte
-        r"\bmemoire\b", r"\bcontexte\b", r"\bprofil\b",
-        r"\bpreference\b", r"\bpreferences\b",
-        # ajouts — système & apps
-        r"\blogs?\b", r"\bjournal\b", r"\bévenements?\b", r"\bevenements?\b",
-        r"\bservices?\b", r"\bparamètres?\b", r"\bparametres?\b",
-        r"\bapplication\b", r"\bappli\b", r"\bapp\b",
-        r"\bexplorateur\b", r"\bterminal\b", r"\bconsole\b",
-        r"\btâche\b", r"\btache\b", r"\bregistre\b",
-        r"\bprogramme\b", r"\bperformance\b", r"\bprocesseur\b",
-        r"\bwindows\b", r"\bsystème\b", r"\bsysteme\b",
-        r"\bhistorique\b", r"\bconfiguration\b", r"\bconfig\b",
-        # ajouts — outils réels
-        r"\bcommande\b", r"\bscript\b", r"\bpowershell\b",
-        r"\bautomatisations?\b", r"\bplanification\b",
-        r"\bsurveillances?\b", r"\bwatcher\b",
-        r"\bbilan\b", r"\baudit\b", r"\brapport\b",
-        r"\bespace\b", r"\boccupation\b",
-        r"\bnotification\b", r"\balerte\b",
-        r"\béchange\b", r"\bechange\b",
-    ]
-
-    # Cibles fortes : déclenchent action même sans verbe explicite
-    # Limitées aux mots qui n'apparaissent JAMAIS en conversation pure
-    CIBLES_FORTES = [
-        r"\brappels?\b",
-        r"\bautomatisations?\b",
-        r"\bbilan\b",
-        r"\baudit\b",
-        r"\bpowershell\b",
-        r"\bwatcher\b",
-        r"\bpreferences?\b",
-        r"\bplanification\b",
-    ]
-
-    # Patterns interrogation d'état : "Y'a-t-il des rappels ?", "Ai-je des notes ?"
-    # Combinés à une cible système → action
-    PATTERNS_INTERROGATION_ETAT = [
-        r"\by[' ]a[\s-]t[\s-]il\b",
-        r"\bai-je\b",
-        r"\best-ce qu[' ]il y a\b",
-        r"\bqu[' ]est-ce qu[' ]il y a\b",
-        r"\bmontre[\s-]moi\b",
-        r"\bc[' ]est quoi\b",
-        r"\bqu[' ]as-tu\b",
-        r"\bl[' ]as-tu\b",
-    ]
-
-    has_verb = any(v in message_lower for v in VERBES_ACTION)
-    has_target = any(re.search(p, message_lower) for p in CIBLES_SYSTEME)
-    has_strong_target = any(re.search(p, message_lower) for p in CIBLES_FORTES)
-    has_interrogation_etat = any(re.search(p, message_lower) for p in PATTERNS_INTERROGATION_ETAT)
-
-    # Logique de décision
-    if has_verb and has_target:
-        return True
-    if has_strong_target:
-        return True
-    if has_interrogation_etat and has_target:
-        return True
-    return False
-
-
-def detecter_validation(message: str, historique: list) -> bool:
-    message_lower = message.lower().strip()
-    if len(message_lower) > 60:
-        return False
-    if not any(message_lower == v or message_lower.startswith(v + " ") for v in MOTS_VALIDATION):
-        return False
-    for msg in reversed(historique):
-        if msg["role"] == "assistant":
-            contenu = msg["content"].lower()
-            indicateurs_proposition = [
-                "je peux", "voulez-vous", "souhaitez-vous", "je vais",
-                "est-ce que", "dois-je", "permettez-moi", "si vous le souhaitez",
-                "je pourrais", "ouvrir", "ajuster", "modifier", "lancer",
-            ]
-            return any(ind in contenu for ind in indicateurs_proposition)
-    return False
 
 
 def estimer_complexite(message: str, intention_action: bool) -> str:
@@ -567,11 +451,121 @@ def limiter_historique(historique: list) -> None:
     historique[:] = systeme + recents
 
 
+# ============================================================================
+# MODE STARK — BOUCLE AGENTIQUE
+# ============================================================================
+
+def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
+    """
+    Mode Stark : Jarvis reçoit un objectif et boucle de façon autonome
+    (planifie → exécute → observe → itère) jusqu'à l'atteindre ou être
+    bloqué. L'objectif original prime à chaque itération — il est
+    réinjecté intégralement pour éviter toute dérive.
+
+    Accès étendu (zones système/sensibles) actif uniquement pendant la
+    durée de la boucle ; désactivé automatiquement à la sortie, même en
+    cas d'erreur.
+    """
+    activer_mode_stark()
+    console.print(Panel(f"Objectif : {objectif}", title="⚡ Mode Stark activé", style="bold red"))
+
+    etapes_realisees: list[str] = []
+
+    try:
+        for etape in range(1, MAX_ETAPES_STARK + 1):
+            historique_etapes = (
+                "\n".join(etapes_realisees) if etapes_realisees else "Aucune étape réalisée encore."
+            )
+            message_stark = (
+                f"[MODE STARK — ÉTAPE {etape}/{MAX_ETAPES_STARK}]\n\n"
+                f"OBJECTIF PRINCIPAL (à atteindre, ne jamais perdre de vue) :\n{objectif}\n\n"
+                f"Étapes déjà réalisées dans cette session Stark :\n{historique_etapes}\n\n"
+                "Décide la ou les prochaines actions nécessaires pour avancer vers l'objectif. "
+                "Si l'objectif est déjà atteint, ou si tu es bloqué et qu'aucune action supplémentaire "
+                "n'aide, appelle terminer_tache avec un résumé clair de ce qui a été fait et pourquoi tu t'arrêtes."
+            )
+
+            with console.status(f"[red]⚡ Stark réfléchit (étape {etape}/{MAX_ETAPES_STARK})...[/red]", spinner="dots"):
+                resultat = interpreter_objectif(message_stark, historique, memoire)
+
+            actions = resultat.get("actions", [])
+            reponse_naturelle = resultat.get("reponse", "")
+
+            if not actions:
+                console.print(f"[red]⚡ Stark — aucune action proposée, fin de boucle.[/red]")
+                rapport = (
+                    f"Mode Stark terminé (étape {etape}).\n"
+                    f"Objectif : {objectif}\n\n"
+                    f"{reponse_naturelle}\n\n"
+                    f"Étapes réalisées :\n{historique_etapes}"
+                )
+                return rapport
+
+            terminer = False
+            resume_final = None
+
+            for action in actions:
+                outil = action.get("outil")
+                args = action.get("args", {})
+
+                if outil == "terminer_tache":
+                    resume_final = args.get("resume", "Objectif atteint.")
+                    terminer = True
+                    continue
+
+                if outil not in OUTILS:
+                    etapes_realisees.append(f"Étape {etape} : outil inconnu '{outil}' — ignoré")
+                    console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
+                    continue
+
+                try:
+                    resultat_outil = OUTILS[outil](**args)
+                    etapes_realisees.append(f"Étape {etape} : {outil}({args}) → {resultat_outil}")
+                    console.print(f"[dim red]⚡ {outil} → {str(resultat_outil)[:120]}[/dim red]")
+                except TypeError as e:
+                    etapes_realisees.append(f"Étape {etape} : {outil} → ERREUR arguments : {e}")
+                    console.print(f"[red]⚡ Erreur arguments {outil} : {e}[/red]")
+                except Exception as e:
+                    etapes_realisees.append(f"Étape {etape} : {outil} → ERREUR : {e}")
+                    console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
+
+            if terminer:
+                console.print(Panel(resume_final, title="⚡ Mode Stark — objectif atteint", style="bold green"))
+                rapport = (
+                    f"Mode Stark terminé avec succès.\n"
+                    f"Objectif : {objectif}\n\n"
+                    f"{resume_final}\n\n"
+                    f"Étapes réalisées :\n" + "\n".join(etapes_realisees)
+                )
+                return rapport
+
+        # Limite d'étapes atteinte sans conclusion explicite
+        rapport = (
+            f"Mode Stark — limite de {MAX_ETAPES_STARK} étapes atteinte sans conclusion explicite.\n"
+            f"Objectif : {objectif}\n\n"
+            f"Étapes réalisées :\n" + "\n".join(etapes_realisees)
+        )
+        console.print(Panel(rapport, title="⚡ Mode Stark — limite atteinte", style="bold yellow"))
+        return rapport
+
+    finally:
+        desactiver_mode_stark()
+
+
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     global mode_action_force
 
     # ── Gestion commandes de mode ─────────────────────────────────────────────
     commande_mode = detecter_commande_mode(message)
+
+    if isinstance(commande_mode, tuple) and commande_mode[0] == "stark":
+        objectif = commande_mode[1]
+        historique.append({"role": "user", "content": message})
+        rapport = executer_mode_stark(objectif, historique, memoire)
+        historique.append({"role": "assistant", "content": rapport})
+        limiter_historique(historique)
+        return rapport, True
+
     if commande_mode == "action":
         mode_action_force = True
         msg_confirm = "Mode action activé, Sir. Prochain message traité comme commande directe."
@@ -581,12 +575,6 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     elif commande_mode == "conv":
         mode_action_force = False
         msg_confirm = "Mode conversation rétabli, Sir."
-        historique.append({"role": "user", "content": message})
-        historique.append({"role": "assistant", "content": msg_confirm})
-        return msg_confirm, False
-    elif commande_mode == "stark":
-        activer_mode_stark()
-        msg_confirm = "Mode Stark activé, Sir. Accès étendu autorisé. JARVIS_DIR reste protégé."
         historique.append({"role": "user", "content": message})
         historique.append({"role": "assistant", "content": msg_confirm})
         return msg_confirm, False
@@ -600,60 +588,37 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         mode_action_force = False  # reset one-shot avant même le LLM
         console.print("[dim magenta]⚡ Mode action one-shot actif[/dim magenta]")
 
-    # ── NOUVELLE ARCHITECTURE : Core Intellect ───────────────────────────────
-    # Le traducteur pré-résout les intentions connues (optimisation)
-    langue = memoire.get("utilisateur", {}).get("langue", "français")
-    traduction = traduire_message(message, langue[:2].lower())
-    
-    if traduction and match_fort(message, langue[:2].lower()):
-        # Match fort : intention déjà résolue, Core Intellect valide uniquement
-        cle, intention_pre_resolue = traduction
-        console.print(f"[dim cyan]→ Intention pré-résolue : {cle}[/dim cyan]")
-        # Pour l'instant, on passe quand même par Core Intellect pour validation
-        # À l'avenir, on pourra exécuter directement si confiance élevée
-    
+    # Recharger la mémoire depuis le disque AVANT l'appel LLM
+    memoire.update(normaliser_memoire(charger_memoire()))
+
     # Core Intellect comprend l'objectif réel en une seule passe LLM
     resultat_intellect = interpreter_objectif(message, historique, memoire)
-    
-    objectif = resultat_intellect["objectif"]
+
     type_demande = resultat_intellect["type"]
     actions = resultat_intellect["actions"]
     reponse_naturelle = resultat_intellect["reponse"]
-    
-    # Déterminer si c'est une action (pour compatibilité avec le code existant)
+
     intention_action = type_demande in {"action", "mixte"} or len(actions) > 0
-    
-    # Si mode action one-shot était actif, forcer l'action
     if etait_mode_action_force:
         intention_action = True
-    
-    # ─────────────────────────────────────────────────────────────────────────
 
-    # Mise à jour de la mémoire
-    memoire.update(normaliser_memoire(charger_memoire()))
+    # Exécuter les actions retournées par Core Intellect
+    resultats_outils = []
+    for action in actions:
+        outil = action.get("outil")
+        args = action.get("args", {})
+        if outil and outil in OUTILS:
+            try:
+                resultat = OUTILS[outil](**args)
+                resultats_outils.append(str(resultat))
+            except Exception as e:
+                resultats_outils.append(f"Erreur outil {outil} : {e}")
 
-    # Construire la réponse finale avec les actions exécutées
-    if actions:
-        # Exécuter les actions
-        resultats_outils = []
-        for action in actions:
-            outil = action.get("outil")
-            args = action.get("args", {})
-            if outil and outil in OUTILS:
-                try:
-                    resultat = OUTILS[outil](**args)
-                    resultats_outils.append(str(resultat))
-                except Exception as e:
-                    resultats_outils.append(f"Erreur outil {outil} : {e}")
-        
-        # Enrichir la réponse avec les résultats
-        if resultats_outils:
-            reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
-        else:
-            reponse_finale = reponse_naturelle
+    if resultats_outils:
+        reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
     else:
         reponse_finale = reponse_naturelle
-    
+
     historique.append({"role": "assistant", "content": reponse_finale})
     limiter_historique(historique)
     return reponse_finale, intention_action
@@ -661,11 +626,10 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
 
 def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[str, bool]:
     """
-    Exécute une requête utilisateur avec le nouveau flux Core Intellect.
-    
-    Core Intellect gère déjà la compréhension et l'exécution des actions
-    en une seule passe LLM. Cette fonction simplifiée sert d'interface
-    pour la boucle principale.
+    Exécute une requête utilisateur. Core Intellect gère la compréhension
+    et l'exécution en une seule passe (mode normal/action), ou via la
+    boucle Stark (mode !S). Cette fonction sert d'interface pour la
+    boucle principale.
     """
     reponse, intention_action = parler(user_input, historique, memoire)
     return reponse, intention_action
@@ -895,7 +859,7 @@ def main():
     console.print(Panel(
         f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.\n"
         f"Mode action one-shot : 'Jarvis, passe en mode action' ou '!a'\n"
-        f"Mode Stark (accès étendu) : '!S'",
+        f"Mode Stark (boucle agentique, accès étendu) : '!S <objectif>'",
         style="bold cyan"
     ))
     stop_event = threading.Event()
@@ -904,9 +868,13 @@ def main():
     veille.start()
     while True:
         try:
-            mode_label = "[bold magenta]⚡ACTION > [/bold magenta]" if mode_action_force else "[bold green]Toi > [/bold green]"
-            if est_mode_stark_actif():
+            if mode_action_force:
+                mode_label = "[bold magenta]⚡ACTION > [/bold magenta]"
+            elif est_mode_stark_actif():
                 mode_label = "[bold red]⚡STARK > [/bold red]"
+            else:
+                mode_label = "[bold green]Toi > [/bold green]"
+
             user_input = console.input(mode_label).strip()
             if not user_input:
                 continue
