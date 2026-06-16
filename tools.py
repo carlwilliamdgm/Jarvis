@@ -46,6 +46,7 @@ from core.memory import (
     sauvegarder_memoire,
 )
 from core.safety import action_bloquee, action_requiert_confirmation, action_requiert_verrou, chemin_autorise
+from core.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
 
 _console = Console()
@@ -182,6 +183,62 @@ def bilan_proactif(force: bool = False, niveau: str = "normal") -> str:
     return "\n\n".join(lignes) if lignes else "Aucun signal proactif pour le moment."
 
 
+def lire_traducteur_tool() -> str:
+    """Lit le traducteur complet pour consultation libre."""
+    traducteur = lire_traducteur()
+    stats = obtenir_stats_traducteur()
+    
+    lignes = [
+        f"=== TRADUCTEUR JARVIS ===",
+        f"Entrées totales : {stats['total_entrees']}",
+        f"Patterns FR : {stats['total_patterns_fr']}",
+        f"Patterns EN : {stats['total_patterns_en']}",
+        f"Avec intention : {stats['entrees_avec_intention']}",
+        f"Sans intention : {stats['entrees_sans_intention']}",
+        "",
+        "=== ENTRÉES ==="
+    ]
+    
+    for cle, data in sorted(traducteur.items()):
+        patterns_fr = ", ".join(data.get("fr", [])[:5])
+        patterns_en = ", ".join(data.get("en", [])[:5])
+        a_intention = "OUI" if data.get("intention") else "NON"
+        
+        lignes.append(f"\n[{cle}]")
+        lignes.append(f"  FR: {patterns_fr}...")
+        lignes.append(f"  EN: {patterns_en}...")
+        lignes.append(f"  Intention: {a_intention}")
+    
+    return "\n".join(lignes)
+
+
+def modifier_traducteur(cle: str, patterns_fr: str, patterns_en: str, outil: str = "", args_json: str = "{}") -> str:
+    """
+    Modifie ou ajoute une entrée au traducteur.
+    
+    Confirmation Carl-William OBLIGATOIRE avant écriture.
+    """
+    # Demander confirmation
+    _console.print(f"\n[yellow]⚠️  Modification du traducteur demandée[/yellow]")
+    _console.print(f"[cyan]Clé : {cle}[/cyan]")
+    _console.print(f"[cyan]Patterns FR : {patterns_fr}[/cyan]")
+    _console.print(f"[cyan]Patterns EN : {patterns_en}[/cyan]")
+    if outil:
+        _console.print(f"[cyan]Outil : {outil}[/cyan]")
+        _console.print(f"[cyan]Args : {args_json}[/cyan]")
+    
+    confirmation = _console.input("[bold]Confirmer la modification ? (Carl-William uniquement - o/n) >[/bold] ").strip().lower()
+    
+    if confirmation not in {"o", "oui", "yes", "y"}:
+        return "Modification annulée."
+    
+    # Pour l'instant, cette fonction ne modifie pas réellement le fichier core/translator.py
+    # car cela nécessiterait une réécriture du fichier source, ce qui est risqué.
+    # À l'avenir, cela pourrait être implémenté via un système de persistance séparé.
+    
+    return "Modification du traducteur en attente d'implémentation de persistance sécurisée."
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -224,4 +281,6 @@ OUTILS = {
     "executer_surveillance_dossiers": executer_surveillance_dossiers,
     "supprimer_surveillance_dossier": supprimer_surveillance_dossier,
     "bilan_proactif": bilan_proactif,
+    "lire_traducteur": lire_traducteur_tool,
+    "modifier_traducteur": modifier_traducteur,
 }

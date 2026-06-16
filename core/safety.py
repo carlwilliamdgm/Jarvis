@@ -7,6 +7,11 @@ Jarvis uses a two-tier policy:
 ZONE_MAP self-initializes at import time, refreshes stale data automatically,
 and avoids hardcoded Windows paths by deriving roots from environment variables
 or platform APIs when available.
+
+Mode Stark (!S) : contrôle l'accès aux zones sensibles et système.
+- mode_stark_actif = False (défaut) : zones système et sensibles bloquées
+- mode_stark_actif = True (!S) : zones système et sensibles accessibles
+- JARVIS_DIR toujours bloqué — exception absolue, jamais levée
 """
 
 from __future__ import annotations
@@ -18,9 +23,32 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.paths import JARVIS_DIR
+from core.paths import JARVIS_DIR, HOME
 
 USE_FALLBACK = False
+
+# ============================================================================
+# MODE STARK - FLAG DE SESSION
+# ============================================================================
+
+_mode_stark_actif = False
+
+
+def activer_mode_stark() -> None:
+    """Active le mode Stark (!S)."""
+    global _mode_stark_actif
+    _mode_stark_actif = True
+
+
+def desactiver_mode_stark() -> None:
+    """Désactive le mode Stark."""
+    global _mode_stark_actif
+    _mode_stark_actif = False
+
+
+def est_mode_stark_actif() -> bool:
+    """Retourne True si le mode Stark est actif."""
+    return _mode_stark_actif
 
 
 def _bootstrap_import(module_name: str, package_name: str | None = None):
@@ -162,11 +190,82 @@ ZONE_MAP = ZoneMapper()
 
 
 def action_bloquee(path: Path) -> bool:
-    return ZONE_MAP.est_protege(path)
+    """
+    Détermine si une action est bloquée sur un chemin donné.
+    
+    Hiérarchie des permissions :
+    - mode_stark_actif = False (défaut) :
+      * Zones système bloquées : SystemRoot, Program Files, ProgramData
+      * Zones sensibles bloquées : Desktop, Documents, Downloads, home racine
+      * JARVIS_DIR bloqué
+    
+    - mode_stark_actif = True (!S) :
+      * Zones sensibles accessibles
+      * Zones système accessibles
+      * JARVIS_DIR toujours bloqué — exception absolue, jamais levée
+    """
+    # JARVIS_DIR est TOUJOURS bloqué, même en mode Stark
+    try:
+        resolved = Path(path).expanduser().resolve(strict=False)
+        if resolved == JARVIS_DIR or resolved.is_relative_to(JARVIS_DIR):
+            return True
+    except OSError:
+        pass
+    
+    # En mode Stark, seul JARVIS_DIR reste bloqué
+    if est_mode_stark_actif():
+        return False
+    
+    # Mode normal : vérifier les zones système et sensibles
+    return ZONE_MAP.est_protege(path) or _est_zone_sensible(path)
+
+
+def _est_zone_sensible(path: Path) -> bool:
+    """
+    Détermine si un chemin est dans une zone sensible.
+    
+    Zones sensibles (bloquées en mode normal) :
+    - Desktop
+    - Documents
+    - Downloads
+    - home racine
+    """
+    try:
+        resolved = Path(path).expanduser().resolve(strict=False)
+        home_resolved = HOME.resolve()
+        
+        # Zones sensibles directes
+        zones_sensibles = [
+            home_resolved,
+            (home_resolved / "Desktop").resolve(),
+            (home_resolved / "Documents").resolve(),
+            (home_resolved / "Downloads").resolve(),
+        ]
+        
+        for zone in zones_sensitives:
+            if resolved == zone or resolved.is_relative_to(zone):
+                return True
+        
+        return False
+    except OSError:
+        return False
 
 
 def action_requiert_confirmation(path: Path) -> bool:
-    return False
+    """
+    Détermine si une action nécessite une confirmation utilisateur.
+    
+    Cette fonction est utilisée par les outils pour demander confirmation
+    avant d'exécuter des actions sensibles.
+    
+    En mode Stark, aucune confirmation n'est requise (l'utilisateur a déjà
+    explicitement activé le mode privilégié).
+    """
+    if est_mode_stark_actif():
+        return False
+    
+    # Les actions sur les zones sensibles nécessitent une confirmation
+    return _est_zone_sensible(path)
 
 
 def action_requiert_verrou(path: Path) -> bool:

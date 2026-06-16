@@ -15,6 +15,9 @@ from rich.console import Console
 from rich.panel import Panel
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.prompt import construire_prompt_action, construire_prompt_conversation
+from core.intellect import interpreter_objectif
+from core.translator import traduire_message, match_fort
+from core.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
 from tools import OUTILS
 
 try:
@@ -78,14 +81,18 @@ PATTERNS_DESACTIVATION_MODE_ACTION = [
     r"\bpasse en mode conversation\b",
     r"\bmode conversation\b",
     r"\bmode conv\b",
+    r"\bonv\b",
 ]
 RACCOURCI_MODE_ACTION = "!a"
+RACCOURCI_MODE_STARK = "!S"
 
 def detecter_commande_mode(message: str) -> str | None:
-    """Retourne 'action', 'conv', ou None."""
+    """Retourne 'action', 'conv', 'stark', 'stark_off', ou None."""
     m = message.lower().strip()
     if m == RACCOURCI_MODE_ACTION:
         return "action"
+    if m == RACCOURCI_MODE_STARK:
+        return "stark"
     if any(re.search(p, m) for p in PATTERNS_ACTIVATION_MODE_ACTION):
         return "action"
     if any(re.search(p, m) for p in PATTERNS_DESACTIVATION_MODE_ACTION):
@@ -577,6 +584,12 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         historique.append({"role": "user", "content": message})
         historique.append({"role": "assistant", "content": msg_confirm})
         return msg_confirm, False
+    elif commande_mode == "stark":
+        activer_mode_stark()
+        msg_confirm = "Mode Stark activé, Sir. Accès étendu autorisé. JARVIS_DIR reste protégé."
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": msg_confirm})
+        return msg_confirm, False
     # ─────────────────────────────────────────────────────────────────────────
 
     historique.append({"role": "user", "content": message})
@@ -587,145 +600,75 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         mode_action_force = False  # reset one-shot avant même le LLM
         console.print("[dim magenta]⚡ Mode action one-shot actif[/dim magenta]")
 
-    intention_action = detecter_intention(message) or detecter_validation(message, historique)
-    # detecter_intention a déjà court-circuité via le flag si etait_mode_action_force
+    # ── NOUVELLE ARCHITECTURE : Core Intellect ───────────────────────────────
+    # Le traducteur pré-résout les intentions connues (optimisation)
+    langue = memoire.get("utilisateur", {}).get("langue", "français")
+    traduction = traduire_message(message, langue[:2].lower())
+    
+    if traduction and match_fort(message, langue[:2].lower()):
+        # Match fort : intention déjà résolue, Core Intellect valide uniquement
+        cle, intention_pre_resolue = traduction
+        console.print(f"[dim cyan]→ Intention pré-résolue : {cle}[/dim cyan]")
+        # Pour l'instant, on passe quand même par Core Intellect pour validation
+        # À l'avenir, on pourra exécuter directement si confiance élevée
+    
+    # Core Intellect comprend l'objectif réel en une seule passe LLM
+    resultat_intellect = interpreter_objectif(message, historique, memoire)
+    
+    objectif = resultat_intellect["objectif"]
+    type_demande = resultat_intellect["type"]
+    actions = resultat_intellect["actions"]
+    reponse_naturelle = resultat_intellect["reponse"]
+    
+    # Déterminer si c'est une action (pour compatibilité avec le code existant)
+    intention_action = type_demande in {"action", "mixte"} or len(actions) > 0
+    
+    # Si mode action one-shot était actif, forcer l'action
     if etait_mode_action_force:
         intention_action = True
+    
+    # ─────────────────────────────────────────────────────────────────────────
 
-    complexite = estimer_complexite(message, intention_action)
-
+    # Mise à jour de la mémoire
     memoire.update(normaliser_memoire(charger_memoire()))
 
-    if intention_action:
-        historique[0]["content"] = construire_prompt_action(memoire)
+    # Construire la réponse finale avec les actions exécutées
+    if actions:
+        # Exécuter les actions
+        resultats_outils = []
+        for action in actions:
+            outil = action.get("outil")
+            args = action.get("args", {})
+            if outil and outil in OUTILS:
+                try:
+                    resultat = OUTILS[outil](**args)
+                    resultats_outils.append(str(resultat))
+                except Exception as e:
+                    resultats_outils.append(f"Erreur outil {outil} : {e}")
+        
+        # Enrichir la réponse avec les résultats
+        if resultats_outils:
+            reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
+        else:
+            reponse_finale = reponse_naturelle
     else:
-        historique[0]["content"] = construire_prompt_conversation(memoire)
-
-    reponse = None
-    provider_cloud_reussi = None
-    tentatives = 0
-    max_tentatives = 2
-
-    while tentatives < max_tentatives:
-        tentatives += 1
-        providers_cloud = ordonner_providers_cloud(providers_cloud_disponibles(), memoire, complexite)
-
-        if providers_cloud:
-            if tentatives == 1:
-                console.print(f"[dim]→ Cle API cloud detectee. Tentative modeles cloud...[/dim]")
-            else:
-                console.print(f"[dim yellow]→ Retry modeles cloud (tentative {tentatives})...[/dim yellow]")
-
-            for provider in providers_cloud:
-                if reponse is not None:
-                    break
-                nom_provider = provider["nom"]
-                modeles = provider["modeles"]
-                fonction_chat = provider["fonction"]
-                with concurrent.futures.ThreadPoolExecutor(max_workers=len(modeles)) as executor:
-                    futures = {executor.submit(fonction_chat, modele, historique): modele for modele in modeles}
-                    for future in concurrent.futures.as_completed(futures):
-                        modele = futures[future]
-                        try:
-                            reponse = future.result()
-                            provider_cloud_reussi = nom_provider
-                            console.print(f"[dim green]✓ {nom_provider} reussi : {modele}[/dim green]")
-                            break
-                        except Exception as e:
-                            console.print(f"[dim yellow]✗ {nom_provider} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
-                            continue
-        else:
-            if tentatives == 1:
-                console.print(
-                    "[dim yellow]⚠️  Aucune cle API cloud detectee "
-                    "(GROQ_API_KEY_1/GROQ_API_KEY ou OPENROUTER_API_KEY).[/dim yellow]"
-                )
-
-        if reponse is None:
-            if tentatives == 1:
-                console.print(f"[dim]→ Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
-            else:
-                console.print(f"[dim yellow]→ Retry {MODELE_LOCAL} (tentative {tentatives})...[/dim yellow]")
-            try:
-                reponse = chat_with_local(MODELE_LOCAL, historique)
-            except Exception as e:
-                console.print(f"[red]✗ Erreur modèle local : {e}[/red]")
-                if tentatives < max_tentatives:
-                    continue
-                reponse = {"message": {"content": f"Erreur : {e}"}}
-
-        if reponse is None:
-            continue
-
-        contenu = reponse["message"]["content"]
-
-        if intention_action:
-            if valider_reponse_json(contenu):
-                break
-            elif tentatives < max_tentatives:
-                console.print(f"[yellow]⚠️  Réponse invalide (pas de JSON). Nouvelle tentative...[/yellow]")
-                historique.append({"role": "assistant", "content": contenu})
-                historique.append({
-                    "role": "user",
-                    "content": "Votre réponse précédente ne contenait pas de JSON d'outil valide. Veuillez répondre avec une ligne JSON au format {\"outil\": \"nom\", \"args\": {...}}, puis une phrase naturelle."
-                })
-                reponse = None
-                provider_cloud_reussi = None
-                continue
-        else:
-            break
-
-    if reponse is None:
-        reponse = {"message": {"content": "Erreur : Impossible d'obtenir une réponse du modèle."}}
-
-    contenu = reponse["message"]["content"]
-    if provider_cloud_reussi:
-        memoriser_provider_cloud(provider_cloud_reussi)
-    historique.append({"role": "assistant", "content": contenu})
+        reponse_finale = reponse_naturelle
+    
+    historique.append({"role": "assistant", "content": reponse_finale})
     limiter_historique(historique)
-    return contenu, intention_action
+    return reponse_finale, intention_action
 
 
 def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[str, bool]:
+    """
+    Exécute une requête utilisateur avec le nouveau flux Core Intellect.
+    
+    Core Intellect gère déjà la compréhension et l'exécution des actions
+    en une seule passe LLM. Cette fonction simplifiée sert d'interface
+    pour la boucle principale.
+    """
     reponse, intention_action = parler(user_input, historique, memoire)
-    if not intention_action:
-        return reponse, False
-
-    complexite = estimer_complexite(user_input, intention_action)
-    max_etapes = MAX_ETAPES_AGENT if complexite == "complexe" else 1
-    resultats_outils = []
-    reponses_llm = []
-
-    for etape in range(1, max_etapes + 1):
-        resultat = executer_outil(reponse)
-        if resultat:
-            resultats_outils.append(resultat)
-            reponses_llm.append(reponse)
-        else:
-            resultats_outils.append("Erreur : aucune commande d'outil valide n'a été générée.")
-            break
-
-        if reponse_termine_tache(reponse):
-            break
-        if complexite != "complexe" and not resultat_indique_erreur(resultat):
-            break
-        if etape >= max_etapes:
-            break
-
-        observation = (
-            "Observation outil :\n"
-            f"{resultat}\n\n"
-            "Continue la tache si necessaire avec le prochain JSON d'outil. "
-            "Si tout est termine, reponds uniquement avec "
-            '{"outil": "terminer_tache", "args": {"resume": "resume court du resultat"}}.'
-        )
-        reponse, intention_action = parler(observation, historique, memoire)
-        if not intention_action:
-            resultats_outils.append(reponse)
-            reponses_llm.append(reponse)
-            break
-
-    return construire_reponse_finale(reponses_llm, resultats_outils), True
+    return reponse, intention_action
 
 
 class AutonomousAgent:
@@ -951,7 +894,8 @@ def main():
     historique = [{"role": "system", "content": prompt}]
     console.print(Panel(
         f"JARVIS — Agent local de {nom}\nAssistant, majordome numérique et compagnon cognitif\nTape 'exit' pour quitter.\n"
-        f"Mode action one-shot : 'Jarvis, passe en mode action' ou '!a'",
+        f"Mode action one-shot : 'Jarvis, passe en mode action' ou '!a'\n"
+        f"Mode Stark (accès étendu) : '!S'",
         style="bold cyan"
     ))
     stop_event = threading.Event()
@@ -961,6 +905,8 @@ def main():
     while True:
         try:
             mode_label = "[bold magenta]⚡ACTION > [/bold magenta]" if mode_action_force else "[bold green]Toi > [/bold green]"
+            if est_mode_stark_actif():
+                mode_label = "[bold red]⚡STARK > [/bold red]"
             user_input = console.input(mode_label).strip()
             if not user_input:
                 continue
