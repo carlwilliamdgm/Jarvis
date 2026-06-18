@@ -2,18 +2,17 @@
 
 """Runtime safety zones for Jarvis.
 
-Jarvis uses a two-tier policy:
-- protected/system zones are detected dynamically by ZoneMapper and blocked;
-- user-space actions do not require confirmation by this module.
+Jarvis uses a targeted-confirmation policy:
+- reads are always free and should not call this module for authorization;
+- writes are free in user space;
+- writes to Jarvis' own directory or Windows system zones require confirmation;
+- Stark mode disables confirmations.
 
 ZONE_MAP self-initializes at import time, refreshes stale data automatically,
 and avoids hardcoded Windows paths by deriving roots from environment variables
 or platform APIs when available.
 
-Mode Stark (!S) : contrôle l'accès aux zones sensibles et système.
-- mode_stark_actif = False (défaut) : zones système et sensibles bloquées
-- mode_stark_actif = True (!S) : zones système et sensibles accessibles
-- JARVIS_DIR toujours bloqué — exception absolue, jamais levée
+Mode Stark (!S) : aucune confirmation, lecture et écriture libres partout.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from core.paths import JARVIS_DIR, HOME
+from core.paths import JARVIS_DIR
 
 USE_FALLBACK = False
 
@@ -193,91 +192,31 @@ ZONE_MAP = ZoneMapper()
 
 def action_bloquee(path: Path) -> bool:
     """
-    Détermine si une action est bloquée sur un chemin donné.
-    
-    Hiérarchie des permissions :
-    - mode_stark_actif = False (défaut) :
-      * Zones système bloquées : SystemRoot, Program Files, ProgramData
-      * Zones sensibles bloquées : Desktop, Documents, Downloads, home racine
-      * JARVIS_DIR bloqué
-    
-    - mode_stark_actif = True (!S) :
-      * Zones sensibles accessibles
-      * Zones système accessibles
-      * JARVIS_DIR toujours bloqué — exception absolue, jamais levée
-    """
-    # JARVIS_DIR est TOUJOURS bloqué, même en mode Stark
-    try:
-        resolved = Path(path).expanduser().resolve(strict=False)
-        if resolved == JARVIS_DIR or resolved.is_relative_to(JARVIS_DIR):
-            return True
-    except OSError:
-        pass
-    
-    # En mode Stark, seul JARVIS_DIR reste bloqué
-    if est_mode_stark_actif():
-        return False
-    
-    # Mode normal : vérifier les zones système et sensibles
-    return ZONE_MAP.est_protege(path) or _est_zone_sensible(path)
+    Retourne toujours False : les actions ne sont plus bloquées par zone.
 
-
-def _est_zone_sensible(path: Path) -> bool:
+    Conservé pour compatibilité avec d'anciens appels. Les écritures vers
+    JARVIS_DIR ou une zone système doivent passer par confirmation côté
+    orchestration.
     """
-    Détermine si un chemin est dans une zone sensible.
-    
-    Zones sensibles (bloquées en mode normal) :
-    - Desktop
-    - Documents
-    - Downloads
-    - home racine
-    """
-    try:
-        resolved = Path(path).expanduser().resolve(strict=False)
-        home_resolved = HOME.resolve()
-        
-        # Zones sensibles directes
-        zones_sensibles = [
-            home_resolved,
-            (home_resolved / "Desktop").resolve(),
-            (home_resolved / "Documents").resolve(),
-            (home_resolved / "Downloads").resolve(),
-        ]
-        
-        for zone in zones_sensibles:
-            if resolved == zone or resolved.is_relative_to(zone):
-                return True
-        
-        return False
-    except OSError:
-        return False
+    return False
 
 
 def action_requiert_confirmation(path: Path) -> bool:
     """
-    Détermine si une action nécessite une confirmation utilisateur.
-    
-    Cette fonction est utilisée par les outils pour demander confirmation
-    avant d'exécuter des actions sensibles.
-    
-    En mode Stark, aucune confirmation n'est requise (l'utilisateur a déjà
-    explicitement activé le mode privilégié).
+    Retourne True pour une écriture vers JARVIS_DIR ou une zone système.
+
+    Cette fonction ne doit être appelée que par la couche d'orchestration des
+    outils d'écriture. Les lectures restent libres.
     """
     if est_mode_stark_actif():
         return False
-    
-    # Les actions sur les zones sensibles nécessitent une confirmation
-    return _est_zone_sensible(path)
+
+    return ZONE_MAP.est_protege(path)
 
 
 def action_requiert_verrou(path: Path) -> bool:
-    sensitive = {
-        Path.home().resolve(),
-        (Path.home() / "Desktop").resolve(),
-        (Path.home() / "Documents").resolve(),
-        (Path.home() / "Downloads").resolve(),
-    }
-    return Path(path).resolve(strict=False) in sensitive
+    # Backward-compatible alias.
+    return action_requiert_confirmation(path)
 
 
 def chemin_autorise(chemin: str, doit_exister: bool = False) -> Path:
@@ -303,8 +242,8 @@ def suppression_requiert_confirmation(path: Path) -> bool:
 
 
 def racine_trop_large(path: Path) -> bool:
-    # DEPRECATED: use action_bloquee instead.
-    return action_bloquee(path)
+    # DEPRECATED: write protection now uses targeted confirmation, not blocking.
+    return False
 
 
 def niveau_depuis(parent: Path, enfant: Path) -> int | None:

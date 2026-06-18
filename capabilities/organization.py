@@ -3,7 +3,7 @@
 import shutil
 from pathlib import Path
 
-from core.safety import action_bloquee, chemin_autorise
+from core.safety import chemin_autorise
 
 DOSSIERS_ORGANISATION = {
     "Images": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"},
@@ -68,8 +68,6 @@ def organiser_dossier_direct(chemin: str) -> str:
     dossier = chemin_autorise(chemin, doit_exister=True)
     if not dossier.is_dir():
         return f"Ce chemin n'est pas un dossier : {dossier}"
-    if action_bloquee(dossier):
-        return "Action bloquée : zone système protégée."
 
     deplacements = []
     for item in dossier.iterdir():

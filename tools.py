@@ -6,7 +6,13 @@ from capabilities.custom_commands import (
     executer_commande_personnalisee,
     lister_commandes_personnalisees,
 )
-from capabilities.files import creer_dossier, creer_fichier, lire_fichier, lister_dossier, supprimer_direct
+from capabilities.files import (
+    creer_dossier as creer_dossier_direct,
+    creer_fichier as creer_fichier_direct,
+    lire_fichier,
+    lister_dossier,
+    supprimer_direct,
+)
 from capabilities.memory_tools import (
     lire_contexte,
     lire_notes,
@@ -45,7 +51,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import action_bloquee, action_requiert_confirmation, action_requiert_verrou, chemin_autorise
+from core.safety import action_requiert_confirmation, chemin_autorise
 from core.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
 
@@ -58,12 +64,36 @@ def demander_confirmation(description: str) -> bool:
     return choix in {"o", "oui", "yes", "y"}
 
 
+def confirmer_ecriture_si_requise(path, description: str) -> bool:
+    if not action_requiert_confirmation(path):
+        return True
+    return demander_confirmation(description)
+
+
+def creer_dossier(chemin: str) -> str:
+    try:
+        path = chemin_autorise(chemin)
+        if not confirmer_ecriture_si_requise(path, f"creer le dossier {path}"):
+            return "Creation de dossier annulee."
+        return creer_dossier_direct(chemin=str(path))
+    except Exception as e:
+        return f"Erreur : {e}"
+
+
+def creer_fichier(chemin: str, contenu: str = "") -> str:
+    try:
+        path = chemin_autorise(chemin)
+        if not confirmer_ecriture_si_requise(path, f"creer le fichier {path}"):
+            return "Creation de fichier annulee."
+        return creer_fichier_direct(chemin=str(path), contenu=contenu)
+    except Exception as e:
+        return f"Erreur : {e}"
+
+
 def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
-        if action_bloquee(path):
-            return "Action bloquée : zone système."
-        if action_requiert_verrou(path) and not demander_confirmation(f"supprimer {path}"):
+        if not confirmer_ecriture_si_requise(path, f"supprimer {path}"):
             return "Suppression annulee."
         return supprimer_direct(chemin=str(path))
     except Exception as e:
@@ -114,10 +144,8 @@ def ajouter_surveillance_dossier_tool(chemin: str, recurrence: str = "quotidien"
 def organiser_dossier(chemin: str) -> str:
     try:
         dossier = chemin_autorise(chemin, doit_exister=True)
-        if action_bloquee(dossier):
-            return "Action bloquée : zone système."
         plan = analyser_organisation(str(dossier))
-        if action_requiert_verrou(dossier) and not demander_confirmation(f"organiser {dossier}\n{plan}"):
+        if not confirmer_ecriture_si_requise(dossier, f"organiser {dossier}\n{plan}"):
             return "Organisation annulee."
         resultat = organiser_dossier_direct(chemin=str(dossier))
         journaliser_action("organiser_dossier", {"chemin": str(dossier)}, f"{plan}\n{resultat}")
