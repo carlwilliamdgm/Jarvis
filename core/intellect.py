@@ -103,6 +103,18 @@ def _construire_prompt_interpretation(memoire: dict) -> str:
     home = u.get("home", str(HOME))
     langue = u.get("langue", "français")
 
+    notes = memoire.get("notes", [])
+    resume_notes = "\n".join(
+        f"- {n.get('contenu', n) if isinstance(n, dict) else n}"
+        for n in notes[-10:]
+    ) or "- Aucune"
+
+    journal = memoire.get("journal_conversation", [])[-8:]
+    resume_journal = "\n".join(
+        f"- [{e['date']}] {nom}: {e['utilisateur'][:100]} | Jarvis: {e['jarvis'][:100]}"
+        for e in journal
+    ) or "- Aucun échange précédent"
+
     signatures_outils = """
 Outils disponibles avec leurs signatures exactes :
 
@@ -165,6 +177,12 @@ Contexte système :
 - Dossier home : {home}
 - Langue : {langue}
 
+Notes enregistrées récemment :
+{resume_notes}
+
+Échanges récents (mémoire persistante entre sessions, pas seulement cette conversation — consulte-la avant de dire que tu ne sais pas) :
+{resume_journal}
+
 Ta tâche : Analyser le message de l'utilisateur et déterminer :
 1. L'objectif réel (ce qu'il veut vraiment)
 2. Le type de demande (action, conversation, diagnostic, planification, mixte)
@@ -191,6 +209,7 @@ Règles absolues :
 - La réponse doit être en {langue}
 - Sois précis et concis dans l'objectif, mais jamais dans "reponse" : c'est là que ta voix doit se faire entendre
 - Ne mentionne jamais le JSON, les outils ou ta structure interne dans "reponse" — l'utilisateur ne doit voir que du langage naturel
+- Avant de répondre que tu ne sais pas ou que tu n'as pas d'information sur un sujet, vérifie d'abord les notes et les échanges récents listés ci-dessus. S'ils contiennent la réponse, utilise-la — ne dis jamais "je n'ai pas d'information" si elle est juste au-dessus dans ce prompt.
 """
 
 

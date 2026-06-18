@@ -13,6 +13,7 @@ from pathlib import Path
 from groq import Groq as GroqClient
 from rich.console import Console
 from rich.panel import Panel
+from rich.markup import escape
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.prompt import construire_prompt_action, construire_prompt_conversation
 from core.intellect import interpreter_objectif
@@ -467,7 +468,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
     cas d'erreur.
     """
     activer_mode_stark()
-    console.print(Panel(f"Objectif : {objectif}", title="⚡ Mode Stark activé", style="bold red"))
+    console.print(Panel(f"Objectif : {escape(objectif)}", title="⚡ Mode Stark activé", style="bold red"))
 
     etapes_realisees: list[str] = []
 
@@ -530,7 +531,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
                     console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
 
             if terminer:
-                console.print(Panel(resume_final, title="⚡ Mode Stark — objectif atteint", style="bold green"))
+                console.print(Panel(escape(resume_final), title="⚡ Mode Stark — objectif atteint", style="bold green"))
                 rapport = (
                     f"Mode Stark terminé avec succès.\n"
                     f"Objectif : {objectif}\n\n"
@@ -545,7 +546,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
             f"Objectif : {objectif}\n\n"
             f"Étapes réalisées :\n" + "\n".join(etapes_realisees)
         )
-        console.print(Panel(rapport, title="⚡ Mode Stark — limite atteinte", style="bold yellow"))
+        console.print(Panel(escape(rapport), title="⚡ Mode Stark — limite atteinte", style="bold yellow"))
         return rapport
 
     finally:
@@ -841,7 +842,7 @@ class AutonomousAgent:
                     ]
                     if meaningful:
                         self.console.print(Panel(
-                            "\n".join(meaningful),
+                            escape("\n".join(meaningful)),
                             title="Jarvis — Action autonome",
                             style="yellow"
                         ))
@@ -892,7 +893,7 @@ def main():
 
             reponse = reponse if isinstance(reponse, str) else ""
             OUTILS["enregistrer_echange"](user_input, reponse)
-            console.print(Panel(reponse, title=f"Jarvis — {horodatage}", style="cyan"))
+            console.print(Panel(escape(reponse), title=f"Jarvis — {horodatage}", style="cyan"))
 
         except KeyboardInterrupt:
             console.print("\n[cyan]Jarvis hors ligne.[/cyan]")
