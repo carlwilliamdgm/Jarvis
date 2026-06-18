@@ -1,3 +1,5 @@
+#core/intellect.py
+
 """Core Intellect - Le cerveau de Jarvis.
 
 Ce module est le SEUL composant qui pense. Il comprend l'objectif réel,

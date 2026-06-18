@@ -1,3 +1,5 @@
+#capabilities/custom_commands.py
+
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 
 

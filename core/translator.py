@@ -1,3 +1,6 @@
+#core/translator.py
+#défaillant donc débrancher du flux
+
 """Core Translator - Anticipation des intentions connues.
 
 Dictionnaire bilingue français/anglais qui mappe le langage naturel

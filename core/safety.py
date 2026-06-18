@@ -1,3 +1,5 @@
+#core/safety.py
+
 """Runtime safety zones for Jarvis.
 
 Jarvis uses a two-tier policy:
@@ -242,7 +244,7 @@ def _est_zone_sensible(path: Path) -> bool:
             (home_resolved / "Downloads").resolve(),
         ]
         
-        for zone in zones_sensitives:
+        for zone in zones_sensibles:
             if resolved == zone or resolved.is_relative_to(zone):
                 return True
         

@@ -1,3 +1,5 @@
+#core/paths.py
+
 import platform
 from pathlib import Path
 

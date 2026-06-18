@@ -1,3 +1,5 @@
+#capabilities/files.py
+
 import shutil
 from core.memory import journaliser_action
 from core.safety import action_bloquee, chemin_autorise, racine_trop_large
