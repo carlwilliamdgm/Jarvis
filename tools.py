@@ -53,7 +53,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
-from core.safety import action_requiert_confirmation, chemin_autorise
+from core.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
 from core.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
 
@@ -61,6 +61,8 @@ _console = Console()
 
 
 def demander_confirmation(description: str) -> bool:
+    if est_mode_stark_actif():
+        return True
     _console.print(f"\n[yellow]⚠️  Action sensible : {description}[/yellow]")
     choix = _console.input("[bold]Confirmer ? (o/n) >[/bold] ").strip().lower()
     return choix in {"o", "oui", "yes", "y"}

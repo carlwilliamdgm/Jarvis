@@ -20,7 +20,9 @@ from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 from core.prompt import construire_prompt_action, construire_prompt_conversation
 from core.intellect import interpreter_objectif
 from core.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
-from tools import OUTILS
+from core.stark_parser import StarkSegment, parser_objectif_stark
+from core.stark_session import enregistrer_instance_stark, retirer_instance_stark, verifier_instances_stark
+from tools import OUTILS, demander_confirmation
 
 try:
     import psutil
@@ -39,7 +41,7 @@ MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
-MAX_ETAPES_STARK = 10
+MAX_ETAPES_PAR_MICRO_OBJECTIF = 3
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "exécute", "commande",
@@ -455,104 +457,224 @@ def limiter_historique(historique: list) -> None:
 
 
 # ============================================================================
-# MODE STARK — BOUCLE AGENTIQUE
+# MODE STARK — BOUCLE AGENTIQUE STRUCTUREE
 # ============================================================================
 
 def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
     """
-    Mode Stark : Jarvis reçoit un objectif et boucle de façon autonome
-    (planifie → exécute → observe → itère) jusqu'à l'atteindre ou être
-    bloqué. L'objectif original prime à chaque itération — il est
-    réinjecté intégralement pour éviter toute dérive.
-
-    Accès étendu (zones système/sensibles) actif uniquement pendant la
-    durée de la boucle ; désactivé automatiquement à la sortie, même en
-    cas d'erreur.
+    Mode Stark : Jarvis orchestre une structure explicite d'objectifs
+    atomiques. Le LLM ne reçoit que le micro-objectif courant et un résumé
+    compact de ses tentatives précédentes.
     """
+    instances = verifier_instances_stark()
+    if instances:
+        lignes = [
+            f"{len(instances)} instance(s) Stark deja active(s) :",
+            *[
+                f"- PID {i.get('pid')} ({i.get('nom_process', '?')}) depuis {i.get('lance_le', '?')} : {i.get('objectif', '')}"
+                for i in instances
+            ],
+        ]
+        if not demander_confirmation("\n".join(lignes) + "\nLancer une nouvelle instance Stark malgre tout ?"):
+            return "Mode Stark annule : une autre instance est deja active."
+
+    plan = parser_objectif_stark(objectif)
+
+    enregistrer_instance_stark(objectif)
     activer_mode_stark()
     console.print(Panel(f"Objectif : {escape(objectif)}", title="⚡ Mode Stark activé", style="bold red"))
 
-    etapes_realisees: list[str] = []
+    rapports_segments = [
+        {
+            "index": segment.index,
+            "texte": segment.texte,
+            "statut": "jamais tenté",
+            "details": [],
+        }
+        for segment in plan.segments
+    ]
 
     try:
-        for etape in range(1, MAX_ETAPES_STARK + 1):
-            historique_etapes = (
-                "\n".join(etapes_realisees) if etapes_realisees else "Aucune étape réalisée encore."
-            )
-            message_stark = (
-                f"[MODE STARK — ÉTAPE {etape}/{MAX_ETAPES_STARK}]\n\n"
-                f"OBJECTIF PRINCIPAL (à atteindre, ne jamais perdre de vue) :\n{objectif}\n\n"
-                f"Étapes déjà réalisées dans cette session Stark :\n{historique_etapes}\n\n"
-                "Décide la ou les prochaines actions nécessaires pour avancer vers l'objectif. "
-                "Si l'objectif est déjà atteint, ou si tu es bloqué et qu'aucune action supplémentaire "
-                "n'aide, appelle terminer_tache avec un résumé clair de ce qui a été fait et pourquoi tu t'arrêtes."
-            )
+        chaine_interrompue = False
+        for segment, rapport_segment in zip(plan.segments, rapports_segments):
+            if chaine_interrompue:
+                rapport_segment["statut"] = "jamais tenté à cause d'une dépendance non satisfaite"
+                continue
 
-            with console.status(f"[red]⚡ Stark réfléchit (étape {etape}/{MAX_ETAPES_STARK})...[/red]", spinner="dots"):
-                resultat = interpreter_objectif(message_stark, historique, memoire)
+            succes_segment = _executer_segment_stark(segment, historique, memoire, rapport_segment)
+            if succes_segment:
+                rapport_segment["statut"] = "réussi"
+            else:
+                rapport_segment["statut"] = "échoué"
+                chaine_interrompue = True
 
-            actions = resultat.get("actions", [])
-            reponse_naturelle = resultat.get("reponse", "")
-
-            if not actions:
-                console.print(f"[red]⚡ Stark — aucune action proposée, fin de boucle.[/red]")
-                rapport = (
-                    f"Mode Stark terminé (étape {etape}).\n"
-                    f"Objectif : {objectif}\n\n"
-                    f"{reponse_naturelle}\n\n"
-                    f"Étapes réalisées :\n{historique_etapes}"
-                )
-                return rapport
-
-            terminer = False
-            resume_final = None
-
-            for action in actions:
-                outil = action.get("outil")
-                args = action.get("args", {})
-
-                if outil == "terminer_tache":
-                    resume_final = args.get("resume", "Objectif atteint.")
-                    terminer = True
-                    continue
-
-                if outil not in OUTILS:
-                    etapes_realisees.append(f"Étape {etape} : outil inconnu '{outil}' — ignoré")
-                    console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
-                    continue
-
-                try:
-                    resultat_outil = OUTILS[outil](**args)
-                    etapes_realisees.append(f"Étape {etape} : {outil}({args}) → {resultat_outil}")
-                    console.print(f"[dim red]⚡ {outil} → {str(resultat_outil)[:120]}[/dim red]")
-                except TypeError as e:
-                    etapes_realisees.append(f"Étape {etape} : {outil} → ERREUR arguments : {e}")
-                    console.print(f"[red]⚡ Erreur arguments {outil} : {e}[/red]")
-                except Exception as e:
-                    etapes_realisees.append(f"Étape {etape} : {outil} → ERREUR : {e}")
-                    console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
-
-            if terminer:
-                console.print(Panel(escape(resume_final), title="⚡ Mode Stark — objectif atteint", style="bold green"))
-                rapport = (
-                    f"Mode Stark terminé avec succès.\n"
-                    f"Objectif : {objectif}\n\n"
-                    f"{resume_final}\n\n"
-                    f"Étapes réalisées :\n" + "\n".join(etapes_realisees)
-                )
-                return rapport
-
-        # Limite d'étapes atteinte sans conclusion explicite
-        rapport = (
-            f"Mode Stark — limite de {MAX_ETAPES_STARK} étapes atteinte sans conclusion explicite.\n"
-            f"Objectif : {objectif}\n\n"
-            f"Étapes réalisées :\n" + "\n".join(etapes_realisees)
-        )
-        console.print(Panel(escape(rapport), title="⚡ Mode Stark — limite atteinte", style="bold yellow"))
+        rapport = _formater_rapport_stark(objectif, rapports_segments)
+        titre = "⚡ Mode Stark — terminé" if not chaine_interrompue else "⚡ Mode Stark — interrompu"
+        style = "bold green" if not chaine_interrompue else "bold yellow"
+        console.print(Panel(escape(rapport), title=titre, style=style))
         return rapport
-
     finally:
+        retirer_instance_stark()
         desactiver_mode_stark()
+
+
+def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: dict, rapport_segment: dict) -> bool:
+    for position, branche in enumerate(segment.branches, start=1):
+        succes_branche = False
+        details_alternatives = []
+        for alternative in branche.actions:
+            resultat = _executer_micro_objectif_stark(alternative, historique, memoire)
+            details_alternatives.append(resultat)
+            if resultat["statut"] == "réussi":
+                succes_branche = True
+                break
+
+        rapport_segment["details"].append({
+            "branche": position,
+            "alternatives": details_alternatives,
+            "statut": "réussi" if succes_branche else "échoué",
+        })
+
+        if not succes_branche:
+            return False
+    return True
+
+
+def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoire: dict) -> dict:
+    tentatives = []
+    derniere_signature = None
+
+    for tentative in range(1, MAX_ETAPES_PAR_MICRO_OBJECTIF + 1):
+        message_stark = _construire_message_micro_objectif(micro_objectif, tentative, tentatives)
+        with console.status(
+            f"[red]⚡ Stark réfléchit ({tentative}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}) : {micro_objectif[:80]}[/red]",
+            spinner="dots",
+        ):
+            resultat = interpreter_objectif(message_stark, historique, memoire)
+
+        actions = resultat.get("actions", [])
+        reponse_naturelle = resultat.get("reponse", "")
+        observation = _executer_actions_stark(actions)
+        signature = observation["signature"]
+
+        tentatives.append({
+            "numero": tentative,
+            "reponse": reponse_naturelle,
+            "observation": observation["resume"],
+        })
+
+        if observation["termine"]:
+            return {
+                "objectif": micro_objectif,
+                "statut": "réussi",
+                "resume": observation["resume_final"] or "Objectif atteint.",
+                "tentatives": tentatives,
+            }
+
+        if not actions:
+            return {
+                "objectif": micro_objectif,
+                "statut": "échoué",
+                "resume": "Aucune action proposée par Core Intellect.",
+                "tentatives": tentatives,
+            }
+
+        if derniere_signature is not None and signature == derniere_signature:
+            return {
+                "objectif": micro_objectif,
+                "statut": "échoué",
+                "resume": "Piétinement détecté : deux tentatives consécutives identiques.",
+                "tentatives": tentatives,
+            }
+
+        derniere_signature = signature
+
+    return {
+        "objectif": micro_objectif,
+        "statut": "échoué",
+        "resume": f"Budget de {MAX_ETAPES_PAR_MICRO_OBJECTIF} tentatives épuisé.",
+        "tentatives": tentatives,
+    }
+
+
+def _construire_message_micro_objectif(micro_objectif: str, tentative: int, tentatives: list[dict]) -> str:
+    if tentatives:
+        resume = "\n".join(
+            f"- tentative {t['numero']} : {t['observation'][:300]}"
+            for t in tentatives
+        )
+    else:
+        resume = "Aucune tentative précédente pour ce micro-objectif."
+
+    return (
+        f"[MODE STARK — MICRO-OBJECTIF]\n\n"
+        f"Micro-objectif courant :\n{micro_objectif}\n\n"
+        f"Tentative : {tentative}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}\n\n"
+        f"Résumé mécanique des tentatives précédentes de ce micro-objectif uniquement :\n{resume}\n\n"
+        "Décide la prochaine action utile. Si ce micro-objectif est atteint ou qu'aucune action "
+        "supplémentaire n'aide, appelle terminer_tache avec un résumé clair."
+    )
+
+
+def _executer_actions_stark(actions: list[dict]) -> dict:
+    resultats = []
+    signature = []
+    termine = False
+    resume_final = None
+
+    for action in actions:
+        outil = action.get("outil")
+        args = action.get("args", {})
+        if outil == "terminer_tache":
+            resume_final = args.get("resume", "Objectif atteint.")
+            termine = True
+            resultats.append(f"terminer_tache -> {resume_final}")
+            signature.append({"outil": outil, "args": args, "resultat": resume_final})
+            continue
+
+        if outil not in OUTILS:
+            resultat_outil = f"Outil inconnu : {outil}"
+            resultats.append(resultat_outil)
+            signature.append({"outil": outil, "args": args, "erreur": resultat_outil})
+            console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
+            continue
+
+        try:
+            resultat_outil = OUTILS[outil](**args)
+            resultats.append(f"{outil}({args}) -> {resultat_outil}")
+            signature.append({"outil": outil, "args": args, "resultat": str(resultat_outil)})
+            console.print(f"[dim red]⚡ {outil} -> {str(resultat_outil)[:120]}[/dim red]")
+        except TypeError as e:
+            erreur = f"ERREUR arguments : {e}"
+            resultats.append(f"{outil} -> {erreur}")
+            signature.append({"outil": outil, "args": args, "erreur": erreur})
+            console.print(f"[red]⚡ Erreur arguments {outil} : {e}[/red]")
+        except Exception as e:
+            erreur = f"ERREUR : {e}"
+            resultats.append(f"{outil} -> {erreur}")
+            signature.append({"outil": outil, "args": args, "erreur": erreur})
+            console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
+
+    resume = "\n".join(resultats) if resultats else "Aucune action exécutée."
+    return {
+        "termine": termine,
+        "resume_final": resume_final,
+        "resume": resume,
+        "signature": signature,
+    }
+
+
+def _formater_rapport_stark(objectif: str, rapports_segments: list[dict]) -> str:
+    lignes = [f"Mode Stark terminé.", f"Objectif : {objectif}", "", "Rapport par macro-étape :"]
+    for segment in rapports_segments:
+        lignes.append(f"{segment['index']}. {segment['statut']} — {segment['texte']}")
+        for detail in segment["details"]:
+            lignes.append(f"   - branche {detail['branche']} : {detail['statut']}")
+            for alternative in detail["alternatives"]:
+                lignes.append(
+                    f"     * {alternative['statut']} — {alternative['objectif']} : {alternative['resume']}"
+                )
+    return "\n".join(lignes)
 
 
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
