@@ -3,6 +3,8 @@
 import platform
 from pathlib import Path
 
+from core.tool_signatures import documenter_signatures_outils
+
 MAX_ELEMENTS_CONTEXTE_PAR_CATEGORIE = 12
 OS = platform.system()
 HOME = Path.home()
@@ -158,48 +160,8 @@ def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str
         + '{"outil": "vider_corbeille", "args": {}}\n'
         + '{"outil": "audit_stockage", "args": {}}\n'
         + '{"outil": "terminer_tache", "args": {"resume": "Stockage optimise."}}\n\n'
-        + "Outils disponibles :\n"
-        + "- creer_dossier(chemin)\n"
-        + "- creer_fichier(chemin, contenu)\n"
-        + "- lire_fichier(chemin, max_caracteres)\n"
-        + "- lister_dossier(chemin, limite)\n"
-        + "- supprimer(chemin)\n"
-        + "- enregistrer_echange(utilisateur, jarvis)\n"
-        + "- noter(note)\n"
-        + "- lire_notes()\n"
-        + "- memoriser_contexte(categorie, cle, valeur)\n"
-        + "- lire_contexte(categorie)\n"
-        + "- oublier_contexte(categorie, cle)\n"
-        + "- audit_stockage()\n"
-        + "- top_fichiers_lourds(n, complet, max_secondes)\n"
-        + "- vider_temp()\n"
-        + "- vider_corbeille()\n"
-        + "- notifier_utilisateur(titre, message, urgence)\n"
-        + "- executer_commande(commande)\n"
-        + "- executer_powershell(commande)\n"
-        + "- terminer_tache(resume)\n"
-        + "- analyser_organisation(chemin)\n"
-        + "- organiser_dossier(chemin)\n"
-        + "- ajouter_rappel(message, heure)\n"
-        + "- lire_rappels()\n"
-        + "- supprimer_rappel(rappel_id)\n"
-        + "- verifier_rappels()\n"
-        + "- memoriser_preference(cle, valeur)\n"
-        + "- lire_preferences()\n"
-        + "- oublier_preference(cle)\n"
-        + "- ajouter_commande_personnalisee(nom, commande, description)\n"
-        + "- lister_commandes_personnalisees()\n"
-        + "- executer_commande_personnalisee(nom)\n"
-        + "- ajouter_automatisation(nom, outil, args, recurrence, heure)\n"
-        + "- lister_automatisations()\n"
-        + "- executer_automatisation(automation_id, nom)\n"
-        + "- executer_automatisations_dues()\n"
-        + "- proposer_surveillance_dossiers()\n"
-        + "- ajouter_surveillance_dossier(chemin, recurrence, heure)\n"
-        + "- lister_surveillance_dossiers()\n"
-        + "- executer_surveillance_dossiers(force)\n"
-        + "- supprimer_surveillance_dossier(watcher_id)\n"
-        + "- bilan_proactif(force, niveau)\n\n"
+        + documenter_signatures_outils()
+        + "\n\n"
         + "Regles :\n"
         + "- Produis le JSON interne sur des lignes séparées avant ta réponse naturelle\n"
         + "- Chaque action = une ligne JSON distincte\n"
@@ -217,70 +179,11 @@ def construire_prompt_action(memoire: dict, taches_en_cours: list = None) -> str
         + "- Chemin absolu pour tout fichier/dossier\n"
         + "- Un modele local qui decrit une action au lieu de la faire commet une erreur grave. Toujours JSON interne pour agir, puis réponse naturelle.\n"
         + f"- Reponse finale en {langue} (sauf JSON)\n"
-        + OUTILS_AUTORISES
+        + REGLES_OUTILS_AUTORISES
     )
 
 
-OUTILS_AUTORISES = """
-=== OUTILS DISPONIBLES — LISTE EXHAUSTIVE ET IMMUABLE ===
-
-Fichiers & dossiers :
-  creer_dossier(chemin)
-  creer_fichier(chemin, contenu)
-  lire_fichier(chemin)
-  lister_dossier(chemin)
-  supprimer(chemin)
-  organiser_dossier(chemin)
-  analyser_organisation(chemin)
-
-Mémoire & notes :
-  noter(contenu)
-  lire_notes()
-  memoriser_contexte(cle, valeur)
-  lire_contexte(cle)
-  oublier_contexte(cle)
-  memoriser_preference(cle, valeur)
-  lire_preferences()
-  oublier_preference(cle)
-  enregistrer_echange(role, contenu)
-
-Stockage :
-  audit_stockage()
-  top_fichiers_lourds()
-  vider_temp()
-  vider_corbeille()
-
-Commandes système :
-  executer_commande(commande)
-  executer_powershell(commande)
-
-Rappels & automatisations :
-  ajouter_rappel(texte, heure)
-  lire_rappels()
-  supprimer_rappel(id)
-  verifier_rappels()
-  ajouter_automatisation(nom, outil, args, recurrence, heure)
-  lister_automatisations()
-  executer_automatisation(nom)
-  executer_automatisations_dues()
-
-Surveillance dossiers :
-  proposer_surveillance_dossiers()
-  ajouter_surveillance_dossier(chemin, recurrence, heure)
-  lister_surveillance_dossiers()
-  executer_surveillance_dossiers()
-  supprimer_surveillance_dossier(chemin)
-
-Commandes personnalisées :
-  ajouter_commande_personnalisee(nom, commande)
-  lister_commandes_personnalisees()
-  executer_commande_personnalisee(nom)
-
-Utilitaires :
-  notifier_utilisateur(titre, message, urgence)
-  bilan_proactif(force, niveau)
-  terminer_tache(resume)
-
+REGLES_OUTILS_AUTORISES = """
 === RÈGLES ABSOLUES — AUCUNE EXCEPTION ===
 1. Tu ne peux appeler QUE les outils listés ci-dessus. Tout autre nom d'outil est une ERREUR FATALE.
 2. Si aucun outil ne correspond à la demande, appelle : terminer_tache(resume="Je ne dispose pas d'un outil adapté à cette demande.")

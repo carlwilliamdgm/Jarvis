@@ -21,6 +21,7 @@ from groq import Groq as GroqClient
 
 from core.memory import charger_memoire, normaliser_memoire
 from core.prompt import construire_prompt_action
+from core.tool_signatures import documenter_signatures_outils
 from tools import OUTILS
 
 OS = platform.system()
@@ -31,7 +32,13 @@ MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 
 
-def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
+def interpreter_objectif(
+    message: str,
+    historique: list,
+    memoire: dict,
+    temperature: float = 0.7,
+    mode_stark: bool = False,
+) -> dict:
     """
     Interprète l'objectif réel de l'utilisateur en une seule passe LLM.
 
@@ -49,7 +56,7 @@ def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
     """
     try:
         # Construire le prompt système pour l'interprétation
-        prompt_system = _construire_prompt_interpretation(memoire)
+        prompt_system = _construire_prompt_interpretation(memoire, mode_stark=mode_stark)
 
         # Préparer les messages pour le LLM
         messages = [{"role": "system", "content": prompt_system}]
@@ -63,7 +70,7 @@ def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
         messages.append({"role": "user", "content": message})
 
         # Appel LLM avec retry
-        reponse = _appeler_llm_avec_retry(messages, memoire)
+        reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature)
 
         if reponse is None:
             return {
@@ -97,7 +104,7 @@ def interpreter_objectif(message: str, historique: list, memoire: dict) -> dict:
         }
 
 
-def _construire_prompt_interpretation(memoire: dict) -> str:
+def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False) -> str:
     """Construit le prompt système pour l'interprétation d'objectif."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
@@ -117,57 +124,16 @@ def _construire_prompt_interpretation(memoire: dict) -> str:
         for e in journal
     ) or "- Aucun échange précédent"
 
-    signatures_outils = """
-Outils disponibles avec leurs signatures exactes :
+    signatures_outils = documenter_signatures_outils()
+    regles_stark = ""
+    if mode_stark:
+        regles_stark = """
 
-creer_dossier(chemin: str)
-creer_fichier(chemin: str, contenu: str = "")
-lire_fichier(chemin: str, max_caracteres: int = 200000)
-lister_dossier(chemin: str, limite: int = 200)
-supprimer(chemin: str)
-noter(note: str)
-lire_notes()
-memoriser_contexte(categorie: str, cle: str, valeur: str)
-lire_contexte(categorie: str = None)
-oublier_contexte(categorie: str, cle: str)
-enregistrer_echange(role: str, contenu: str)
-audit_stockage()
-top_fichiers_lourds(n: int = 10, complet: bool = False, max_secondes: int = 15)
-vider_temp()
-vider_corbeille()
-notifier_utilisateur(titre: str, message: str, urgence: bool = False)
-executer_commande(commande: str)
-executer_powershell(commande: str)
-terminer_tache(resume: str = "Tache terminee.")
-analyser_organisation(chemin: str)
-organiser_dossier(chemin: str)
-ajouter_rappel(message: str, heure: str)
-lire_rappels()
-supprimer_rappel(rappel_id: int)
-verifier_rappels()
-memoriser_preference(cle: str, valeur: str)
-lire_preferences()
-oublier_preference(cle: str)
-ajouter_commande_personnalisee(nom: str, commande: str, description: str = "")
-lister_commandes_personnalisees()
-executer_commande_personnalisee(nom: str)
-ajouter_automatisation(nom: str, outil: str, args: dict = None, recurrence: str = "quotidien", heure: str = "09:00")
-lister_automatisations()
-executer_automatisation(automation_id: int = None, nom: str = None)
-executer_automatisations_dues()
-proposer_surveillance_dossiers()
-ajouter_surveillance_dossier(chemin: str, recurrence: str = "quotidien", heure: str = "09:00")
-lister_surveillance_dossiers()
-executer_surveillance_dossiers(force: bool = False)
-supprimer_surveillance_dossier(watcher_id: int)
-bilan_proactif(force: bool = False, niveau: str = "normal")
-
-RÈGLE ABSOLUE : utilise EXACTEMENT les noms de paramètres ci-dessus.
-executer_commande → paramètre : commande (pas cmd, pas command)
-executer_powershell → paramètre : commande (pas cmd, pas command)
-noter → paramètre : note (pas contenu)
-memoriser_contexte / lire_contexte / oublier_contexte → paramètre : categorie obligatoire (catégories valides : profil, style, habitudes, objectifs, projets, contraintes, faits)
-supprimer_surveillance_dossier → paramètre : watcher_id (l'identifiant numérique, pas le chemin)
+Règles spécifiques au Mode Stark :
+- Ne propose qu'une seule action par réponse : le tableau "actions" doit contenir exactement un élément utile, ou être vide si aucun outil ne correspond.
+- Ne mets jamais terminer_tache dans la même réponse qu'une autre action.
+- Si le micro-objectif est atteint, appelle terminer_tache comme unique action.
+- Si l'action précédente a déjà répondu au micro-objectif, appelle terminer_tache directement ; ne la réexécute pas pour vérification.
 """
 
     return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
@@ -195,6 +161,7 @@ Ta tâche : Analyser le message de l'utilisateur et déterminer :
 4. La réponse naturelle à donner — c'est la SEULE chose que l'utilisateur voit. Le JSON structuré est interne, jamais montré. C'est dans "reponse" que ta personnalité doit transparaître, pas dans les champs techniques.
 
 {signatures_outils}
+{regles_stark}
 
 Réponds UNIQUEMENT en JSON avec ce format exact :
 {{
@@ -290,7 +257,7 @@ def _filtrer_outils_inconnus(actions: list) -> list:
     ]
 
 
-def _appeler_llm_avec_retry(messages: list, memoire: dict) -> dict | None:
+def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 0.7) -> dict | None:
     """
     Appelle le LLM avec retry sur cloud puis fallback local.
     """
@@ -311,7 +278,7 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict) -> dict | None:
                 nom = provider["nom"]
                 modele = provider["modeles"][0]
                 try:
-                    reponse = provider["fonction"](modele, messages)
+                    reponse = provider["fonction"](modele, messages, temperature=temperature)
                     console.print(f"[dim green]✓ {nom} reussi : {modele}[/dim green]")
                     return reponse
                 except Exception as e:
@@ -322,7 +289,7 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict) -> dict | None:
         if tentative == 0:
             console.print(f"[dim]→ Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
         try:
-            return ollama.chat(model=MODELE_LOCAL, messages=messages, options={"think": False})
+            return ollama.chat(model=MODELE_LOCAL, messages=messages, options={"think": False, "temperature": temperature})
         except Exception as e:
             console.print(f"[red]✗ Erreur modèle local : {e}[/red]")
             continue
@@ -369,7 +336,7 @@ def _get_groq_clients() -> list:
     return clients
 
 
-def _chat_with_groq(modele: str, messages: list) -> dict:
+def _chat_with_groq(modele: str, messages: list, temperature: float = 0.7) -> dict:
     """Appel Groq avec switch automatique sur 429."""
     clients = _get_groq_clients()
     if not clients:
@@ -384,7 +351,7 @@ def _chat_with_groq(modele: str, messages: list) -> dict:
                 model=modele,
                 messages=groq_messages,
                 max_tokens=1024,
-                temperature=0.7
+                temperature=temperature
             )
             return {"message": {"content": response.choices[0].message.content}}
         except Exception as e:
@@ -396,7 +363,7 @@ def _chat_with_groq(modele: str, messages: list) -> dict:
     raise Exception(f"Groq error: toutes clés épuisées — {derniere_erreur}")
 
 
-def _chat_with_openrouter(modele: str, messages: list) -> dict:
+def _chat_with_openrouter(modele: str, messages: list, temperature: float = 0.7) -> dict:
     """Appel OpenRouter avec injection prompt système."""
     import urllib.request
 
@@ -424,7 +391,7 @@ def _chat_with_openrouter(modele: str, messages: list) -> dict:
         "model": modele,
         "messages": messages_envoyes,
         "max_tokens": 2048,
-        "temperature": 0.7,
+        "temperature": temperature,
     }).encode("utf-8")
 
     request = urllib.request.Request(

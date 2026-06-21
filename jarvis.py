@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import urllib.request
+from dataclasses import dataclass, field
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
@@ -42,6 +43,7 @@ MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
 MAX_ETAPES_PAR_MICRO_OBJECTIF = 3
+MAX_CONTEXTE_TENTATIVES_STARK = 4000
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "exécute", "commande",
@@ -460,6 +462,17 @@ def limiter_historique(historique: list) -> None:
 # MODE STARK — BOUCLE AGENTIQUE STRUCTUREE
 # ============================================================================
 
+@dataclass
+class EtatMicroObjectif:
+    objectif: str
+    decisions_utilisees: int = 0
+    actions: list[dict] = field(default_factory=list)
+    derniere_action: dict | None = None
+    termine: bool = False
+    resultat_final: str | None = None
+    statut_erreur_technique: bool = False
+
+
 def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
     """
     Mode Stark : Jarvis orchestre une structure explicite d'objectifs
@@ -505,7 +518,10 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
             if succes_segment:
                 rapport_segment["statut"] = "réussi"
             else:
-                rapport_segment["statut"] = "échoué"
+                if any(detail.get("statut") == "erreur_technique" for detail in rapport_segment["details"]):
+                    rapport_segment["statut"] = "erreur_technique"
+                else:
+                    rapport_segment["statut"] = "échoué"
                 chaine_interrompue = True
 
         rapport = _formater_rapport_stark(objectif, rapports_segments)
@@ -521,6 +537,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
 def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: dict, rapport_segment: dict) -> bool:
     for position, branche in enumerate(segment.branches, start=1):
         succes_branche = False
+        erreur_technique = False
         details_alternatives = []
         for alternative in branche.actions:
             resultat = _executer_micro_objectif_stark(alternative, historique, memoire)
@@ -528,11 +545,14 @@ def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: di
             if resultat["statut"] == "réussi":
                 succes_branche = True
                 break
+            if resultat["statut"] == "erreur_technique":
+                erreur_technique = True
+                break
 
         rapport_segment["details"].append({
             "branche": position,
             "alternatives": details_alternatives,
-            "statut": "réussi" if succes_branche else "échoué",
+            "statut": "réussi" if succes_branche else ("erreur_technique" if erreur_technique else "échoué"),
         })
 
         if not succes_branche:
@@ -541,126 +561,223 @@ def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: di
 
 
 def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoire: dict) -> dict:
-    tentatives = []
-    derniere_signature = None
+    etat = EtatMicroObjectif(objectif=micro_objectif)
+    avertissement_repetition = None
 
-    for tentative in range(1, MAX_ETAPES_PAR_MICRO_OBJECTIF + 1):
-        message_stark = _construire_message_micro_objectif(micro_objectif, tentative, tentatives)
+    while etat.decisions_utilisees < MAX_ETAPES_PAR_MICRO_OBJECTIF and not etat.termine:
+        message_stark = _construire_message_micro_objectif(etat, avertissement_repetition)
+        avertissement_repetition = None
         with console.status(
-            f"[red]⚡ Stark réfléchit ({tentative}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}) : {micro_objectif[:80]}[/red]",
+            f"[red]⚡ Stark réfléchit ({etat.decisions_utilisees + 1}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}) : {micro_objectif[:80]}[/red]",
             spinner="dots",
         ):
-            resultat = interpreter_objectif(message_stark, historique, memoire)
+            resultat = interpreter_objectif(message_stark, historique, memoire, temperature=0.3, mode_stark=True)
+
+        etat.decisions_utilisees += 1
 
         actions = resultat.get("actions", [])
-        reponse_naturelle = resultat.get("reponse", "")
-        observation = _executer_actions_stark(actions)
-        signature = observation["signature"]
-
-        tentatives.append({
-            "numero": tentative,
-            "reponse": reponse_naturelle,
-            "observation": observation["resume"],
-        })
-
-        if observation["termine"]:
-            return {
-                "objectif": micro_objectif,
-                "statut": "réussi",
-                "resume": observation["resume_final"] or "Objectif atteint.",
-                "tentatives": tentatives,
-            }
-
         if not actions:
+            break
+
+        action = actions[0]
+        repetition = _message_repetition_action(etat, action)
+        if repetition:
+            avertissement_repetition = repetition
+            continue
+
+        _executer_action_stark(action, etat)
+        if etat.statut_erreur_technique:
             return {
                 "objectif": micro_objectif,
-                "statut": "échoué",
-                "resume": "Aucune action proposée par Core Intellect.",
-                "tentatives": tentatives,
+                "statut": "erreur_technique",
+                "resume": etat.resultat_final or "Erreur technique pendant l'appel d'outil.",
+                "tentatives": _actions_vers_tentatives(etat),
             }
 
-        if derniere_signature is not None and signature == derniere_signature:
-            return {
-                "objectif": micro_objectif,
-                "statut": "échoué",
-                "resume": "Piétinement détecté : deux tentatives consécutives identiques.",
-                "tentatives": tentatives,
-            }
-
-        derniere_signature = signature
+    if etat.termine:
+        return {
+            "objectif": micro_objectif,
+            "statut": "réussi",
+            "resume": etat.resultat_final or "Objectif atteint.",
+            "tentatives": _actions_vers_tentatives(etat),
+        }
 
     return {
         "objectif": micro_objectif,
         "statut": "échoué",
-        "resume": f"Budget de {MAX_ETAPES_PAR_MICRO_OBJECTIF} tentatives épuisé.",
-        "tentatives": tentatives,
+        "resume": f"Budget de {MAX_ETAPES_PAR_MICRO_OBJECTIF} décisions épuisé." if etat.decisions_utilisees >= MAX_ETAPES_PAR_MICRO_OBJECTIF else "Aucune action proposée par Core Intellect.",
+        "tentatives": _actions_vers_tentatives(etat),
     }
 
 
-def _construire_message_micro_objectif(micro_objectif: str, tentative: int, tentatives: list[dict]) -> str:
-    if tentatives:
-        resume = "\n".join(
-            f"- tentative {t['numero']} : {t['observation'][:300]}"
-            for t in tentatives
-        )
-    else:
-        resume = "Aucune tentative précédente pour ce micro-objectif."
+def _message_repetition_action(etat: EtatMicroObjectif, action: dict) -> str | None:
+    outil = action.get("outil")
+    args = action.get("args", {})
+    if outil == "terminer_tache":
+        return None
+    action_courante = {"outil": outil, "args": args}
+    if etat.derniere_action != action_courante:
+        return None
+    dernier_resultat = etat.actions[-1]["resultat_brut"] if etat.actions else ""
+    return (
+        "Action déjà exécutée à l'instant avec ces arguments exacts. "
+        f"Résultat obtenu :\n{dernier_resultat}\n\n"
+        "Propose une action différente ou appelle terminer_tache si l'objectif est atteint."
+    )
+
+
+def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
+    outil = action.get("outil")
+    args = action.get("args", {})
+
+    if outil == "terminer_tache":
+        etat.termine = True
+        etat.resultat_final = args.get("resume", "Objectif atteint.")
+        etat.actions.append({
+            "outil": outil,
+            "args": args,
+            "resultat_brut": etat.resultat_final,
+            "erreur": False,
+        })
+        return
+
+    if outil not in OUTILS:
+        resultat_outil = f"Outil inconnu : {outil}"
+        etat.actions.append({
+            "outil": outil,
+            "args": args,
+            "resultat_brut": resultat_outil,
+            "erreur": True,
+        })
+        console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
+        return
+
+    try:
+        resultat_outil = OUTILS[outil](**args)
+        resultat_texte = str(resultat_outil)
+        entree = {
+            "outil": outil,
+            "args": args,
+            "resultat_brut": resultat_texte,
+            "erreur": resultat_indique_erreur(resultat_texte),
+        }
+        etat.actions.append(entree)
+        etat.derniere_action = {"outil": outil, "args": args}
+        console.print(f"[dim red]⚡ {outil} -> {resultat_texte[:120]}[/dim red]")
+    except TypeError as e:
+        erreur = f"ERREUR TECHNIQUE arguments {outil} : {e}"
+        etat.actions.append({
+            "outil": outil,
+            "args": args,
+            "resultat_brut": erreur,
+            "erreur": True,
+        })
+        etat.statut_erreur_technique = True
+        etat.resultat_final = erreur
+        console.print(f"[red]⚡ Erreur technique arguments {outil} : {e}[/red]")
+    except Exception as e:
+        erreur = f"ERREUR : {e}"
+        etat.actions.append({
+            "outil": outil,
+            "args": args,
+            "resultat_brut": erreur,
+            "erreur": True,
+        })
+        etat.derniere_action = {"outil": outil, "args": args}
+        console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
+
+def _actions_vers_tentatives(etat: EtatMicroObjectif) -> list[dict]:
+    return [
+        {
+            "numero": index,
+            "observation": f"{action['outil']}({action['args']}) -> {action['resultat_brut']}",
+        }
+        for index, action in enumerate(etat.actions, start=1)
+    ]
+
+
+def _construire_message_micro_objectif(etat: EtatMicroObjectif, avertissement: str | None = None) -> str:
+    resume = _formater_etat_micro_objectif(etat)
+    bloc_avertissement = f"\n\nAvertissement runtime :\n{avertissement}" if avertissement else ""
 
     return (
         f"[MODE STARK — MICRO-OBJECTIF]\n\n"
-        f"Micro-objectif courant :\n{micro_objectif}\n\n"
-        f"Tentative : {tentative}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}\n\n"
-        f"Résumé mécanique des tentatives précédentes de ce micro-objectif uniquement :\n{resume}\n\n"
-        "Décide la prochaine action utile. Si ce micro-objectif est atteint ou qu'aucune action "
-        "supplémentaire n'aide, appelle terminer_tache avec un résumé clair."
+        f"Micro-objectif courant :\n{etat.objectif}\n\n"
+        f"Décisions utilisées : {etat.decisions_utilisees}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}\n\n"
+        f"État mécanique complet de ce micro-objectif uniquement :\n{resume}"
+        f"{bloc_avertissement}\n\n"
+        "Propose exactement une action utile. Si ce micro-objectif est atteint, appelle terminer_tache "
+        "comme unique action. Si l'action précédente a déjà répondu à l'objectif, appelle terminer_tache "
+        "directement : ne la réexécute pas pour vérification. Ne répète pas la dernière action avec les mêmes arguments."
+    )
+
+
+def _formater_etat_micro_objectif(etat: EtatMicroObjectif) -> str:
+    if not etat.actions:
+        return "Aucune action exécutée pour ce micro-objectif."
+
+    entrees = [
+        _formater_action_etat(index, action)
+        for index, action in enumerate(etat.actions, start=1)
+    ]
+    total = sum(len(entree) for entree in entrees)
+    if total <= MAX_CONTEXTE_TENTATIVES_STARK:
+        return "\n\n".join(entrees)
+
+    selection = []
+    taille = 0
+    for entree in reversed(entrees):
+        if not selection:
+            selection.append(entree)
+            taille += len(entree)
+            continue
+        if taille + len(entree) <= MAX_CONTEXTE_TENTATIVES_STARK:
+            selection.append(entree)
+            taille += len(entree)
+        else:
+            break
+
+    inclus = set(selection)
+    sortie = []
+    for index, entree in enumerate(entrees, start=1):
+        if entree in inclus:
+            sortie.append(entree)
+        else:
+            action = etat.actions[index - 1]
+            sortie.append(
+                f"- action {index} : {action['outil']} exécuté, résultat omis pour longueur, voir etat.actions[{index - 1}]"
+            )
+    return "\n\n".join(sortie)
+
+
+def _formater_action_etat(index: int, action: dict) -> str:
+    statut = "ERREUR" if action.get("erreur") else "OK"
+    return (
+        f"- action {index} [{statut}] : {action.get('outil')}({action.get('args', {})})\n"
+        f"{action.get('resultat_brut', '')}"
     )
 
 
 def _executer_actions_stark(actions: list[dict]) -> dict:
-    resultats = []
-    signature = []
-    termine = False
-    resume_final = None
-
+    etat = EtatMicroObjectif(objectif="")
     for action in actions:
-        outil = action.get("outil")
-        args = action.get("args", {})
-        if outil == "terminer_tache":
-            resume_final = args.get("resume", "Objectif atteint.")
-            termine = True
-            resultats.append(f"terminer_tache -> {resume_final}")
-            signature.append({"outil": outil, "args": args, "resultat": resume_final})
-            continue
-
-        if outil not in OUTILS:
-            resultat_outil = f"Outil inconnu : {outil}"
-            resultats.append(resultat_outil)
-            signature.append({"outil": outil, "args": args, "erreur": resultat_outil})
-            console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
-            continue
-
-        try:
-            resultat_outil = OUTILS[outil](**args)
-            resultats.append(f"{outil}({args}) -> {resultat_outil}")
-            signature.append({"outil": outil, "args": args, "resultat": str(resultat_outil)})
-            console.print(f"[dim red]⚡ {outil} -> {str(resultat_outil)[:120]}[/dim red]")
-        except TypeError as e:
-            erreur = f"ERREUR arguments : {e}"
-            resultats.append(f"{outil} -> {erreur}")
-            signature.append({"outil": outil, "args": args, "erreur": erreur})
-            console.print(f"[red]⚡ Erreur arguments {outil} : {e}[/red]")
-        except Exception as e:
-            erreur = f"ERREUR : {e}"
-            resultats.append(f"{outil} -> {erreur}")
-            signature.append({"outil": outil, "args": args, "erreur": erreur})
-            console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
-
-    resume = "\n".join(resultats) if resultats else "Aucune action exécutée."
+        _executer_action_stark(action, etat)
+        if etat.statut_erreur_technique:
+            break
     return {
-        "termine": termine,
-        "resume_final": resume_final,
-        "resume": resume,
-        "signature": signature,
+        "termine": etat.termine,
+        "resume_final": etat.resultat_final,
+        "resume": _formater_etat_micro_objectif(etat),
+        "signature": [
+            {
+                "outil": action["outil"],
+                "args": action["args"],
+                "erreur": action["erreur"],
+                "resultat": action["resultat_brut"],
+            }
+            for action in etat.actions
+        ],
+        "erreur_technique": etat.statut_erreur_technique,
     }
 
 
