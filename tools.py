@@ -53,6 +53,7 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
+from core.error_classification import resultat_erreur
 from core.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
 from core.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
@@ -78,30 +79,36 @@ def creer_dossier(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin)
         if not confirmer_ecriture_si_requise(path, f"creer le dossier {path}"):
-            return "Creation de dossier annulee."
+            return resultat_erreur("Creation de dossier annulee.", categorie="action_refusee_par_confirmation")
         return creer_dossier_direct(chemin=str(path))
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def creer_fichier(chemin: str, contenu: str = "") -> str:
     try:
         path = chemin_autorise(chemin)
         if not confirmer_ecriture_si_requise(path, f"creer le fichier {path}"):
-            return "Creation de fichier annulee."
+            return resultat_erreur("Creation de fichier annulee.", categorie="action_refusee_par_confirmation")
         return creer_fichier_direct(chemin=str(path), contenu=contenu)
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def supprimer(chemin: str) -> str:
     try:
         path = chemin_autorise(chemin, doit_exister=True)
         if not confirmer_ecriture_si_requise(path, f"supprimer {path}"):
-            return "Suppression annulee."
+            return resultat_erreur("Suppression annulee.", categorie="action_refusee_par_confirmation")
         return supprimer_direct(chemin=str(path))
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def executer_commande(commande: str) -> str:
@@ -150,12 +157,14 @@ def organiser_dossier(chemin: str) -> str:
         dossier = chemin_autorise(chemin, doit_exister=True)
         plan = analyser_organisation(str(dossier))
         if not confirmer_ecriture_si_requise(dossier, f"organiser {dossier}\n{plan}"):
-            return "Organisation annulee."
+            return resultat_erreur("Organisation annulee.", categorie="action_refusee_par_confirmation")
         resultat = organiser_dossier_direct(chemin=str(dossier))
         journaliser_action("organiser_dossier", {"chemin": str(dossier)}, f"{plan}\n{resultat}")
         return resultat
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def signal_autorise(data: dict, cle: str, delai_minutes: int) -> bool:

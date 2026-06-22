@@ -1,8 +1,22 @@
 import unittest
 
 import jarvis
+from core.error_classification import classifier_erreur_systeme, extraire_code_erreur, resultat_erreur
+from core.memory import (
+    charger_memoire,
+    journaliser_erreur_systeme,
+    normaliser_memoire,
+    signalement_erreurs_autre_recurrentes,
+)
+from core.paths import MEMORY_PATH
 from core.stark_parser import parser_objectif_stark
 from core.stark_session import STARK_ACTIF_PATH
+
+
+class FakeWinError(Exception):
+    def __init__(self, winerror):
+        super().__init__(f"[WinError {winerror}]")
+        self.winerror = winerror
 
 
 class StarkParserTests(unittest.TestCase):
@@ -93,7 +107,7 @@ class StarkExecutionTests(unittest.TestCase):
         self.assertEqual(3, len(appels))
         self.assertEqual(["x"], executions)
         self.assertIn("Action déjà exécutée", appels[2])
-        self.assertIn("Budget de 3 décisions épuisé", rapport)
+        self.assertIn("Budget de 5 décisions épuisé", rapport)
 
     def test_read_tool_does_not_complete_without_terminer_tache(self):
         old_interpreter = jarvis.interpreter_objectif
@@ -256,6 +270,158 @@ class StarkExecutionTests(unittest.TestCase):
         self.assertIn("appelle terminer_tache directement", appels[1])
         self.assertIn("1. réussi", rapport)
         self.assertIn("Dossier liste.", rapport)
+
+    def test_three_consecutive_distinct_errors_stop_before_budget_exhaustion(self):
+        old_interpreter = jarvis.interpreter_objectif
+        old_tool = jarvis.OUTILS.get("stark_error_tool")
+        appels = []
+
+        def fake_interpreter(message, historique, memoire, **kwargs):
+            appels.append(message)
+            index = len(appels)
+            return {
+                "actions": [{"outil": "stark_error_tool", "args": {"chemin": f"cible_{index}.sys"}}],
+                "reponse": "tentative",
+            }
+
+        def fake_tool(chemin):
+            return resultat_erreur(f"Erreur : fichier verrouille {chemin}", 32)
+
+        backup = MEMORY_PATH.read_text(encoding="utf-8") if MEMORY_PATH.exists() else None
+        jarvis.interpreter_objectif = fake_interpreter
+        jarvis.OUTILS["stark_error_tool"] = fake_tool
+        try:
+            rapport = jarvis.executer_mode_stark("analyse le disque", [], {})
+            data = normaliser_memoire(charger_memoire())
+        finally:
+            jarvis.interpreter_objectif = old_interpreter
+            if old_tool is None:
+                jarvis.OUTILS.pop("stark_error_tool", None)
+            else:
+                jarvis.OUTILS["stark_error_tool"] = old_tool
+            if backup is None:
+                MEMORY_PATH.unlink(missing_ok=True)
+            else:
+                MEMORY_PATH.write_text(backup, encoding="utf-8")
+
+        self.assertEqual(3, len(appels))
+        self.assertIn("echecs_consecutifs", rapport)
+        self.assertNotIn("Budget de 5 décisions épuisé", rapport)
+        erreurs = data["erreurs_systeme"]["ressource_systeme_insuffisante"]
+        self.assertGreaterEqual(len(erreurs), 3)
+        self.assertEqual({"mode_stark"}, {entree["contexte"] for entree in erreurs[-3:]})
+
+    def test_real_bug_shape_stops_on_consecutive_system_file_failures(self):
+        old_interpreter = jarvis.interpreter_objectif
+        old_tool = jarvis.OUTILS.get("supprimer")
+        chemins = ["C:\\pagefile.sys", "C:\\hiberfil.sys", "C:\\swapfile.sys"]
+
+        def fake_interpreter(message, historique, memoire, **kwargs):
+            chemin = chemins[len(chemins) - len(restants)]
+            restants.pop(0)
+            return {
+                "actions": [{"outil": "supprimer", "args": {"chemin": chemin}}],
+                "reponse": "suppression",
+            }
+
+        def fake_supprimer(chemin):
+            code = 32 if "pagefile" in chemin else 2
+            return resultat_erreur(f"Erreur : [WinError {code}] {chemin}", code)
+
+        restants = chemins.copy()
+        backup = MEMORY_PATH.read_text(encoding="utf-8") if MEMORY_PATH.exists() else None
+        jarvis.interpreter_objectif = fake_interpreter
+        jarvis.OUTILS["supprimer"] = fake_supprimer
+        try:
+            rapport = jarvis.executer_mode_stark("analyse le disque pour trouver les fichiers lourds qui peuvent être effacés", [], {})
+        finally:
+            jarvis.interpreter_objectif = old_interpreter
+            if old_tool is None:
+                jarvis.OUTILS.pop("supprimer", None)
+            else:
+                jarvis.OUTILS["supprimer"] = old_tool
+            if backup is None:
+                MEMORY_PATH.unlink(missing_ok=True)
+            else:
+                MEMORY_PATH.write_text(backup, encoding="utf-8")
+
+        self.assertIn("echecs_consecutifs", rapport)
+        self.assertIn("3 échecs consécutifs", rapport)
+
+
+class ErrorClassificationTests(unittest.TestCase):
+    def test_classifier_covers_categories_and_unknown_code(self):
+        self.assertEqual("ressource_systeme_insuffisante", classifier_erreur_systeme(FakeWinError(32)))
+        self.assertEqual("acces_refuse", classifier_erreur_systeme(FakeWinError(5)))
+        self.assertEqual("cible_introuvable", classifier_erreur_systeme(FakeWinError(2)))
+        self.assertEqual("ressource_systeme_insuffisante", classifier_erreur_systeme(FakeWinError(112)))
+        self.assertEqual("erreur_technique_outil", classifier_erreur_systeme(resultat_erreur("tech", categorie="erreur_technique_outil")))
+        inconnu = FakeWinError(9999)
+        self.assertEqual("autre", classifier_erreur_systeme(inconnu))
+        self.assertEqual(9999, extraire_code_erreur(inconnu))
+
+    def test_journalisation_from_stark_and_conversation_contexts(self):
+        backup = MEMORY_PATH.read_text(encoding="utf-8") if MEMORY_PATH.exists() else None
+        old_interpreter = jarvis.interpreter_objectif
+        old_tool = jarvis.OUTILS.get("conversation_error_tool")
+
+        def fake_interpreter(message, historique, memoire, **kwargs):
+            return {
+                "type": "action",
+                "actions": [{"outil": "conversation_error_tool", "args": {"chemin": "absent.txt"}}],
+                "reponse": "Je tente.",
+            }
+
+        jarvis.interpreter_objectif = fake_interpreter
+        jarvis.OUTILS["conversation_error_tool"] = lambda chemin: resultat_erreur("Erreur : absent", 2)
+        try:
+            journaliser_erreur_systeme(
+                resultat_erreur("Erreur : verrouille", 32),
+                contexte="mode_stark",
+                objectif="analyse",
+                outil="supprimer",
+                args={"chemin": "C:\\pagefile.sys"},
+                resultat_brut="Erreur : verrouille",
+            )
+            jarvis.parler("ouvre absent", [], normaliser_memoire({}))
+            data = normaliser_memoire(charger_memoire())
+        finally:
+            jarvis.interpreter_objectif = old_interpreter
+            if old_tool is None:
+                jarvis.OUTILS.pop("conversation_error_tool", None)
+            else:
+                jarvis.OUTILS["conversation_error_tool"] = old_tool
+            if backup is None:
+                MEMORY_PATH.unlink(missing_ok=True)
+            else:
+                MEMORY_PATH.write_text(backup, encoding="utf-8")
+
+        self.assertEqual("mode_stark", data["erreurs_systeme"]["ressource_systeme_insuffisante"][-1]["contexte"])
+        self.assertEqual("conversation", data["erreurs_systeme"]["cible_introuvable"][-1]["contexte"])
+
+    def test_repeated_unknown_error_code_triggers_signalement(self):
+        backup = MEMORY_PATH.read_text(encoding="utf-8") if MEMORY_PATH.exists() else None
+        try:
+            MEMORY_PATH.write_text("{}", encoding="utf-8")
+            for index in range(3):
+                journaliser_erreur_systeme(
+                    resultat_erreur(f"Erreur inconnue {index}", 9999),
+                    contexte="conversation",
+                    objectif="test",
+                    outil="outil",
+                    args={"index": index},
+                    resultat_brut=f"Erreur inconnue {index}",
+                )
+
+            signalement = signalement_erreurs_autre_recurrentes()
+        finally:
+            if backup is None:
+                MEMORY_PATH.unlink(missing_ok=True)
+            else:
+                MEMORY_PATH.write_text(backup, encoding="utf-8")
+
+        self.assertIn("9999", signalement)
+        self.assertIn("3 fois", signalement)
 
 
 if __name__ == "__main__":

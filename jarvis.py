@@ -17,7 +17,14 @@ from groq import Groq as GroqClient
 from rich.console import Console
 from rich.panel import Panel
 from rich.markup import escape
-from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
+from core.error_classification import resultat_erreur
+from core.memory import (
+    charger_memoire,
+    journaliser_erreur_systeme,
+    normaliser_memoire,
+    sauvegarder_memoire,
+    signalement_erreurs_autre_recurrentes,
+)
 from core.prompt import construire_prompt_action, construire_prompt_conversation
 from core.intellect import interpreter_objectif
 from core.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
@@ -42,8 +49,11 @@ MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
-MAX_ETAPES_PAR_MICRO_OBJECTIF = 3
+MAX_ETAPES_PAR_MICRO_OBJECTIF = 5
 MAX_CONTEXTE_TENTATIVES_STARK = 4000
+SEUIL_ECHECS_CONSECUTIFS_STARK = 3
+DERNIERS_DETAILS_STARK = []
+ATTENTE_DETAILS_STARK = False
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "exécute", "commande",
@@ -380,11 +390,31 @@ def executer_outil(reponse: str) -> str | None:
             if not isinstance(args, dict):
                 resultats.append(f"Arguments invalides pour {outil}.")
                 continue
-            resultats.append(str(OUTILS[outil](**args)))
+            resultat = OUTILS[outil](**args)
+            _journaliser_resultat_si_erreur(resultat, "mode_action", "", outil, args)
+            resultats.append(str(resultat))
         except TypeError as e:
-            resultats.append(f"Arguments invalides pour {data.get('outil')} : {e}")
+            message = f"Arguments invalides pour {data.get('outil')} : {e}"
+            journaliser_erreur_systeme(
+                resultat_erreur(message, categorie="erreur_technique_outil"),
+                contexte="mode_action",
+                objectif="",
+                outil=data.get("outil"),
+                args=data.get("args", {}),
+                resultat_brut=message,
+            )
+            resultats.append(message)
         except Exception as e:
-            resultats.append(f"Erreur outil {data.get('outil')} : {e}")
+            message = f"Erreur outil {data.get('outil')} : {e}"
+            journaliser_erreur_systeme(
+                resultat_erreur(message, e),
+                contexte="mode_action",
+                objectif="",
+                outil=data.get("outil"),
+                args=data.get("args", {}),
+                resultat_brut=message,
+            )
+            resultats.append(message)
     return "\n".join(resultats) if resultats else None
 
 
@@ -395,6 +425,37 @@ def reponse_termine_tache(reponse: str) -> bool:
 def resultat_indique_erreur(resultat: str) -> bool:
     marqueurs = ["Erreur", "Outil inconnu", "Arguments invalides", "Timeout"]
     return any(marqueur in resultat for marqueur in marqueurs)
+
+
+def resultat_est_erreur(resultat) -> bool:
+    return bool(getattr(resultat, "erreur", False)) or resultat_indique_erreur(str(resultat))
+
+
+def _journaliser_resultat_si_erreur(resultat, contexte: str, objectif: str, outil: str, args: dict) -> None:
+    if not resultat_est_erreur(resultat):
+        return
+    journaliser_erreur_systeme(
+        resultat,
+        contexte=contexte,
+        objectif=objectif,
+        outil=outil,
+        args=args,
+        resultat_brut=str(resultat),
+    )
+
+
+def _est_reponse_affirmative(message: str) -> bool:
+    return message.strip().lower() in {"oui", "o", "yes", "y", "affiche", "montre", "details", "détails"}
+
+
+def _formater_details_stark(actions: list[dict]) -> str:
+    if not actions:
+        return "Aucun détail Stark disponible."
+    lignes = ["Détail brut du dernier Mode Stark :"]
+    for index, action in enumerate(actions, start=1):
+        lignes.append(f"\n[{index}] {action.get('objectif', '?')} :: {action.get('outil')}({action.get('args', {})})")
+        lignes.append(str(action.get("resultat_brut", "")))
+    return "\n".join(lignes)
 
 
 def extraire_resume_terminer_tache(reponse: str) -> str | None:
@@ -471,6 +532,7 @@ class EtatMicroObjectif:
     termine: bool = False
     resultat_final: str | None = None
     statut_erreur_technique: bool = False
+    echecs_consecutifs: int = 0
 
 
 def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
@@ -479,6 +541,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
     atomiques. Le LLM ne reçoit que le micro-objectif courant et un résumé
     compact de ses tentatives précédentes.
     """
+    global DERNIERS_DETAILS_STARK, ATTENTE_DETAILS_STARK
     instances = verifier_instances_stark()
     if instances:
         lignes = [
@@ -520,11 +583,17 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
             else:
                 if any(detail.get("statut") == "erreur_technique" for detail in rapport_segment["details"]):
                     rapport_segment["statut"] = "erreur_technique"
+                elif any(detail.get("statut") == "echecs_consecutifs" for detail in rapport_segment["details"]):
+                    rapport_segment["statut"] = "echecs_consecutifs"
                 else:
                     rapport_segment["statut"] = "échoué"
                 chaine_interrompue = True
 
+        DERNIERS_DETAILS_STARK = _extraire_actions_brutes_rapport(rapports_segments)
+        ATTENTE_DETAILS_STARK = bool(DERNIERS_DETAILS_STARK)
         rapport = _formater_rapport_stark(objectif, rapports_segments)
+        if ATTENTE_DETAILS_STARK:
+            rapport += "\n\nSouhaitez-vous voir le détail brut des résultats du Mode Stark ?"
         titre = "⚡ Mode Stark — terminé" if not chaine_interrompue else "⚡ Mode Stark — interrompu"
         style = "bold green" if not chaine_interrompue else "bold yellow"
         console.print(Panel(escape(rapport), title=titre, style=style))
@@ -538,6 +607,7 @@ def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: di
     for position, branche in enumerate(segment.branches, start=1):
         succes_branche = False
         erreur_technique = False
+        echecs_consecutifs = False
         details_alternatives = []
         for alternative in branche.actions:
             resultat = _executer_micro_objectif_stark(alternative, historique, memoire)
@@ -548,16 +618,32 @@ def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: di
             if resultat["statut"] == "erreur_technique":
                 erreur_technique = True
                 break
+            if resultat["statut"] == "echecs_consecutifs":
+                echecs_consecutifs = True
+                break
 
         rapport_segment["details"].append({
             "branche": position,
             "alternatives": details_alternatives,
-            "statut": "réussi" if succes_branche else ("erreur_technique" if erreur_technique else "échoué"),
+            "statut": "réussi" if succes_branche else (
+                "erreur_technique" if erreur_technique else (
+                    "echecs_consecutifs" if echecs_consecutifs else "échoué"
+                )
+            ),
         })
 
         if not succes_branche:
             return False
     return True
+
+
+def _extraire_actions_brutes_rapport(rapports_segments: list[dict]) -> list[dict]:
+    actions = []
+    for segment in rapports_segments:
+        for detail in segment["details"]:
+            for alternative in detail["alternatives"]:
+                actions.extend(alternative.get("actions_brutes", []))
+    return actions
 
 
 def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoire: dict) -> dict:
@@ -592,6 +678,15 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
                 "statut": "erreur_technique",
                 "resume": etat.resultat_final or "Erreur technique pendant l'appel d'outil.",
                 "tentatives": _actions_vers_tentatives(etat),
+                "actions_brutes": _actions_brutes(etat),
+            }
+        if etat.echecs_consecutifs >= SEUIL_ECHECS_CONSECUTIFS_STARK:
+            return {
+                "objectif": micro_objectif,
+                "statut": "echecs_consecutifs",
+                "resume": "3 échecs consécutifs, abandon pour éviter de gaspiller le budget restant.",
+                "tentatives": _actions_vers_tentatives(etat),
+                "actions_brutes": _actions_brutes(etat),
             }
 
     if etat.termine:
@@ -600,6 +695,7 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
             "statut": "réussi",
             "resume": etat.resultat_final or "Objectif atteint.",
             "tentatives": _actions_vers_tentatives(etat),
+            "actions_brutes": _actions_brutes(etat),
         }
 
     return {
@@ -607,6 +703,7 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
         "statut": "échoué",
         "resume": f"Budget de {MAX_ETAPES_PAR_MICRO_OBJECTIF} décisions épuisé." if etat.decisions_utilisees >= MAX_ETAPES_PAR_MICRO_OBJECTIF else "Aucune action proposée par Core Intellect.",
         "tentatives": _actions_vers_tentatives(etat),
+        "actions_brutes": _actions_brutes(etat),
     }
 
 
@@ -659,10 +756,17 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             "outil": outil,
             "args": args,
             "resultat_brut": resultat_texte,
-            "erreur": resultat_indique_erreur(resultat_texte),
+            "erreur": resultat_est_erreur(resultat_outil),
+            "categorie_erreur": getattr(resultat_outil, "categorie_erreur", None),
+            "code_brut": getattr(resultat_outil, "code_brut", None),
         }
         etat.actions.append(entree)
         etat.derniere_action = {"outil": outil, "args": args}
+        if entree["erreur"]:
+            etat.echecs_consecutifs += 1
+            _journaliser_resultat_si_erreur(resultat_outil, "mode_stark", etat.objectif, outil, args)
+        else:
+            etat.echecs_consecutifs = 0
         console.print(f"[dim red]⚡ {outil} -> {resultat_texte[:120]}[/dim red]")
     except TypeError as e:
         erreur = f"ERREUR TECHNIQUE arguments {outil} : {e}"
@@ -671,19 +775,41 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             "args": args,
             "resultat_brut": erreur,
             "erreur": True,
+            "categorie_erreur": "erreur_technique_outil",
+            "code_brut": None,
         })
         etat.statut_erreur_technique = True
         etat.resultat_final = erreur
+        journaliser_erreur_systeme(
+            resultat_erreur(erreur, categorie="erreur_technique_outil"),
+            contexte="mode_stark",
+            objectif=etat.objectif,
+            outil=outil,
+            args=args,
+            resultat_brut=erreur,
+        )
         console.print(f"[red]⚡ Erreur technique arguments {outil} : {e}[/red]")
     except Exception as e:
         erreur = f"ERREUR : {e}"
+        resultat = resultat_erreur(erreur, e)
         etat.actions.append({
             "outil": outil,
             "args": args,
             "resultat_brut": erreur,
             "erreur": True,
+            "categorie_erreur": resultat.categorie_erreur,
+            "code_brut": resultat.code_brut,
         })
         etat.derniere_action = {"outil": outil, "args": args}
+        etat.echecs_consecutifs += 1
+        journaliser_erreur_systeme(
+            resultat,
+            contexte="mode_stark",
+            objectif=etat.objectif,
+            outil=outil,
+            args=args,
+            resultat_brut=erreur,
+        )
         console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
 
 def _actions_vers_tentatives(etat: EtatMicroObjectif) -> list[dict]:
@@ -693,6 +819,21 @@ def _actions_vers_tentatives(etat: EtatMicroObjectif) -> list[dict]:
             "observation": f"{action['outil']}({action['args']}) -> {action['resultat_brut']}",
         }
         for index, action in enumerate(etat.actions, start=1)
+    ]
+
+
+def _actions_brutes(etat: EtatMicroObjectif) -> list[dict]:
+    return [
+        {
+            "objectif": etat.objectif,
+            "outil": action.get("outil"),
+            "args": action.get("args", {}),
+            "resultat_brut": action.get("resultat_brut", ""),
+            "erreur": action.get("erreur", False),
+            "categorie_erreur": action.get("categorie_erreur"),
+            "code_brut": action.get("code_brut"),
+        }
+        for action in etat.actions
     ]
 
 
@@ -706,6 +847,11 @@ def _construire_message_micro_objectif(etat: EtatMicroObjectif, avertissement: s
         f"Décisions utilisées : {etat.decisions_utilisees}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}\n\n"
         f"État mécanique complet de ce micro-objectif uniquement :\n{resume}"
         f"{bloc_avertissement}\n\n"
+        f"Avant de proposer une action, évalue le dernier résultat obtenu :\n"
+        f"répond-il à l'objectif \"{etat.objectif}\" ?\n"
+        "- Si oui : appelle terminer_tache.\n"
+        "- Si non : qu'est-ce qui manque précisément, et quelle action peut combler ce manque ?\n"
+        "Ne propose jamais une action sans avoir d'abord fait ce constat.\n\n"
         "Propose exactement une action utile. Si ce micro-objectif est atteint, appelle terminer_tache "
         "comme unique action. Si l'action précédente a déjà répondu à l'objectif, appelle terminer_tache "
         "directement : ne la réexécute pas pour vérification. Ne répète pas la dernière action avec les mêmes arguments."
@@ -774,6 +920,8 @@ def _executer_actions_stark(actions: list[dict]) -> dict:
                 "args": action["args"],
                 "erreur": action["erreur"],
                 "resultat": action["resultat_brut"],
+                "categorie_erreur": action.get("categorie_erreur"),
+                "code_brut": action.get("code_brut"),
             }
             for action in etat.actions
         ],
@@ -795,9 +943,16 @@ def _formater_rapport_stark(objectif: str, rapports_segments: list[dict]) -> str
 
 
 def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
-    global mode_action_force
+    global mode_action_force, ATTENTE_DETAILS_STARK
 
     # ── Gestion commandes de mode ─────────────────────────────────────────────
+    if ATTENTE_DETAILS_STARK and _est_reponse_affirmative(message):
+        ATTENTE_DETAILS_STARK = False
+        reponse_details = _formater_details_stark(DERNIERS_DETAILS_STARK)
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": reponse_details})
+        return reponse_details, False
+
     commande_mode = detecter_commande_mode(message)
 
     if isinstance(commande_mode, tuple) and commande_mode[0] == "stark":
@@ -852,14 +1007,40 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         if outil and outil in OUTILS:
             try:
                 resultat = OUTILS[outil](**args)
+                contexte = "mode_action" if etait_mode_action_force else "conversation"
+                _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
                 resultats_outils.append(str(resultat))
+            except TypeError as e:
+                erreur = f"Erreur outil {outil} : {e}"
+                journaliser_erreur_systeme(
+                    resultat_erreur(erreur, categorie="erreur_technique_outil"),
+                    contexte="mode_action" if etait_mode_action_force else "conversation",
+                    objectif=message,
+                    outil=outil,
+                    args=args,
+                    resultat_brut=erreur,
+                )
+                resultats_outils.append(erreur)
             except Exception as e:
-                resultats_outils.append(f"Erreur outil {outil} : {e}")
+                erreur = f"Erreur outil {outil} : {e}"
+                journaliser_erreur_systeme(
+                    resultat_erreur(erreur, e),
+                    contexte="mode_action" if etait_mode_action_force else "conversation",
+                    objectif=message,
+                    outil=outil,
+                    args=args,
+                    resultat_brut=erreur,
+                )
+                resultats_outils.append(erreur)
 
     if resultats_outils:
         reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
     else:
         reponse_finale = reponse_naturelle
+
+    signalement_erreur = signalement_erreurs_autre_recurrentes()
+    if signalement_erreur:
+        reponse_finale = f"{reponse_finale}\n\n{signalement_erreur}" if reponse_finale else signalement_erreur
 
     historique.append({"role": "assistant", "content": reponse_finale})
     limiter_historique(historique)
@@ -1040,10 +1221,32 @@ class AutonomousAgent:
             if blocked:
                 continue
             try:
-                resultats.append(str(self.outils[outil](**args)))
+                resultat = self.outils[outil](**args)
+                _journaliser_resultat_si_erreur(resultat, "veille", "veille autonome", outil, args)
+                resultats.append(str(resultat))
                 executed_actions.append(action)
+            except TypeError as e:
+                erreur = f"Erreur outil {outil} : {e}"
+                journaliser_erreur_systeme(
+                    resultat_erreur(erreur, categorie="erreur_technique_outil"),
+                    contexte="veille",
+                    objectif="veille autonome",
+                    outil=outil,
+                    args=args,
+                    resultat_brut=erreur,
+                )
+                resultats.append(erreur)
             except Exception as e:
-                resultats.append(f"Erreur outil {outil} : {e}")
+                erreur = f"Erreur outil {outil} : {e}"
+                journaliser_erreur_systeme(
+                    resultat_erreur(erreur, e),
+                    contexte="veille",
+                    objectif="veille autonome",
+                    outil=outil,
+                    args=args,
+                    resultat_brut=erreur,
+                )
+                resultats.append(erreur)
         now = time.time()
         stockage_tools = {"vider_temp", "vider_corbeille", "audit_stockage", "top_fichiers_lourds"}
         for action in executed_actions:

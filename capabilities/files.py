@@ -1,6 +1,7 @@
 #capabilities/files.py
 
 import shutil
+from core.error_classification import resultat_erreur
 from core.memory import journaliser_action
 from core.safety import chemin_autorise
 
@@ -12,8 +13,10 @@ def creer_dossier(chemin: str) -> str:
         resultat = f"Dossier cree : {path}"
         journaliser_action("creer_dossier", {"chemin": str(path)}, resultat)
         return resultat
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def creer_fichier(chemin: str, contenu: str = "") -> str:
@@ -25,8 +28,10 @@ def creer_fichier(chemin: str, contenu: str = "") -> str:
         resultat = f"Fichier cree : {path}"
         journaliser_action("creer_fichier", {"chemin": str(path)}, resultat)
         return resultat
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def lire_fichier(chemin: str, max_caracteres: int = 200_000) -> str:
@@ -38,10 +43,12 @@ def lire_fichier(chemin: str, max_caracteres: int = 200_000) -> str:
         if len(contenu) > max_caracteres:
             return contenu[:max_caracteres] + f"\n\n[Lecture tronquee a {max_caracteres} caracteres.]"
         return contenu
-    except FileNotFoundError:
-        return f"Fichier introuvable : {chemin}"
+    except FileNotFoundError as e:
+        return resultat_erreur(f"Fichier introuvable : {chemin}", e)
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def lister_dossier(chemin: str, limite: int = 200) -> str:
@@ -73,20 +80,27 @@ def lister_dossier(chemin: str, limite: int = 200) -> str:
             lignes.append(f"  ... {len(items) - affiches} element(s) supplementaire(s) non affiches")
         lignes.append(f"\n{len(dossiers)} dossier(s), {len(fichiers)} fichier(s)")
         return "\n".join(lignes)
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
     except Exception as e:
-        return f"Erreur : {e}"
+        return resultat_erreur(f"Erreur : {e}")
 
 
 def supprimer_direct(chemin: str) -> str:
-    path = chemin_autorise(chemin, doit_exister=True)
-    if path.is_file():
-        path.unlink()
-        resultat = f"Fichier supprime : {path}"
-        journaliser_action("supprimer", {"chemin": str(path)}, resultat)
-        return resultat
-    if path.is_dir():
-        shutil.rmtree(path)
-        resultat = f"Dossier supprime : {path}"
-        journaliser_action("supprimer", {"chemin": str(path)}, resultat)
-        return resultat
-    return f"Introuvable : {path}"
+    try:
+        path = chemin_autorise(chemin, doit_exister=True)
+        if path.is_file():
+            path.unlink()
+            resultat = f"Fichier supprime : {path}"
+            journaliser_action("supprimer", {"chemin": str(path)}, resultat)
+            return resultat
+        if path.is_dir():
+            shutil.rmtree(path)
+            resultat = f"Dossier supprime : {path}"
+            journaliser_action("supprimer", {"chemin": str(path)}, resultat)
+            return resultat
+        return resultat_erreur(f"Introuvable : {path}", 2)
+    except OSError as e:
+        return resultat_erreur(f"Erreur : {e}", e)
+    except Exception as e:
+        return resultat_erreur(f"Erreur : {e}")
