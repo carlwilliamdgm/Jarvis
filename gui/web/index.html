@@ -9,12 +9,58 @@
       box-sizing: border-box;
     }
 
+    :root {
+      --page: #05050a;
+      --chat: #0a0a0f;
+      --header: #0a0a0f;
+      --footer: #08080d;
+      --border: #111827;
+      --text: #a8b8c8;
+      --muted: #6f8194;
+      --input-bg: #0c1018;
+      --input-border: #1a2a3a;
+      --input-text: #7a9ab8;
+      --button: #0c2a44;
+      --user-bg: #0d2a44;
+      --user-border: #1a4a6a;
+      --user-text: #8ab8d8;
+      --jarvis-bg: #0d0d14;
+      --jarvis-border: #1a2030;
+      --jarvis-text: #a8b8c8;
+    }
+
+    body.light {
+      --page: #e8edf3;
+      --chat: #f8fafc;
+      --header: #0a0a0f;
+      --footer: #eef3f8;
+      --border: #cad4df;
+      --text: #263746;
+      --muted: #587083;
+      --input-bg: #ffffff;
+      --input-border: #b8c7d8;
+      --input-text: #23384d;
+      --button: #1a4a6a;
+      --user-bg: #d8ebfb;
+      --user-border: #8ab8d8;
+      --user-text: #0d2a44;
+      --jarvis-bg: #ffffff;
+      --jarvis-border: #cad4df;
+      --jarvis-text: #263746;
+    }
+
+    html,
     body {
       margin: 0;
-      min-height: 100vh;
-      background: #05050a;
-      color: #a8b8c8;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--page);
+      color: var(--text);
       font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    body {
       display: flex;
       justify-content: center;
       padding: 18px;
@@ -22,20 +68,24 @@
 
     .chat {
       width: min(100%, 720px);
-      min-height: calc(100vh - 36px);
-      background: #0a0a0f;
+      height: calc(100vh - 36px);
+      background: var(--chat);
       display: flex;
       flex-direction: column;
-      border: 1px solid #111827;
+      border: 1px solid var(--border);
+      min-height: 0;
     }
 
     header {
-      padding: 22px 20px 14px;
-      border-bottom: 1px solid #111827;
+      flex: 0 0 auto;
+      padding: 18px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--header);
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
+      z-index: 2;
     }
 
     .brand {
@@ -53,16 +103,24 @@
 
     .subtitle {
       color: #3a6a9a;
+      font-family: "Edwardian Script ITC", "Brush Script MT", cursive;
       font-size: 16px;
       font-style: italic;
       margin-top: 3px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
     }
 
     .status {
       display: flex;
       align-items: center;
       gap: 8px;
-      color: #6b879f;
+      color: var(--muted);
       font-size: 13px;
       white-space: nowrap;
     }
@@ -74,6 +132,7 @@
       background: #1a6a3a;
       box-shadow: 0 0 0 0 rgba(26, 106, 58, 0.8);
       animation: pulse 1.4s infinite;
+      flex: 0 0 auto;
     }
 
     .dot.offline {
@@ -88,11 +147,26 @@
       100% { box-shadow: 0 0 0 0 rgba(26, 106, 58, 0); }
     }
 
+    .icon-button {
+      width: 42px;
+      height: 42px;
+      border: 1px solid #16405f;
+      background: var(--button);
+      color: #fff;
+      border-radius: 8px;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
     main {
-      flex: 1;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
       padding: 18px;
       scroll-behavior: smooth;
+      background: var(--chat);
     }
 
     .row {
@@ -110,7 +184,7 @@
     }
 
     .label {
-      color: #6f8194;
+      color: var(--muted);
       font-size: 12px;
       margin: 0 8px 4px;
     }
@@ -126,15 +200,15 @@
     }
 
     .user .bubble {
-      background: #0d2a44;
-      border: 1px solid #1a4a6a;
-      color: #8ab8d8;
+      background: var(--user-bg);
+      border: 1px solid var(--user-border);
+      color: var(--user-text);
     }
 
     .jarvis .bubble {
-      background: #0d0d14;
-      border: 1px solid #1a2030;
-      color: #a8b8c8;
+      background: var(--jarvis-bg);
+      border: 1px solid var(--jarvis-border);
+      color: var(--jarvis-text);
     }
 
     .event {
@@ -193,46 +267,51 @@
     }
 
     footer {
+      flex: 0 0 auto;
       display: flex;
       gap: 10px;
+      align-items: flex-end;
       padding: 14px;
-      border-top: 1px solid #111827;
-      background: #08080d;
+      border-top: 1px solid var(--border);
+      background: var(--footer);
+      z-index: 2;
     }
 
-    input {
+    textarea {
       flex: 1;
       min-width: 0;
-      background: #0c1018;
-      border: 1px solid #1a2a3a;
-      color: #7a9ab8;
+      min-height: 48px;
+      max-height: 160px;
+      height: 48px;
+      resize: none;
+      overflow-y: auto;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--input-text);
       padding: 12px 13px;
       border-radius: 8px;
-      font-size: 15px;
+      font: 15px/1.45 "Segoe UI", Arial, sans-serif;
       outline: none;
     }
 
-    input::placeholder {
+    textarea::placeholder {
       color: #526b82;
     }
 
-    input:disabled {
-      opacity: 0.55;
-    }
-
-    button {
-      width: 46px;
-      border: 1px solid #16405f;
-      background: #0c2a44;
-      color: #fff;
-      border-radius: 8px;
-      font-size: 22px;
-      cursor: pointer;
-    }
-
+    textarea:disabled,
     button:disabled {
       opacity: 0.55;
       cursor: default;
+    }
+
+    #cancelButton {
+      display: none;
+      background: #4a1a1a;
+      border-color: #6a2222;
+    }
+
+    body.streaming #cancelButton {
+      display: block;
     }
 
     @media (max-width: 560px) {
@@ -241,13 +320,18 @@
       }
 
       .chat {
-        min-height: 100vh;
+        width: 100%;
+        height: 100vh;
         border-left: 0;
         border-right: 0;
       }
 
       header {
-        padding: 18px 14px 12px;
+        padding: 14px;
+      }
+
+      .status span:last-child {
+        display: none;
       }
 
       main {
@@ -256,6 +340,10 @@
 
       .bubble {
         max-width: 92%;
+      }
+
+      footer {
+        padding: 12px;
       }
     }
   </style>
@@ -267,17 +355,21 @@
         <div class="title">JARVIS</div>
         <div class="subtitle">by Carl-William</div>
       </div>
-      <div class="status">
-        <span id="statusDot" class="dot"></span>
-        <span id="statusText">Service en ligne</span>
+      <div class="header-actions">
+        <div class="status">
+          <span id="statusDot" class="dot"></span>
+          <span id="statusText">Service en ligne</span>
+        </div>
+        <button id="themeButton" class="icon-button" type="button" title="Changer le thème">☾</button>
       </div>
     </header>
 
     <main id="conversation"></main>
 
     <footer>
-      <input id="messageInput" type="text" placeholder="Entrez votre commande, Sir…" autocomplete="off">
-      <button id="sendButton" type="button" title="Envoyer">→</button>
+      <textarea id="messageInput" placeholder="Entrez votre commande, Sir…" autocomplete="off" rows="1"></textarea>
+      <button id="sendButton" class="icon-button" type="button" title="Envoyer">→</button>
+      <button id="cancelButton" class="icon-button" type="button" title="Annuler">✕</button>
     </footer>
   </section>
 
@@ -285,6 +377,8 @@
     const conversation = document.getElementById("conversation");
     const input = document.getElementById("messageInput");
     const sendButton = document.getElementById("sendButton");
+    const cancelButton = document.getElementById("cancelButton");
+    const themeButton = document.getElementById("themeButton");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
     let source = null;
@@ -321,7 +415,13 @@
       appendElement(node);
     }
 
+    function resizeTextarea() {
+      input.style.height = "48px";
+      input.style.height = `${Math.min(input.scrollHeight, 160)}px`;
+    }
+
     function setStreaming(streaming) {
+      document.body.classList.toggle("streaming", streaming);
       input.disabled = streaming;
       sendButton.disabled = streaming;
       if (!streaming) {
@@ -350,14 +450,17 @@
       } else if (type === "error") {
         addEvent("error", data.message || "Erreur inconnue.");
       } else if (type === "done") {
-        closeStream();
+        closeStream(false);
       }
     }
 
-    function closeStream() {
+    function closeStream(showMessage = false) {
       if (source) {
         source.close();
         source = null;
+      }
+      if (showMessage) {
+        addEvent("status-line", "Flux interrompu.");
       }
       setStreaming(false);
     }
@@ -369,6 +472,7 @@
       }
 
       input.value = "";
+      resizeTextarea();
       addBubble("user", "Vous", message);
       setStreaming(true);
 
@@ -382,8 +486,19 @@
       };
       source.onerror = () => {
         addEvent("error", "Connexion au flux interrompue.");
-        closeStream();
+        closeStream(false);
       };
+    }
+
+    function applyTheme(theme) {
+      document.body.classList.toggle("light", theme === "light");
+      themeButton.textContent = theme === "light" ? "☀" : "☾";
+      localStorage.setItem("jarvis-theme", theme);
+    }
+
+    function toggleTheme() {
+      const nextTheme = document.body.classList.contains("light") ? "dark" : "light";
+      applyTheme(nextTheme);
     }
 
     async function refreshStatus() {
@@ -401,12 +516,18 @@
     }
 
     sendButton.addEventListener("click", sendMessage);
+    cancelButton.addEventListener("click", () => closeStream(true));
+    themeButton.addEventListener("click", toggleTheme);
+    input.addEventListener("input", resizeTextarea);
     input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
         sendMessage();
       }
     });
 
+    applyTheme(localStorage.getItem("jarvis-theme") || "dark");
+    resizeTextarea();
     refreshStatus();
     setInterval(refreshStatus, 15000);
     input.focus();
