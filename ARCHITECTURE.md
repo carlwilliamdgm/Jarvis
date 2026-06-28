@@ -7,9 +7,10 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 - `jarvis.py` : interface console, boucle principale, commandes de mode, orchestration des actions, mode Stark et agent autonome de veille.
 - `jarvis.cmd` : lancement Windows.
 - `monitor.py` : compatibilite pour lancer uniquement la surveillance stockage.
-- `api/server.py` : point d'entree serveur API local.
-- `gui/app.py` : interface graphique.
-- `service/windows_service.py` : integration service Windows.
+- `api/server.py` : point d'entree serveur FastAPI local, API REST, SSE et fichiers web statiques.
+- `gui/app.py` : interface graphique Tkinter, cliente du flux SSE.
+- `gui/web/index.html` : interface web autonome servie par `/web`.
+- `service/windows_service.py` : integration service Windows qui lance `uvicorn api.server:app`.
 
 ## Flux principal
 
@@ -26,6 +27,7 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 
 - `core/intellect.py` : cerveau unique de Jarvis. Construit le prompt d'interpretation, appelle les modeles, parse le JSON de decision et filtre les outils inconnus.
 - `core/prompt.py` : prompts systeme historiques et prompts d'action/conversation utilises par certaines surfaces.
+- `core/tool_signatures.py` : inventaire dynamique des capacites exposees. Il introspecte `tools.OUTILS` au moment de construire les prompts et l'outil `lire_capacites()`.
 - `core/memory.py` : lecture/ecriture de `memory.json`, normalisation, journal d'actions, journal conversationnel et taches.
 - `core/paths.py` : chemins racine (`JARVIS_DIR`, `MEMORY_PATH`) et informations OS.
 - `core/safety.py` : validation des chemins, cartographie des zones protegees, confirmations ciblees et flag runtime du mode Stark.
@@ -43,7 +45,7 @@ Le mode Stark est active par `!S <objectif>` et vit dans `jarvis.py`.
   - `>>` : macro-etapes sequentielles, arret de la chaine si une etape echoue.
   - `&&` : dependances gauche-droite dans un segment.
   - `||` : alternatives/replis, premiere reussite retenue.
-- Chaque micro-objectif a un budget local de `MAX_ETAPES_PAR_MICRO_OBJECTIF = 3`.
+- Chaque micro-objectif a un budget local de `MAX_ETAPES_PAR_MICRO_OBJECTIF = 5`.
 - Le prompt Stark donne au LLM uniquement le micro-objectif courant et le resume compact des tentatives de ce micro-objectif.
 - Deux tentatives consecutives identiques declenchent une detection de pietinement.
 - Le rapport final liste chaque macro-etape avec son statut : reussi, echoue ou jamais tente.
@@ -71,7 +73,87 @@ Responsabilites principales :
 - appliquer les confirmations d'ecriture via `confirmer_ecriture_si_requise()`;
 - court-circuiter les confirmations quand Stark est actif;
 - journaliser certaines actions composees;
-- fournir `bilan_proactif()`, `terminer_tache()` et les outils de consultation du traducteur.
+- fournir `bilan_proactif()`, `terminer_tache()`, `lire_capacites()` et les outils de consultation du traducteur.
+
+## Conscience des capacites
+
+Jarvis ne depend plus d'une liste statique pour savoir ce qu'il peut faire. L'inventaire des outils est genere en temps reel depuis `tools.OUTILS` par `core/tool_signatures.py`.
+
+Ce mecanisme alimente deux surfaces :
+
+- les prompts de decision (`core/intellect.py` et `core/prompt.py`);
+- l'outil public `lire_capacites()`, que Jarvis peut appeler lorsqu'on lui demande ce qu'il sait faire.
+
+Consequence pratique : ajouter une capability ne suffit toujours pas. Il faut l'exposer dans `tools.OUTILS`, mais une fois exposee, sa signature devient visible automatiquement dans le prompt et dans `lire_capacites()`.
+
+## Interfaces temps reel
+
+L'API FastAPI expose deux flux conversationnels :
+
+- `POST /jarvis/ask` : endpoint compatible, retourne seulement la reponse finale.
+- `GET /jarvis/stream?message=...` : endpoint SSE qui transmet les evenements intermediaires (`thinking`, `provider`, `stark_activated`, `stark_action`, `stark_terminated`, `response`, `error`, `done`).
+
+Les interfaces `gui/app.py` et `gui/web/index.html` consomment ce flux pour afficher les etapes que le terminal Rich montre deja.
+
+### Serveur FastAPI
+
+`api/server.py` expose `app = FastAPI(title="Jarvis API", version="1.0.0")`.
+
+Routes principales :
+
+- `POST /jarvis/ask` : traitement simple, reponse finale uniquement.
+- `GET /jarvis/stream?message=...` : streaming SSE via `StreamingResponse`.
+- `GET /jarvis/status` : CPU, RAM et activite detectee.
+- `POST /jarvis/signal` : reception de signaux externes.
+- `GET /jarvis/alerts` : lecture/vidage des alertes en memoire.
+- `POST /jarvis/confirm` : endpoint de confirmation reserve aux extensions.
+- `/web` : fichiers statiques de `gui/web`.
+
+Au demarrage, le serveur :
+
+1. appelle `initialiser()` pour charger/normaliser `memory.json`;
+2. instancie `AutonomousAgent`;
+3. construit l'historique systeme avec `construire_prompt_action(memoire)`;
+4. garde `memoire` et `historique` comme etat global du processus API.
+
+Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette queue a `event_bus`, appelle `executer_agent()`, puis pousse `{"type": "done"}` a la fin.
+
+### Interfaces
+
+`gui/app.py` :
+
+- client Tkinter local;
+- consomme `/jarvis/stream` avec `requests.get(..., stream=True)`;
+- met a jour l'UI via `root.after()`;
+- desactive le champ de saisie pendant le stream.
+
+`gui/web/index.html` :
+
+- fichier HTML/CSS/JS unique;
+- consomme `/jarvis/stream` avec `EventSource`;
+- surveille `/jarvis/status`;
+- fonctionne depuis un autre appareil du reseau si le port `8000` est accessible.
+
+### Service Windows
+
+`service/windows_service.py` declare `JarvisService`.
+
+Il lance :
+
+```text
+C:\Program Files\Python312\python.exe -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+```
+
+Le service ajoute explicitement les packages utilisateur au path :
+
+```text
+C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages
+```
+
+Logs :
+
+- `service/jarvis_service.log` pour le cycle de vie du service;
+- `service/uvicorn.log` pour stdout/stderr du serveur.
 
 ## Securite et permissions
 

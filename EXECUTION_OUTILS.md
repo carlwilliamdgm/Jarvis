@@ -6,6 +6,8 @@ Ce document decrit l'etat actuel de l'execution des outils dans Jarvis. L'ancien
 
 Jarvis utilise un registre unique d'outils dans `tools.py`. Le LLM ne les execute jamais directement : il renvoie une intention structuree, puis `jarvis.py` appelle les fonctions Python correspondantes.
 
+L'inventaire des capacites est genere en temps reel depuis `tools.OUTILS` par `core/tool_signatures.py`. Les prompts et l'outil `lire_capacites()` utilisent donc l'etat courant du registre, pas une liste de documentation recopiee a la main.
+
 Le contrat actuel de Core Intellect est :
 
 ```json
@@ -39,6 +41,47 @@ Le contrat actuel de Core Intellect est :
 8. Journalisation dans memory.json
 ```
 
+En streaming SSE (`GET /jarvis/stream?message=...`), les interfaces recoivent aussi les evenements intermediaires emis pendant ce flux : reflexion, provider, activation Stark, actions Stark, rapport Stark, reponse finale et erreurs.
+
+## Transport API et interfaces
+
+Le transport HTTP vit dans `api/server.py`.
+
+### Endpoint final
+
+`POST /jarvis/ask` garde la compatibilite avec les clients simples. Il appelle `executer_agent()` puis retourne :
+
+```json
+{
+  "response": "...",
+  "is_action": false,
+  "actions_executed": []
+}
+```
+
+### Endpoint streaming
+
+`GET /jarvis/stream?message=...` est le chemin recommande pour les interfaces modernes. Il retourne `text/event-stream`.
+
+Evenements emis :
+
+- `thinking` : Jarvis commence a reflechir.
+- `provider` : un provider LLM repond.
+- `stark_activated` : le Mode Stark s'active.
+- `stark_action` : une action Stark est executee.
+- `stark_terminated` : le Mode Stark termine ou s'interrompt.
+- `response` : reponse finale.
+- `error` : erreur.
+- `done` : fin de stream.
+
+Les interfaces ne doivent pas reconstituer l'etat en appelant `/jarvis/ask` en parallele. Elles consomment le flux SSE et affichent chaque evenement dans l'ordre.
+
+### Clients
+
+- `gui/app.py` consomme le SSE avec `requests.get(..., stream=True)` dans un thread separe.
+- `gui/web/index.html` consomme le SSE avec `EventSource`.
+- Le terminal Rich continue d'utiliser les appels `console.print()` existants ; les evenements SSE sont emis en parallele.
+
 ## Modes d'execution
 
 ### Mode normal
@@ -56,7 +99,7 @@ Chaque message est envoye a Core Intellect. Si le resultat contient des actions,
 - `>>` separe les macro-etapes.
 - `&&` impose une dependance gauche-droite.
 - `||` definit des alternatives/replis.
-- Chaque micro-objectif a 3 tentatives maximum.
+- Chaque micro-objectif a 5 decisions maximum (`MAX_ETAPES_PAR_MICRO_OBJECTIF = 5`).
 - Le LLM ne recoit que le micro-objectif courant et le resume compact des tentatives precedentes de ce meme micro-objectif.
 - Deux tentatives identiques consecutives arretent le micro-objectif pour pietinement.
 - Les confirmations interactives sont court-circuitees pendant Stark pour eviter un blocage.
@@ -96,7 +139,9 @@ La politique actuelle est basee sur la confirmation ciblee.
 
 `action_bloquee()` et certains alias historiques existent encore pour compatibilite, mais la logique actuelle ne bloque pas par zone : elle demande confirmation quand c'est necessaire.
 
-## Outils disponibles (43)
+## Outils disponibles
+
+La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatures.documenter_signatures_outils()` pour obtenir l'inventaire exact du registre courant.
 
 ### Fichiers
 
@@ -163,6 +208,10 @@ La politique actuelle est basee sur la confirmation ciblee.
 
 - `lire_traducteur()` - Affiche les entrees et statistiques du traducteur.
 - `modifier_traducteur(cle, patterns_fr, patterns_en, outil="", args_json="{}")` - Flux de demande de modification du traducteur. Actuellement, la persistance reelle n'est pas implementee.
+
+### Capacites
+
+- `lire_capacites()` - Retourne l'inventaire actuel des outils publics de Jarvis depuis `tools.OUTILS`.
 
 ### Controle agentique
 
@@ -261,7 +310,8 @@ capabilities/
 
 ## Principes a conserver
 
-- Ne pas ajouter d'outil sans l'ajouter au prompt de Core Intellect et a ce document.
+- Ne pas ajouter d'outil sans l'exposer dans `tools.OUTILS`.
+- Ne pas maintenir une liste statique des outils dans le prompt : `core/tool_signatures.py` introspecte le registre actif.
 - Ne pas laisser une capability appeler le LLM.
 - Ne pas contourner `tools.py` pour une action exposee a Jarvis.
 - Ne pas introduire de confirmation interactive dans Stark.

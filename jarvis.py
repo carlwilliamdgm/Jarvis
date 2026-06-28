@@ -5,6 +5,7 @@ import json
 import ollama
 import os
 import platform
+import queue
 import re
 import threading
 import time
@@ -40,6 +41,39 @@ except ImportError:
     import psutil
 
 console = Console()
+
+
+class EventBus:
+    def __init__(self):
+        self._queues = set()
+        self._lock = threading.Lock()
+        self._local = threading.local()
+
+    def subscribe(self) -> queue.Queue:
+        event_queue = queue.Queue()
+        with self._lock:
+            self._queues.add(event_queue)
+        return event_queue
+
+    def unsubscribe(self, event_queue: queue.Queue) -> None:
+        with self._lock:
+            self._queues.discard(event_queue)
+
+    def bind(self, event_queue: queue.Queue) -> None:
+        self._local.queue = event_queue
+
+    def unbind(self) -> None:
+        if hasattr(self._local, "queue"):
+            del self._local.queue
+
+    def emit(self, event_type: str, data: dict) -> None:
+        event = {"type": event_type, "data": data}
+        target_queue = getattr(self._local, "queue", None)
+        if target_queue is not None:
+            target_queue.put(event)
+
+
+event_bus = EventBus()
 
 OS = platform.system()
 HOME = Path.home()
@@ -190,6 +224,7 @@ def chat_with_cloud(modele, messages):
                 max_tokens=1024,
                 temperature=0.7
             )
+            event_bus.emit("provider", {"provider": "Groq", "model": modele})
             return {"message": {"content": response.choices[0].message.content}}
         except Exception as e:
             derniere_erreur = e
@@ -242,6 +277,7 @@ def chat_with_openrouter(modele, messages):
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
             data = json.loads(response.read().decode("utf-8"))
+        event_bus.emit("provider", {"provider": "OpenRouter", "model": modele})
         return {"message": {"content": data["choices"][0]["message"]["content"]}}
     except Exception as e:
         raise Exception(f"OpenRouter error: {e}")
@@ -249,7 +285,9 @@ def chat_with_openrouter(modele, messages):
 
 def chat_with_local(modele, messages):
     try:
-        return ollama.chat(model=modele, messages=messages, options={"think": False})
+        response = ollama.chat(model=modele, messages=messages, options={"think": False})
+        event_bus.emit("provider", {"provider": "Ollama", "model": modele})
+        return response
     except Exception as e:
         raise Exception(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.")
 
@@ -559,6 +597,7 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
     enregistrer_instance_stark(objectif)
     activer_mode_stark()
     console.print(Panel(f"Objectif : {escape(objectif)}", title="⚡ Mode Stark activé", style="bold red"))
+    event_bus.emit("stark_activated", {"objectif": objectif})
 
     rapports_segments = [
         {
@@ -597,6 +636,13 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
         titre = "⚡ Mode Stark — terminé" if not chaine_interrompue else "⚡ Mode Stark — interrompu"
         style = "bold green" if not chaine_interrompue else "bold yellow"
         console.print(Panel(escape(rapport), title=titre, style=style))
+        event_bus.emit(
+            "stark_terminated",
+            {
+                "statut": "interrompu" if chaine_interrompue else "terminé",
+                "rapport": rapport,
+            },
+        )
         return rapport
     finally:
         retirer_instance_stark()
@@ -657,6 +703,7 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
             f"[red]⚡ Stark réfléchit ({etat.decisions_utilisees + 1}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}) : {micro_objectif[:80]}[/red]",
             spinner="dots",
         ):
+            event_bus.emit("thinking", {"message": "Jarvis réfléchit..."})
             resultat = interpreter_objectif(message_stark, historique, memoire, temperature=0.3, mode_stark=True)
 
         etat.decisions_utilisees += 1
@@ -736,6 +783,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             "resultat_brut": etat.resultat_final,
             "erreur": False,
         })
+        event_bus.emit(
+            "stark_action",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": etat.resultat_final,
+                "erreur": False,
+            },
+        )
         return
 
     if outil not in OUTILS:
@@ -747,6 +803,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             "erreur": True,
         })
         console.print(f"[yellow]⚡ Outil inconnu ignoré : {outil}[/yellow]")
+        event_bus.emit(
+            "stark_action",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": resultat_outil,
+                "erreur": True,
+            },
+        )
         return
 
     try:
@@ -768,6 +833,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
         else:
             etat.echecs_consecutifs = 0
         console.print(f"[dim red]⚡ {outil} -> {resultat_texte[:120]}[/dim red]")
+        event_bus.emit(
+            "stark_action",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": resultat_texte,
+                "erreur": entree["erreur"],
+            },
+        )
     except TypeError as e:
         erreur = f"ERREUR TECHNIQUE arguments {outil} : {e}"
         etat.actions.append({
@@ -789,6 +863,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             resultat_brut=erreur,
         )
         console.print(f"[red]⚡ Erreur technique arguments {outil} : {e}[/red]")
+        event_bus.emit(
+            "stark_action",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": erreur,
+                "erreur": True,
+            },
+        )
     except Exception as e:
         erreur = f"ERREUR : {e}"
         resultat = resultat_erreur(erreur, e)
@@ -811,6 +894,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             resultat_brut=erreur,
         )
         console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
+        event_bus.emit(
+            "stark_action",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": erreur,
+                "erreur": True,
+            },
+        )
 
 def _actions_vers_tentatives(etat: EtatMicroObjectif) -> list[dict]:
     return [
@@ -1054,8 +1146,22 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
     boucle Stark (mode !S). Cette fonction sert d'interface pour la
     boucle principale.
     """
-    reponse, intention_action = parler(user_input, historique, memoire)
-    return reponse, intention_action
+    try:
+        event_bus.emit("thinking", {"message": "Jarvis réfléchit..."})
+        reponse, intention_action = parler(user_input, historique, memoire)
+        texte = reponse if isinstance(reponse, str) else str(reponse)
+        event_bus.emit(
+            "response",
+            {
+                "text": texte,
+                "is_action": bool(intention_action),
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+            },
+        )
+        return reponse, intention_action
+    except Exception as e:
+        event_bus.emit("error", {"message": str(e)})
+        raise
 
 
 class AutonomousAgent:

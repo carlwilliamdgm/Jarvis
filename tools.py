@@ -253,6 +253,13 @@ def lire_traducteur_tool() -> str:
     return "\n".join(lignes)
 
 
+def lire_capacites() -> str:
+    """Retourne l'inventaire actuel des outils publics de Jarvis."""
+    from core.tool_signatures import documenter_signatures_outils
+
+    return documenter_signatures_outils()
+
+
 def modifier_traducteur(cle: str, patterns_fr: str, patterns_en: str, outil: str = "", args_json: str = "{}") -> str:
     """
     Modifie ou ajoute une entrée au traducteur.
@@ -322,6 +329,7 @@ OUTILS = {
     "executer_surveillance_dossiers": executer_surveillance_dossiers,
     "supprimer_surveillance_dossier": supprimer_surveillance_dossier,
     "bilan_proactif": bilan_proactif,
+    "lire_capacites": lire_capacites,
     "lire_traducteur": lire_traducteur_tool,
     "modifier_traducteur": modifier_traducteur,
 }

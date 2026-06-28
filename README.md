@@ -1,205 +1,746 @@
-# Jarvis - Assistant IA Local
+# Jarvis - Assistant IA local
 
-Jarvis est un assistant IA local-first en Python, inspiré de l'assistant de Tony Stark dans Iron Man. Développé par Carl-William DJEGUEMA (The Great Corporation), Jarvis est conçu pour être votre compagnon cognitif personnel, capable d'effectuer des actions concrètes sur votre machine tout en maintenant une personnalité engageante et sarcastique.
+Jarvis est un assistant IA local-first en Python, développé par Carl-William DJEGUEMA pour agir comme compagnon cognitif personnel et agent d'exécution local. Il peut discuter, mémoriser du contexte, exécuter des actions concrètes sur la machine, lancer des boucles agentiques structurées avec le Mode Stark, exposer une API FastAPI et servir des interfaces Tkinter ou web.
 
-## 🎯 Caractéristiques Principales
+Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
 
-- **Local-first** : Fonctionne principalement avec des modèles locaux (Ollama) ou cloud (Groq, OpenRouter)
-- **Mode Stark** : Exécution autonome structurée avec grammaire spécifique (`>>`, `&&`, `||`)
-- **Mode Action** : Commandes directes one-shot avec `!a`
-- **Gestion de fichiers** : Création, lecture, suppression, organisation de dossiers
-- **Audit de stockage** : Surveillance de l'espace disque avec alertes automatiques
-- **Rappels et automatisations** : Planification de tâches récurrentes
-- **Surveillance de dossiers** : Monitoring proactif de répertoires spécifiques
-- **Commandes personnalisées** : Création de raccourcis pour vos commandes fréquentes
-- **Mémoire persistante** : Conservation des notes, préférences et contexte entre les sessions
-- **Interface API REST** : Intégration possible avec d'autres applications
-- **Interface graphique** : Option GUI pour une utilisation plus conviviale
-- **Service Windows** : Intégration en tant que service système
+## Vue d'ensemble
 
-## 📋 Prérequis
+### Capacités principales
 
-- Python 3.12+
-- Ollama (pour les modèles locaux) ou clés API pour Groq/OpenRouter
-- Windows (support principal), Linux/macOS (support partiel)
+- Assistant conversationnel local avec mémoire persistante.
+- Exécution d'outils réels via `tools.OUTILS`.
+- Conscience dynamique des capacités grâce à l'inventaire temps réel de `core/tool_signatures.py`.
+- Mode Stark pour les objectifs multi-étapes avec grammaire `>>`, `&&`, `||`.
+- Mode action one-shot avec `!a`.
+- API FastAPI sur le port `8000`.
+- Streaming SSE pour afficher les événements intermédiaires en direct.
+- Interface Tkinter locale dans `gui/app.py`.
+- Interface web multi-device servie par FastAPI dans `gui/web/index.html`.
+- Service Windows pywin32 capable de lancer automatiquement `uvicorn api.server:app`.
+- Mémoire, rappels, automatisations, surveillance de dossiers, stockage, commandes shell/PowerShell et commandes personnalisées.
 
-## 🚀 Installation
+### Surfaces utilisateur
 
-1. Cloner le repository :
-```bash
-git clone https://github.com/carlwilliamdgm/Jarvis.git
-cd Jarvis
+| Surface | Fichier | Usage |
+| --- | --- | --- |
+| Console Rich | `jarvis.py` | Utilisation terminal complète |
+| API FastAPI | `api/server.py` | Intégration locale, web, multi-device |
+| Interface Tkinter | `gui/app.py` | Client desktop local consommant le SSE |
+| Interface web | `gui/web/index.html` | Client navigateur servi sur `/web` |
+| Service Windows | `service/windows_service.py` | Démarrage automatique de l'API |
+
+## Prérequis
+
+### Environnement cible
+
+- Windows est la plateforme principale.
+- Python recommandé : `C:\Program Files\Python312\python.exe`.
+- Dossier projet : `C:\Users\Carl\Jarvis`.
+- Packages utilisateur : `C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages`.
+
+### Dépendances Python
+
+Le fichier `requirements.txt` contient les dépendances historiques du projet. Selon la surface utilisée, ces packages doivent aussi être présents :
+
+- `fastapi`
+- `uvicorn`
+- `requests`
+- `pywin32` pour le service Windows
+- `psutil`
+- `rich`
+- `ollama`
+- `groq`
+- `plyer`
+
+Installation typique :
+
+```powershell
+cd C:\Users\Carl\Jarvis
+python -m pip install -r requirements.txt
+python -m pip install fastapi uvicorn requests pywin32
 ```
 
-2. Installer les dépendances :
-```bash
-pip install -r requirements.txt
+Avec le Python explicite du projet :
+
+```powershell
+& "C:\Program Files\Python312\python.exe" -m pip install -r requirements.txt
+& "C:\Program Files\Python312\python.exe" -m pip install fastapi uvicorn requests pywin32
 ```
 
-3. Configurer les variables d'environnement (optionnel) :
-```bash
-# Pour Groq (support multi-clés)
-export GROQ_API_KEY="votre_cle_1"
-export GROQ_API_KEY_1="votre_cle_1"
-export GROQ_API_KEY_2="votre_cle_2"
+### Providers LLM
 
-# Pour OpenRouter
-export OPENROUTER_API_KEY="votre_cle"
+Jarvis peut utiliser :
+
+- Groq via `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, etc.
+- OpenRouter via `OPENROUTER_API_KEY`.
+- Ollama local avec `qwen2.5:7b` en fallback.
+
+Exemple PowerShell :
+
+```powershell
+$env:GROQ_API_KEY="votre_cle"
+$env:OPENROUTER_API_KEY="votre_cle"
 ```
 
-4. Lancer Ollama (si utilisé) :
-```bash
+Pour Ollama :
+
+```powershell
 ollama serve
 ollama pull qwen2.5:7b
 ```
 
-## 💻 Utilisation
+## Lancer Jarvis
 
-### Lancement Console
+### 1. Console Rich
 
-```bash
+La console est l'expérience directe historique.
+
+```powershell
+cd C:\Users\Carl\Jarvis
 python jarvis.py
 ```
 
-Sur Windows :
-```bash
-jarvis.cmd
+Ou avec le Python explicite :
+
+```powershell
+cd C:\Users\Carl\Jarvis
+& "C:\Program Files\Python312\python.exe" jarvis.py
 ```
 
-### Modes d'Exécution
+Sur Windows, `jarvis.cmd` peut aussi servir de raccourci.
 
-#### Mode Normal
-Interagissez naturellement avec Jarvis :
-```
-Vous: Liste le contenu de mon dossier Downloads
-Jarvis: Voici le contenu de votre dossier Downloads...
+### 2. Serveur FastAPI manuel
+
+Le serveur expose l'API, le streaming SSE et l'interface web.
+
+```powershell
+cd C:\Users\Carl\Jarvis
+python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-#### Mode Action One-Shot
-Forcez une intention d'action pour le prochain message :
+Avec le Python explicite :
+
+```powershell
+cd C:\Users\Carl\Jarvis
+& "C:\Program Files\Python312\python.exe" -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
+
+URLs principales :
+
+- API locale : `http://localhost:8000`
+- Interface web locale : `http://localhost:8000/web`
+- Documentation OpenAPI FastAPI : `http://localhost:8000/docs`
+- Depuis un autre appareil du réseau : `http://ADRESSE_IP_DE_LA_MACHINE:8000/web`
+
+Le serveur initialise la mémoire avec `initialiser()`, construit un historique système avec `construire_prompt_action()`, puis attend les requêtes.
+
+### 3. Interface Tkinter
+
+L'interface Tkinter est un client local. Elle ne lance pas l'API elle-même : le serveur FastAPI doit déjà tourner.
+
+```powershell
+cd C:\Users\Carl\Jarvis
+python gui\app.py
+```
+
+Elle consomme :
+
+- `GET /jarvis/stream?message=...` pour la conversation en direct.
+- Les événements SSE pour afficher réflexion, provider, actions Stark, erreurs et réponse finale.
+
+### 4. Interface web
+
+L'interface web est un fichier unique :
+
+```text
+gui/web/index.html
+```
+
+Elle est servie par FastAPI grâce au mount :
+
+```python
+app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
+```
+
+Accès :
+
+```text
+http://localhost:8000/web
+```
+
+Pour mobile/tablette sur le même réseau, utiliser l'adresse IP locale de la machine qui exécute Jarvis :
+
+```text
+http://192.168.x.x:8000/web
+```
+
+Le navigateur utilise `EventSource` natif, sans framework ni dépendance externe.
+
+### 5. Service Windows
+
+Le service Windows lance automatiquement :
+
+```text
+uvicorn api.server:app --host 0.0.0.0 --port 8000
+```
+
+Fichier :
+
+```text
+service/windows_service.py
+```
+
+Caractéristiques :
+
+- Utilise explicitement `C:\Program Files\Python312\python.exe`.
+- Ajoute `C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages` au path.
+- Lance uniquement `uvicorn api.server:app`.
+- Ne charge pas `jarvis.py` comme agent console.
+- Écrit les logs dans :
+  - `service/jarvis_service.log`
+  - `service/uvicorn.log`
+
+Installation :
+
+```powershell
+cd C:\Users\Carl\Jarvis
+python service\windows_service.py install
+```
+
+Démarrage :
+
+```powershell
+net start JarvisService
+```
+
+Arrêt :
+
+```powershell
+net stop JarvisService
+```
+
+Redémarrage :
+
+```powershell
+net stop JarvisService
+net start JarvisService
+```
+
+Ces commandes nécessitent généralement un PowerShell administrateur.
+
+## API FastAPI
+
+Point d'entrée :
+
+```text
+api/server.py
+```
+
+Application :
+
+```python
+app = FastAPI(title="Jarvis API", version="1.0.0")
+```
+
+### `POST /jarvis/ask`
+
+Endpoint de compatibilité. Il retourne uniquement la réponse finale.
+
+Requête :
+
+```json
+{
+  "message": "bonjour"
+}
+```
+
+Réponse :
+
+```json
+{
+  "response": "Bonjour, Sir.",
+  "is_action": false,
+  "actions_executed": []
+}
+```
+
+Usage curl :
+
+```powershell
+curl.exe -X POST "http://localhost:8000/jarvis/ask" `
+  -H "Content-Type: application/json" `
+  -d "{\"message\":\"bonjour\"}"
+```
+
+### `GET /jarvis/stream?message=...`
+
+Endpoint recommandé pour les interfaces. Il retourne un flux SSE `text/event-stream`.
+
+Usage curl :
+
+```powershell
+curl.exe -N "http://localhost:8000/jarvis/stream?message=bonjour"
+```
+
+Format SSE :
+
+```text
+data: {"type":"thinking","data":{"message":"Jarvis réfléchit..."}}
+
+data: {"type":"response","data":{"text":"Bonjour, Sir.","is_action":false,"timestamp":"08:14:40"}}
+
+data: {"type":"done"}
+```
+
+Événements possibles :
+
+| Type | Données | Usage |
+| --- | --- | --- |
+| `thinking` | `{"message": "Jarvis réfléchit..."}` | Statut de réflexion |
+| `provider` | `{"provider": "Groq", "model": "llama-3.3-70b-versatile"}` | Provider LLM utilisé |
+| `stark_activated` | `{"objectif": "..."}` | Début du Mode Stark |
+| `stark_action` | `{"outil": "...", "args": {}, "resultat": "...", "erreur": false}` | Action Stark exécutée |
+| `stark_terminated` | `{"statut": "terminé|interrompu", "rapport": "..."}` | Rapport Stark final |
+| `response` | `{"text": "...", "is_action": false, "timestamp": "HH:MM:SS"}` | Réponse finale |
+| `error` | `{"message": "..."}` | Erreur |
+| `done` | aucun champ `data` obligatoire | Fin du flux |
+
+Implémentation technique :
+
+- `api/server.py` crée une queue SSE par connexion.
+- `jarvis.event_bus` lie la queue au thread de travail.
+- `executer_agent()` émet les événements.
+- Le générateur SSE sérialise chaque événement avec `json.dumps(..., ensure_ascii=False)`.
+
+### `GET /jarvis/status`
+
+Retourne un état léger de la machine.
+
+Réponse :
+
+```json
+{
+  "cpu": 12.5,
+  "ram": 48.2,
+  "active": true
+}
+```
+
+### `POST /jarvis/signal`
+
+Reçoit un signal externe.
+
+Requête :
+
+```json
+{
+  "device": "telephone",
+  "event_type": "battery",
+  "payload": {
+    "level": 42
+  }
+}
+```
+
+Réponse :
+
+```json
+{
+  "received": true
+}
+```
+
+### `GET /jarvis/alerts`
+
+Retourne puis vide la queue d'alertes en mémoire.
+
+```json
+{
+  "alerts": []
+}
+```
+
+### `POST /jarvis/confirm`
+
+Endpoint de confirmation prévu pour extension. Actuellement il accuse réception.
+
+```json
+{
+  "action_id": "abc",
+  "confirmed": true
+}
+```
+
+## Interfaces
+
+### Tkinter
+
+Fichier :
+
+```text
+gui/app.py
+```
+
+Comportement :
+
+- Envoie les messages à `/jarvis/stream`.
+- Lit le SSE avec `requests.get(..., stream=True)`.
+- Utilise un thread réseau séparé.
+- Met à jour l'UI uniquement avec `root.after(0, callback)`.
+- Désactive l'input pendant la réponse.
+- Réactive l'input à `done`.
+- Affiche tous les événements intermédiaires, pas seulement la réponse finale.
+
+### Web
+
+Fichier :
+
+```text
+gui/web/index.html
+```
+
+Contraintes :
+
+- HTML, CSS et JS inline.
+- Aucune dépendance externe.
+- Aucun framework.
+- Responsive mobile/tablette/desktop.
+
+Comportement :
+
+- Utilise `EventSource`.
+- Ferme proprement le stream à `done`.
+- Désactive l'input pendant le stream.
+- Affiche le statut du service via `/jarvis/status`.
+- Peut être utilisé depuis un autre appareil du réseau si le port `8000` est accessible.
+
+## Modes de conversation
+
+### Mode normal
+
+Le message est transmis à `core.intellect.interpreter_objectif()`. Core Intellect renvoie :
+
+```json
+{
+  "objectif": "description",
+  "type": "action|conversation|diagnostic|planification|mixte",
+  "actions": [],
+  "reponse": "réponse naturelle"
+}
+```
+
+Jarvis exécute ensuite les actions listées via `tools.OUTILS`.
+
+### Mode action one-shot
+
+Activation :
+
+```text
 !a
-Crée un dossier test dans Documents
 ```
 
-#### Mode Stark
-Exécution autonome structurée avec grammaire spécifique :
+Ou :
+
+```text
+Jarvis, passe en mode action
 ```
+
+Le prochain message est traité comme une commande directe, puis le mode est remis à zéro.
+
+### Mode Stark
+
+Activation :
+
+```text
+!S <objectif>
+```
+
+Exemple :
+
+```text
 !S audite le stockage >> liste les gros fichiers && (notifie le résultat || note le résultat)
 ```
 
-**Grammaire Stark :**
-- `>>` : Macro-étapes séquentielles (arrêt si échec)
-- `&&` : Dépendances gauche-droite dans un segment
-- `||` : Alternatives/replis (première réussite retenue)
+Grammaire :
 
-### Commandes Principales
+- `>>` : macro-étapes séquentielles.
+- `&&` : dépendance gauche-droite.
+- `||` : alternatives/replis.
 
-#### Fichiers et Dossiers
-- `lister_dossier(chemin)` : Liste le contenu d'un dossier
-- `creer_dossier(chemin)` : Crée un nouveau dossier
-- `creer_fichier(chemin, contenu)` : Crée un fichier avec contenu
-- `lire_fichier(chemin)` : Lit le contenu d'un fichier
-- `supprimer(chemin)` : Supprime un fichier ou dossier
+Le Mode Stark :
 
-#### Stockage
-- `audit_stockage()` : Analyse l'espace disque disponible
-- `top_fichiers_lourds(n)` : Liste les plus gros fichiers
-- `vider_temp()` : Nettoie les fichiers temporaires
-- `vider_corbeille()` : Vide la corbeille
+- active `core.safety.activer_mode_stark()`;
+- court-circuite les confirmations interactives;
+- exécute des micro-objectifs avec budget limité;
+- produit un rapport final;
+- émet les événements SSE `stark_activated`, `stark_action` et `stark_terminated`.
 
-#### Mémoire et Contexte
-- `noter(note)` : Ajoute une note
-- `lire_notes()` : Lit les notes enregistrées
-- `memoriser_contexte(categorie, cle, valeur)` : Sauve du contexte durable
-- `lire_contexte(categorie)` : Lit une catégorie de contexte
-- `memoriser_preference(cle, valeur)` : Sauve une préférence
-- `lire_preferences()` : Lit les préférences
+## Conscience des capacités
 
-#### Organisation
-- `analyser_organisation(chemin)` : Produit un plan de rangement
-- `organiser_dossier(chemin)` : Range automatiquement un dossier
+Jarvis sait ce qu'il peut faire grâce à l'inventaire dynamique des outils.
 
-#### Rappels et Automatisations
-- `ajouter_rappel(message, heure)` : Crée un rappel
-- `lire_rappels()` : Liste les rappels
-- `verifier_rappels()` : Vérifie les rappels dus
-- `ajouter_automatisation(nom, outil, args, recurrence, heure)` : Crée une automatisation
-- `lister_automatisations()` : Liste les automatisations
-- `executer_automatisations_dues()` : Exécute les automatisations arrivées à échéance
+Fichier :
 
-#### Surveillance
-- `proposer_surveillance_dossiers()` : Propose des dossiers à surveiller
-- `ajouter_surveillance_dossier(chemin, recurrence, heure)` : Ajoute une surveillance
-- `lister_surveillance_dossiers()` : Liste les surveillances actives
-- `executer_surveillance_dossiers(force)` : Exécute les surveillances
+```text
+core/tool_signatures.py
+```
 
-#### Commandes Système
-- `executer_commande(commande)` : Exécute une commande shell
-- `executer_powershell(commande)` : Exécute une commande PowerShell
-- `ajouter_commande_personnalisee(nom, commande, description)` : Crée un raccourci
-- `executer_commande_personnalisee(nom)` : Exécute un raccourci
+Principe :
 
-## 🏗️ Architecture
+- `tools.OUTILS` est le registre public réel.
+- `core/tool_signatures.py` introspecte ce registre avec `inspect.signature`.
+- `documenter_signatures_outils()` injecte les signatures actuelles dans les prompts.
+- `lire_capacites()` expose le même inventaire comme outil Jarvis.
 
-Jarvis suit une architecture modulaire stricte :
+Conséquence :
 
-- **Core Intellect** (`core/intellect.py`) : Le seul composant qui "pense"
-- **Tools** (`tools.py`) : Façade stable des outils
-- **Capabilities** (`capabilities/`) : Modules d'exécution déterministes
-- **Memory** (`core/memory.py`) : Gestion de la mémoire persistante
-- **Safety** (`core/safety.py`) : Validation des chemins et confirmations
+- Si un outil est ajouté dans `tools.OUTILS`, Jarvis le voit dans son prompt.
+- Si un outil est retiré de `tools.OUTILS`, Jarvis ne doit plus le proposer.
+- La documentation ne doit pas être la source de vérité des capacités. Elle explique le mécanisme ; le registre actif reste `tools.OUTILS`.
 
-Pour plus de détails, consultez [ARCHITECTURE.md](ARCHITECTURE.md).
+Demande utilisateur typique :
 
-## 🔒 Sécurité
+```text
+Jarvis, qu'est-ce que tu peux faire maintenant ?
+```
 
-Jarvis utilise une politique de confirmation ciblée :
-- Les lectures sont toujours libres
-- Les écritures dans l'espace utilisateur sont libres
-- Les écritures vers le répertoire Jarvis ou les zones système Windows demandent confirmation
-- Le mode Stark désactive les confirmations pour l'autonomie
+Réponse attendue côté modèle :
 
-## 📚 Documentation
+1. Appeler `lire_capacites()`.
+2. Résumer les capacités disponibles en langage naturel.
+3. Être honnête sur les limites.
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) : Documentation technique détaillée
-- [EXECUTION_OUTILS.md](EXECUTION_OUTILS.md) : Guide d'exécution des outils
+## Architecture technique
 
-## 🔧 Configuration
+```text
+jarvis.py
+├── EventBus
+├── detecter_commande_mode()
+├── parler()
+├── executer_agent()
+├── executer_mode_stark()
+└── AutonomousAgent
 
-### Variables d'Environnement
+api/server.py
+├── FastAPI app
+├── /jarvis/ask
+├── /jarvis/stream
+├── /jarvis/status
+└── /web
 
-- `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, ... : Clés API Groq (support multi-clés)
-- `OPENROUTER_API_KEY` : Clé API OpenRouter
+core/
+├── intellect.py
+├── prompt.py
+├── tool_signatures.py
+├── memory.py
+├── safety.py
+├── stark_parser.py
+└── stark_session.py
 
-### Fichiers de Configuration
+tools.py
+└── OUTILS
 
-- `memory.json` : Mémoire persistante (notes, préférences, contexte, automatisations)
-- `stark_actif.json` : État des instances Stark actives
+capabilities/
+├── files.py
+├── storage.py
+├── commands.py
+├── organization.py
+├── memory_tools.py
+├── scheduler.py
+├── custom_commands.py
+└── watchers.py
+```
 
-## 🚧 Modules Futurs
+### Responsabilités
 
-Les modules suivants sont planifiés mais pas encore implémentés :
-- **context_engine** : Perception du contexte permanent
-- **datashield** : Protection des données sensibles
-- **progress_tracker** : Suivi des progrès sur les tâches
-- **syncsphere** : Synchronisation multi-appareils
-- **taskflow** : Gestion des flux de tâches complexes
+- `core/intellect.py` : seul composant qui raisonne.
+- `jarvis.py` : orchestration, modes, exécution, EventBus, agent autonome.
+- `tools.py` : façade publique des outils.
+- `capabilities/` : exécution déterministe.
+- `api/server.py` : transport HTTP/SSE et fichiers statiques.
+- `gui/app.py` et `gui/web/index.html` : présentation.
+- `service/windows_service.py` : intégration Windows.
 
-## 🤝 Contribution
+## Outils principaux
 
-Ce projet est développé par Carl-William DJEGUEMA (The Great Corporation). Les contributions sont les bienvenues via les issues et pull requests.
+Les outils sont exposés via `tools.OUTILS`. La liste réelle est consultable à tout moment avec :
 
-## 📄 Licence
+```text
+lire_capacites()
+```
 
-[À définir]
+Familles principales :
 
-## 🙏 Remerciements
+- Fichiers : créer, lire, lister, supprimer.
+- Stockage : audit, fichiers lourds, temp, corbeille.
+- Mémoire : notes, préférences, contexte durable.
+- Organisation : analyse et rangement de dossiers.
+- Rappels : ajout, lecture, suppression, vérification.
+- Automatisations : création, liste, exécution manuelle ou due.
+- Surveillance : dossiers surveillés et exécution des surveillances.
+- Commandes : shell, PowerShell, commandes personnalisées.
+- Traducteur : consultation et demande de modification.
+- Agentique : `terminer_tache()`, `bilan_proactif()`.
+- Introspection : `lire_capacites()`.
 
-- Inspiration : Jarvis d'Iron Man (Marvel)
-- Modèles LLM : Groq, OpenRouter, Ollama
-- Bibliothèques : Rich, Psutil, Plyer, FastAPI
+## Mémoire et fichiers d'état
 
----
+### `memory.json`
 
-**Développé avec ❤️ par Carl-William DJEGUEMA - The Great Corporation**
+Stocke :
+
+- notes;
+- préférences;
+- contexte personnel structuré;
+- journal conversationnel;
+- historique d'actions;
+- automatisations;
+- surveillances de dossiers;
+- signaux proactifs.
+
+### `stark_actif.json`
+
+Stocke les instances Stark actives pour éviter les collisions et détecter les sessions mortes.
+
+### Logs
+
+Service Windows :
+
+```text
+service/jarvis_service.log
+service/uvicorn.log
+```
+
+## Sécurité
+
+La politique actuelle est une confirmation ciblée :
+
+- Les lectures sont libres.
+- Les écritures dans l'espace utilisateur sont libres.
+- Les écritures vers `JARVIS_DIR` ou zones système Windows demandent confirmation.
+- En Mode Stark, les confirmations sont désactivées pour éviter un blocage interactif.
+- Les automatisations refusent certains outils sensibles ou bloquants.
+
+Les chemins passent par `core.safety.chemin_autorise()` lorsque l'outil manipule le système de fichiers.
+
+## Tests et validation
+
+Compilation rapide :
+
+```powershell
+cd C:\Users\Carl\Jarvis
+python -m py_compile jarvis.py api\server.py gui\app.py tools.py core\tool_signatures.py
+```
+
+Tester l'API :
+
+```powershell
+curl.exe "http://localhost:8000/jarvis/status"
+```
+
+Tester le SSE :
+
+```powershell
+curl.exe -N "http://localhost:8000/jarvis/stream?message=bonjour"
+```
+
+Tester le web sans navigateur via FastAPI TestClient :
+
+```powershell
+python -c "from fastapi.testclient import TestClient; from api.server import app; r=TestClient(app).get('/web/'); print(r.status_code)"
+```
+
+Tester les signatures dynamiques :
+
+```powershell
+python -c "import tools; print(tools.OUTILS['lire_capacites']())"
+```
+
+## Dépannage
+
+### `/jarvis/stream` retourne `404 Not Found`
+
+Cause probable : le service Windows ou le serveur manuel tourne encore avec une ancienne version du code.
+
+Solution :
+
+```powershell
+net stop JarvisService
+net start JarvisService
+```
+
+Ou arrêter puis relancer le serveur manuel `uvicorn`.
+
+### `http://localhost:8000/web` ne charge pas
+
+Vérifier :
+
+- le serveur FastAPI est lancé;
+- `api/server.py` contient bien le mount `/web`;
+- le fichier `gui/web/index.html` existe;
+- l'URL utilisée est `/web` ou `/web/`.
+
+### L'interface Tkinter affiche Jarvis hors ligne
+
+Vérifier :
+
+- le serveur FastAPI tourne sur `localhost:8000`;
+- `/jarvis/stream?message=bonjour` répond avec `curl.exe -N`;
+- aucun firewall local ne bloque la connexion.
+
+### Le service Windows refuse de démarrer
+
+Consulter :
+
+```text
+service/jarvis_service.log
+service/uvicorn.log
+```
+
+Vérifier :
+
+- Python existe à `C:\Program Files\Python312\python.exe`;
+- `pywin32`, `fastapi`, `uvicorn` sont installés pour ce Python;
+- le port `8000` n'est pas déjà occupé;
+- les commandes sont lancées en administrateur.
+
+### Jarvis ne sait pas faire une action
+
+Vérifier :
+
+- l'outil existe dans `tools.OUTILS`;
+- sa signature apparaît dans `lire_capacites()`;
+- Core Intellect n'a pas filtré l'action comme outil inconnu;
+- les paramètres demandés correspondent à la signature réelle.
+
+## Règles pour ajouter une capacité
+
+1. Créer ou modifier une fonction déterministe dans `capabilities/`.
+2. Ajouter un wrapper dans `tools.py` si une confirmation, normalisation ou journalisation est nécessaire.
+3. Exposer l'outil dans `tools.OUTILS`.
+4. Vérifier que `lire_capacites()` affiche la nouvelle signature.
+5. Ajouter ou adapter les tests.
+6. Mettre à jour la documentation métier si l'outil ajoute un nouveau domaine fonctionnel.
+
+Ne pas appeler directement un LLM depuis `capabilities/`.
+
+## Modules futurs
+
+Le dossier `modules/` contient des modules planifiés :
+
+- `context_engine` : perception du contexte permanent.
+- `datashield` : protection des données sensibles.
+- `progress_tracker` : suivi long terme.
+- `syncsphere` : synchronisation multi-appareils.
+- `taskflow` : workflows complexes.
+
+Ils doivent respecter les principes existants : Core Intellect pense, les capabilities exécutent, `tools.OUTILS` expose.
+
+## Licence
+
+À définir.
+
+## Crédit
+
+Développé par Carl-William DJEGUEMA - The Great Corporation.

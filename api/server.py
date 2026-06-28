@@ -1,18 +1,25 @@
 from collections import deque
 from datetime import datetime
+import json
 from pathlib import Path
+import queue
+import threading
 from typing import Dict, List
 
 import psutil
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 
-from jarvis import AutonomousAgent, executer_agent, initialiser
+from jarvis import AutonomousAgent, event_bus, executer_agent, initialiser
 from core.safety import action_bloquee, action_requiert_confirmation
 from core.prompt import construire_prompt_action
 
 app = FastAPI(title="Jarvis API", version="1.0.0")
+WEB_DIR = Path(__file__).resolve().parent.parent / "gui" / "web"
+app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 # Global agent instance
 agent = None
@@ -117,6 +124,44 @@ async def ask_jarvis(request: AskRequest) -> Dict:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.get("/jarvis/stream")
+async def stream_jarvis(message: str):
+    """Stream Jarvis events with Server-Sent Events."""
+
+    def event_stream():
+        event_queue = event_bus.subscribe()
+
+        def worker():
+            event_bus.bind(event_queue)
+            try:
+                executer_agent(message, historique, memoire)
+            except Exception as e:
+                event_bus.emit("error", {"message": str(e)})
+            finally:
+                event_queue.put({"type": "done"})
+                event_bus.unbind()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        try:
+            while True:
+                try:
+                    event = event_queue.get(timeout=1)
+                except queue.Empty:
+                    continue
+
+                payload = json.dumps(event, ensure_ascii=False)
+                yield f"data: {payload}\n\n"
+
+                if event.get("type") == "done":
+                    break
+        finally:
+            event_bus.unsubscribe(event_queue)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.get("/jarvis/status")

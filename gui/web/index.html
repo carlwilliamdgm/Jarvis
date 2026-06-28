@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #05050a;
+      color: #a8b8c8;
+      font-family: "Segoe UI", Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .chat {
+      width: min(100%, 720px);
+      min-height: calc(100vh - 36px);
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid #111827;
+    }
+
+    header {
+      padding: 22px 20px 14px;
+      border-bottom: 1px solid #111827;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.05;
+    }
+
+    .title {
+      color: #fff;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      color: #3a6a9a;
+      font-size: 16px;
+      font-style: italic;
+      margin-top: 3px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #6b879f;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #1a6a3a;
+      box-shadow: 0 0 0 0 rgba(26, 106, 58, 0.8);
+      animation: pulse 1.4s infinite;
+    }
+
+    .dot.offline {
+      background: #6a1a1a;
+      animation: none;
+      box-shadow: none;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(26, 106, 58, 0.75); }
+      70% { box-shadow: 0 0 0 9px rgba(26, 106, 58, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(26, 106, 58, 0); }
+    }
+
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      scroll-behavior: smooth;
+    }
+
+    .row {
+      display: flex;
+      flex-direction: column;
+      margin: 10px 0;
+    }
+
+    .row.user {
+      align-items: flex-end;
+    }
+
+    .row.jarvis {
+      align-items: flex-start;
+    }
+
+    .label {
+      color: #6f8194;
+      font-size: 12px;
+      margin: 0 8px 4px;
+    }
+
+    .bubble {
+      max-width: min(82%, 560px);
+      padding: 11px 13px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .user .bubble {
+      background: #0d2a44;
+      border: 1px solid #1a4a6a;
+      color: #8ab8d8;
+    }
+
+    .jarvis .bubble {
+      background: #0d0d14;
+      border: 1px solid #1a2030;
+      color: #a8b8c8;
+    }
+
+    .event {
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .event.status-line {
+      color: #2a4a6a;
+      font-style: italic;
+      padding-left: 3px;
+    }
+
+    .event.provider {
+      color: #1a6a3a;
+      padding-left: 3px;
+    }
+
+    .event.stark-start {
+      background: #1a0a0a;
+      border: 1px solid #5a1a1a;
+      color: #e0b8b8;
+    }
+
+    .event.stark-action {
+      margin-left: 24px;
+      background: #1a4a1a;
+      color: #d5ecd5;
+    }
+
+    .event.stark-action.error {
+      background: #4a1a1a;
+      color: #ffd0d0;
+    }
+
+    .event.stark-end {
+      background: #0a1a0a;
+      border: 1px solid #1a4a1a;
+      color: #d8ead8;
+    }
+
+    .event.stark-end.interrupted {
+      background: #1a0f00;
+      border-color: #5a3a1a;
+      color: #f0d0a8;
+    }
+
+    .event.error {
+      color: #ff4444;
+      padding-left: 3px;
+    }
+
+    footer {
+      display: flex;
+      gap: 10px;
+      padding: 14px;
+      border-top: 1px solid #111827;
+      background: #08080d;
+    }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      background: #0c1018;
+      border: 1px solid #1a2a3a;
+      color: #7a9ab8;
+      padding: 12px 13px;
+      border-radius: 8px;
+      font-size: 15px;
+      outline: none;
+    }
+
+    input::placeholder {
+      color: #526b82;
+    }
+
+    input:disabled {
+      opacity: 0.55;
+    }
+
+    button {
+      width: 46px;
+      border: 1px solid #16405f;
+      background: #0c2a44;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 22px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: default;
+    }
+
+    @media (max-width: 560px) {
+      body {
+        padding: 0;
+      }
+
+      .chat {
+        min-height: 100vh;
+        border-left: 0;
+        border-right: 0;
+      }
+
+      header {
+        padding: 18px 14px 12px;
+      }
+
+      main {
+        padding: 14px;
+      }
+
+      .bubble {
+        max-width: 92%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="chat">
+    <header>
+      <div class="brand">
+        <div class="title">JARVIS</div>
+        <div class="subtitle">by Carl-William</div>
+      </div>
+      <div class="status">
+        <span id="statusDot" class="dot"></span>
+        <span id="statusText">Service en ligne</span>
+      </div>
+    </header>
+
+    <main id="conversation"></main>
+
+    <footer>
+      <input id="messageInput" type="text" placeholder="Entrez votre commande, Sir…" autocomplete="off">
+      <button id="sendButton" type="button" title="Envoyer">→</button>
+    </footer>
+  </section>
+
+  <script>
+    const conversation = document.getElementById("conversation");
+    const input = document.getElementById("messageInput");
+    const sendButton = document.getElementById("sendButton");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    let source = null;
+
+    function scrollBottom() {
+      conversation.scrollTop = conversation.scrollHeight;
+    }
+
+    function appendElement(element) {
+      conversation.appendChild(element);
+      scrollBottom();
+    }
+
+    function addBubble(kind, label, text) {
+      const row = document.createElement("div");
+      row.className = `row ${kind}`;
+
+      const labelNode = document.createElement("div");
+      labelNode.className = "label";
+      labelNode.textContent = label;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      row.append(labelNode, bubble);
+      appendElement(row);
+    }
+
+    function addEvent(className, text) {
+      const node = document.createElement("div");
+      node.className = `event ${className}`;
+      node.textContent = text;
+      appendElement(node);
+    }
+
+    function setStreaming(streaming) {
+      input.disabled = streaming;
+      sendButton.disabled = streaming;
+      if (!streaming) {
+        input.focus();
+      }
+    }
+
+    function handleEvent(event) {
+      const type = event.type;
+      const data = event.data || {};
+
+      if (type === "thinking") {
+        addEvent("status-line", data.message || "Jarvis réfléchit...");
+      } else if (type === "provider") {
+        addEvent("provider", `✓ ${data.provider || "?"} — ${data.model || "?"}`);
+      } else if (type === "stark_activated") {
+        addEvent("stark-start", `⚡ Mode Stark activé — ${data.objectif || ""}`);
+      } else if (type === "stark_action") {
+        const result = String(data.resultat || "").slice(0, 120);
+        addEvent(`stark-action${data.erreur ? " error" : ""}`, `  ⚡ ${data.outil || "?"} → ${result}`);
+      } else if (type === "stark_terminated") {
+        const interrupted = data.statut === "interrompu" ? " interrupted" : "";
+        addEvent(`stark-end${interrupted}`, data.rapport || "");
+      } else if (type === "response") {
+        addBubble("jarvis", `Jarvis — ${data.timestamp || ""}`.trim(), data.text || "");
+      } else if (type === "error") {
+        addEvent("error", data.message || "Erreur inconnue.");
+      } else if (type === "done") {
+        closeStream();
+      }
+    }
+
+    function closeStream() {
+      if (source) {
+        source.close();
+        source = null;
+      }
+      setStreaming(false);
+    }
+
+    function sendMessage() {
+      const message = input.value.trim();
+      if (!message || source) {
+        return;
+      }
+
+      input.value = "";
+      addBubble("user", "Vous", message);
+      setStreaming(true);
+
+      source = new EventSource(`/jarvis/stream?message=${encodeURIComponent(message)}`);
+      source.onmessage = (rawEvent) => {
+        try {
+          handleEvent(JSON.parse(rawEvent.data));
+        } catch (_error) {
+          addEvent("error", "Flux SSE illisible.");
+        }
+      };
+      source.onerror = () => {
+        addEvent("error", "Connexion au flux interrompue.");
+        closeStream();
+      };
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch("/jarvis/status", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("offline");
+        }
+        statusDot.classList.remove("offline");
+        statusText.textContent = "Service en ligne";
+      } catch (_error) {
+        statusDot.classList.add("offline");
+        statusText.textContent = "Service hors ligne";
+      }
+    }
+
+    sendButton.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    });
+
+    refreshStatus();
+    setInterval(refreshStatus, 15000);
+    input.focus();
+  </script>
+</body>
+</html>
