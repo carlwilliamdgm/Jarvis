@@ -1,13 +1,16 @@
 import json
+import os
 import threading
+import uuid
 from urllib.parse import quote
 
 import requests
 import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
 
 
-API_BASE = "http://localhost:8000"
 HEADER_BG = "#0a0a0f"
+TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
 
 
 THEMES = {
@@ -63,6 +66,12 @@ class JarvisGUI:
         self.is_streaming = False
         self.cancel_event = None
         self.themed_widgets = []
+        
+        # Instance management
+        self.api_base = "http://localhost:8000"
+        self.instances = []
+        self.active_instance_id = "pc1-local"
+        self.load_instances()
 
         self.root.configure(bg=self.theme["root"])
 
@@ -93,6 +102,46 @@ class JarvisGUI:
         )
         self.subtitle.pack()
 
+        # Instance selector
+        self.instance_frame = tk.Frame(self.header_grid, bg=HEADER_BG)
+        self.instance_frame.pack(side="right", padx=(0, 8))
+        
+        self.instance_var = tk.StringVar()
+        self.instance_selector = ttk.Combobox(
+            self.instance_frame,
+            textvariable=self.instance_var,
+            state="readonly",
+            width=15,
+            font=("Segoe UI", 10)
+        )
+        self.instance_selector.pack(side="left", padx=(0, 4))
+        self.instance_selector.bind("<<ComboboxSelected>>", self.on_instance_change)
+        
+        self.instance_badge = tk.Label(
+            self.instance_frame,
+            text="",
+            bg=self.theme["button_bg"],
+            fg="white",
+            font=("Segoe UI", 9, "bold"),
+            padx=6,
+            pady=2
+        )
+        self.instance_badge.pack(side="left")
+        
+        self.manage_button = tk.Button(
+            self.header_grid,
+            text="⚙",
+            command=self.open_instance_manager,
+            bg=self.theme["muted_button_bg"],
+            fg=self.theme["jarvis_fg"],
+            activebackground=self.theme["button_bg"],
+            activeforeground=self.theme["button_fg"],
+            relief="flat",
+            font=("Segoe UI", 12),
+            width=3,
+        )
+        self.manage_button.pack(side="right", padx=(0, 4))
+        
         self.theme_button = tk.Button(
             self.header_grid,
             text="☾",
@@ -105,7 +154,7 @@ class JarvisGUI:
             font=("Segoe UI", 12),
             width=3,
         )
-        self.theme_button.place(relx=1.0, rely=0.0, anchor="ne")
+        self.theme_button.pack(side="right")
 
         self.content = tk.Frame(self.root, bg=self.theme["root"])
         self.content.pack(side="top", fill="both", expand=True, padx=14, pady=10)
@@ -258,7 +307,7 @@ class JarvisGUI:
         self._finish_stream()
 
     def stream_message(self, message, cancel_event):
-        url = f"{API_BASE}/jarvis/stream?message={quote(message)}"
+        url = f"{self.api_base}/jarvis/stream?message={quote(message)}"
         try:
             with requests.get(url, stream=True, timeout=(5, None)) as response:
                 response.raise_for_status()
@@ -465,6 +514,477 @@ class JarvisGUI:
             widget.destroy()
         self.themed_widgets.clear()
         self.typing_label.configure(text="")
+    
+    # Instance Management Methods
+    def load_instances(self):
+        if os.path.exists(TARGETS_FILE):
+            try:
+                with open(TARGETS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.instances = data.get("instances", [])
+                    self.active_instance_id = data.get("instance_active", "pc1-local")
+            except Exception:
+                self.instances = [
+                    {"id": "pc1-local", "nom": "PC1 (local)", "url": "http://localhost:8000"}
+                ]
+                self.active_instance_id = "pc1-local"
+        else:
+            self.instances = [
+                {"id": "pc1-local", "nom": "PC1 (local)", "url": "http://localhost:8000"}
+            ]
+            self.active_instance_id = "pc1-local"
+            self.save_instances()
+        
+        self.update_instance_ui()
+    
+    def save_instances(self):
+        data = {
+            "instances": self.instances,
+            "instance_active": self.active_instance_id
+        }
+        try:
+            with open(TARGETS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible de sauvegarder les instances: {e}")
+    
+    def update_instance_ui(self):
+        instance_names = [inst["nom"] for inst in self.instances]
+        self.instance_selector['values'] = instance_names
+        
+        active_inst = next((i for i in self.instances if i["id"] == self.active_instance_id), None)
+        if active_inst:
+            self.instance_var.set(active_inst["nom"])
+            self.api_base = active_inst["url"]
+            self.instance_badge.config(text=active_inst["nom"])
+            self.root.title(f"Jarvis — {active_inst['nom']}")
+        else:
+            # Fallback to first instance
+            if self.instances:
+                self.active_instance_id = self.instances[0]["id"]
+                self.update_instance_ui()
+    
+    def on_instance_change(self, event):
+        selected_name = self.instance_var.get()
+        selected_inst = next((i for i in self.instances if i["nom"] == selected_name), None)
+        if selected_inst:
+            self.active_instance_id = selected_inst["id"]
+            self.api_base = selected_inst["url"]
+            self.instance_badge.config(text=selected_inst["nom"])
+            self.root.title(f"Jarvis — {selected_inst['nom']}")
+            self.save_instances()
+            self.refresh_status()
+    
+    def open_instance_manager(self):
+        manager = InstanceManager(self.root, self)
+        self.root.wait_window(manager.window)
+        self.load_instances()
+    
+    def refresh_status(self):
+        # Status check - can be extended to show visual indicator if needed
+        try:
+            response = requests.get(f"{self.api_base}/jarvis/status", timeout=5)
+            if not response.ok:
+                pass  # Could add visual error indicator here
+        except:
+            pass  # Could add visual error indicator here
+
+
+class InstanceManager:
+    def __init__(self, parent, gui):
+        self.gui = gui
+        self.window = tk.Toplevel(parent)
+        self.window.title("Gérer les instances Jarvis")
+        self.window.geometry("500x600")
+        self.window.configure(bg=gui.theme["root"])
+        self.window.transient(parent)
+        self.window.grab_set()
+        
+        self.editing_id = None
+        
+        self.setup_ui()
+        self.refresh_list()
+    
+    def setup_ui(self):
+        # Header
+        header = tk.Frame(self.window, bg=self.gui.theme["header"], pady=12)
+        header.pack(fill="x")
+        
+        title = tk.Label(
+            header,
+            text="Gérer les instances Jarvis",
+            bg=self.gui.theme["header"],
+            fg="white",
+            font=("Segoe UI", 16, "bold")
+        )
+        title.pack()
+        
+        # Add/Edit form
+        form_frame = tk.Frame(self.window, bg=self.gui.theme["root"], padx=20, pady=10)
+        form_frame.pack(fill="x")
+        
+        tk.Label(
+            form_frame,
+            text="Nom:",
+            bg=self.gui.theme["root"],
+            fg=self.gui.theme["meta"],
+            font=("Segoe UI", 10)
+        ).grid(row=0, column=0, sticky="w", pady=4)
+        
+        self.name_entry = tk.Entry(
+            form_frame,
+            bg=self.gui.theme["input_bg"],
+            fg=self.gui.theme["input_fg"],
+            insertbackground=self.gui.theme["input_fg"],
+            relief="flat",
+            font=("Segoe UI", 11),
+            width=30
+        )
+        self.name_entry.grid(row=0, column=1, sticky="ew", pady=4, padx=8)
+        
+        tk.Label(
+            form_frame,
+            text="URL:",
+            bg=self.gui.theme["root"],
+            fg=self.gui.theme["meta"],
+            font=("Segoe UI", 10)
+        ).grid(row=1, column=0, sticky="w", pady=4)
+        
+        self.url_entry = tk.Entry(
+            form_frame,
+            bg=self.gui.theme["input_bg"],
+            fg=self.gui.theme["input_fg"],
+            insertbackground=self.gui.theme["input_fg"],
+            relief="flat",
+            font=("Segoe UI", 11),
+            width=30
+        )
+        self.url_entry.grid(row=1, column=1, sticky="ew", pady=4, padx=8)
+        
+        button_frame = tk.Frame(form_frame, bg=self.gui.theme["root"])
+        button_frame.grid(row=2, column=0, columnspan=2, pady=8)
+        
+        tk.Button(
+            button_frame,
+            text="Tester",
+            command=self.test_connection,
+            bg=self.gui.theme["muted_button_bg"],
+            fg=self.gui.theme["jarvis_fg"],
+            relief="flat",
+            font=("Segoe UI", 10),
+            padx=12
+        ).pack(side="left", padx=4)
+        
+        self.add_button = tk.Button(
+            button_frame,
+            text="Ajouter",
+            command=self.add_instance,
+            bg=self.gui.theme["button_bg"],
+            fg="white",
+            relief="flat",
+            font=("Segoe UI", 10),
+            padx=12
+        )
+        self.add_button.pack(side="left", padx=4)
+        
+        # Instance list
+        list_frame = tk.Frame(self.window, bg=self.gui.theme["root"], padx=20, pady=10)
+        list_frame.pack(fill="both", expand=True)
+        
+        tk.Label(
+            list_frame,
+            text="Instances configurées:",
+            bg=self.gui.theme["root"],
+            fg=self.gui.theme["meta"],
+            font=("Segoe UI", 10, "bold")
+        ).pack(anchor="w", pady=(0, 8))
+        
+        self.list_container = tk.Frame(list_frame, bg=self.gui.theme["root"])
+        self.list_container.pack(fill="both", expand=True)
+        
+        # Discovery section
+        discovery_frame = tk.Frame(self.window, bg=self.gui.theme["root"], padx=20, pady=10)
+        discovery_frame.pack(fill="x")
+        
+        self.discovery_var = tk.BooleanVar()
+        discovery_check = tk.Checkbutton(
+            discovery_frame,
+            text="Découverte réseau Tailscale",
+            variable=self.discovery_var,
+            command=self.toggle_discovery,
+            bg=self.gui.theme["root"],
+            fg=self.gui.theme["text"],
+            selectcolor=self.gui.theme["input_bg"],
+            activebackground=self.gui.theme["root"],
+            font=("Segoe UI", 10)
+        )
+        discovery_check.pack(anchor="w")
+        
+        self.discovery_results = tk.Frame(discovery_frame, bg=self.gui.theme["root"])
+        self.discovery_results.pack(fill="x", pady=8)
+    
+    def refresh_list(self):
+        for widget in self.list_container.winfo_children():
+            widget.destroy()
+        
+        for inst in self.gui.instances:
+            item = tk.Frame(
+                self.list_container,
+                bg=self.gui.theme["input_bg"],
+                pady=8,
+                padx=10
+            )
+            item.pack(fill="x", pady=4)
+            
+            info = tk.Frame(item, bg=self.gui.theme["input_bg"])
+            info.pack(side="left", fill="x", expand=True)
+            
+            tk.Label(
+                info,
+                text=inst["nom"],
+                bg=self.gui.theme["input_bg"],
+                fg=self.gui.theme["text"],
+                font=("Segoe UI", 11, "bold")
+            ).pack(anchor="w")
+            
+            tk.Label(
+                info,
+                text=inst["url"],
+                bg=self.gui.theme["input_bg"],
+                fg=self.gui.theme["meta"],
+                font=("Segoe UI", 9)
+            ).pack(anchor="w")
+            
+            if inst["id"] != "pc1-local":
+                actions = tk.Frame(item, bg=self.gui.theme["input_bg"])
+                actions.pack(side="right", padx=8)
+                
+                tk.Button(
+                    actions,
+                    text="Modifier",
+                    command=lambda iid=inst["id"]: self.edit_instance(iid),
+                    bg=self.gui.theme["muted_button_bg"],
+                    fg=self.gui.theme["jarvis_fg"],
+                    relief="flat",
+                    font=("Segoe UI", 9),
+                    padx=8
+                ).pack(side="left", padx=2)
+                
+                tk.Button(
+                    actions,
+                    text="Supprimer",
+                    command=lambda iid=inst["id"]: self.delete_instance(iid),
+                    bg="#6a1a1a",
+                    fg="#ffd0d0",
+                    relief="flat",
+                    font=("Segoe UI", 9),
+                    padx=8
+                ).pack(side="left", padx=2)
+    
+    def test_connection(self):
+        url = self.url_entry.get().strip()
+        if not url:
+            messagebox.showwarning("Avertissement", "Veuillez entrer une URL")
+            return
+        
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                messagebox.showerror("Erreur", "URL invalide (doit commencer par http:// ou https://)")
+                return
+        except:
+            messagebox.showerror("Erreur", "URL invalide")
+            return
+        
+        try:
+            response = requests.get(f"{url}/jarvis/status", timeout=5)
+            if response.ok:
+                messagebox.showinfo("Succès", "Connexion réussie !")
+            else:
+                messagebox.showerror("Erreur", "Connexion échouée (service non disponible)")
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Connexion échouée: {e}")
+    
+    def add_instance(self):
+        name = self.name_entry.get().strip()
+        url = self.url_entry.get().strip()
+        
+        if not name or not url:
+            messagebox.showwarning("Avertissement", "Veuillez remplir le nom et l'URL")
+            return
+        
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                messagebox.showerror("Erreur", "URL invalide (doit commencer par http:// ou https://)")
+                return
+        except:
+            messagebox.showerror("Erreur", "URL invalide")
+            return
+        
+        if self.editing_id:
+            inst = next((i for i in self.gui.instances if i["id"] == self.editing_id), None)
+            if inst:
+                inst["nom"] = name
+                inst["url"] = url
+            self.editing_id = None
+            self.add_button.config(text="Ajouter")
+        else:
+            new_inst = {
+                "id": f"inst-{uuid.uuid4().hex[:8]}",
+                "nom": name,
+                "url": url
+            }
+            self.gui.instances.append(new_inst)
+        
+        self.gui.save_instances()
+        self.name_entry.delete(0, tk.END)
+        self.url_entry.delete(0, tk.END)
+        self.refresh_list()
+    
+    def edit_instance(self, instance_id):
+        inst = next((i for i in self.gui.instances if i["id"] == instance_id), None)
+        if inst:
+            self.editing_id = instance_id
+            self.name_entry.delete(0, tk.END)
+            self.name_entry.insert(0, inst["nom"])
+            self.url_entry.delete(0, tk.END)
+            self.url_entry.insert(0, inst["url"])
+            self.add_button.config(text="Mettre à jour")
+    
+    def delete_instance(self, instance_id):
+        if messagebox.askyesno("Confirmation", "Supprimer cette instance ?"):
+            self.gui.instances = [i for i in self.gui.instances if i["id"] != instance_id]
+            if self.gui.active_instance_id == instance_id:
+                self.gui.active_instance_id = "pc1-local"
+            self.gui.save_instances()
+            self.refresh_list()
+    
+    def toggle_discovery(self):
+        if self.discovery_var.get():
+            self.run_discovery()
+        else:
+            for widget in self.discovery_results.winfo_children():
+                widget.destroy()
+    
+    def run_discovery(self):
+        for widget in self.discovery_results.winfo_children():
+            widget.destroy()
+        
+        tk.Label(
+            self.discovery_results,
+            text="Recherche en cours...",
+            bg=self.gui.theme["root"],
+            fg=self.gui.theme["meta"],
+            font=("Segoe UI", 10)
+        ).pack()
+        
+        try:
+            response = requests.get(f"{self.gui.api_base}/jarvis/discover", timeout=10)
+            if not response.ok:
+                error = response.json()
+                raise Exception(error.get("detail", "Erreur de découverte"))
+            
+            data = response.json()
+            devices = data.get("devices", [])
+            
+            for widget in self.discovery_results.winfo_children():
+                widget.destroy()
+            
+            if not devices:
+                tk.Label(
+                    self.discovery_results,
+                    text="Aucun appareil détecté",
+                    bg=self.gui.theme["root"],
+                    fg=self.gui.theme["meta"],
+                    font=("Segoe UI", 10)
+                ).pack()
+                return
+            
+            for device in devices:
+                item = tk.Frame(
+                    self.discovery_results,
+                    bg=self.gui.theme["input_bg"],
+                    pady=6,
+                    padx=10
+                )
+                item.pack(fill="x", pady=4)
+                
+                info = tk.Frame(item, bg=self.gui.theme["input_bg"])
+                info.pack(side="left", fill="x", expand=True)
+                
+                tk.Label(
+                    info,
+                    text=device["nom"],
+                    bg=self.gui.theme["input_bg"],
+                    fg=self.gui.theme["text"],
+                    font=("Segoe UI", 10, "bold")
+                ).pack(anchor="w")
+                
+                tk.Label(
+                    info,
+                    text=device["ip"],
+                    bg=self.gui.theme["input_bg"],
+                    fg=self.gui.theme["meta"],
+                    font=("Segoe UI", 9)
+                ).pack(anchor="w")
+                
+                status = tk.Label(
+                    item,
+                    text="Test...",
+                    bg=self.gui.theme["input_bg"],
+                    fg=self.gui.theme["meta"],
+                    font=("Segoe UI", 9)
+                )
+                status.pack(side="right", padx=8)
+                
+                # Test Jarvis on port 8000
+                jarvis_url = f"http://{device['ip']}:8000"
+                try:
+                    test_resp = requests.get(f"{jarvis_url}/jarvis/status", timeout=3)
+                    is_online = test_resp.ok
+                except:
+                    is_online = False
+                
+                status.config(
+                    text="Jarvis actif" if is_online else "Hors ligne",
+                    fg="#d5ecd5" if is_online else "#ffd0d0"
+                )
+                
+                if is_online:
+                    add_btn = tk.Button(
+                        item,
+                        text="Ajouter",
+                        command=lambda n=device["nom"], u=jarvis_url: self.quick_add(n, u),
+                        bg=self.gui.theme["button_bg"],
+                        fg="white",
+                        relief="flat",
+                        font=("Segoe UI", 9),
+                        padx=8
+                    )
+                    add_btn.pack(side="right", padx=4)
+        
+        except Exception as e:
+            for widget in self.discovery_results.winfo_children():
+                widget.destroy()
+            tk.Label(
+                self.discovery_results,
+                text=f"Erreur: {e}",
+                bg=self.gui.theme["root"],
+                fg="#ff4444",
+                font=("Segoe UI", 10)
+            ).pack()
+    
+    def quick_add(self, name, url):
+        self.name_entry.delete(0, tk.END)
+        self.name_entry.insert(0, name)
+        self.url_entry.delete(0, tk.END)
+        self.url_entry.insert(0, url)
+        self.discovery_var.set(False)
+        for widget in self.discovery_results.winfo_children():
+            widget.destroy()
 
 
 if __name__ == "__main__":

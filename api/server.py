@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import queue
+import subprocess
 import threading
 from typing import Dict, List
 
@@ -221,6 +222,68 @@ async def confirm_action(request: ConfirmRequest) -> Dict:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing confirmation: {str(e)}")
+
+
+@app.get("/jarvis/discover")
+async def discover_tailscale_devices() -> Dict:
+    """Discover Tailscale devices on the tailnet."""
+    try:
+        # Check if tailscale command is available
+        try:
+            subprocess.run(["tailscale", "--version"], capture_output=True, check=True, timeout=5)
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+            raise HTTPException(
+                status_code=503,
+                detail="Tailscale non disponible sur cette instance"
+            )
+        
+        # Get Tailscale status in JSON format
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10
+        )
+        
+        status_data = json.loads(result.stdout)
+        
+        # Extract peer information
+        devices = []
+        peers = status_data.get("Peer", {})
+        
+        for peer_key, peer_info in peers.items():
+            # Skip if offline
+            if not peer_info.get("Online", False):
+                continue
+            
+            # Get machine name
+            hostname = peer_info.get("HostName", peer_info.get("DNSName", peer_key))
+            
+            # Get Tailscale IP (first IPv4 address)
+            tailscale_ips = peer_info.get("TailscaleIPs", [])
+            ip = None
+            for addr in tailscale_ips:
+                if ":" not in addr:  # IPv4
+                    ip = addr
+                    break
+            
+            if ip and hostname:
+                devices.append({
+                    "nom": hostname,
+                    "ip": ip
+                })
+        
+        return {"devices": devices}
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse Tailscale JSON output: {str(e)}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Tailscale command timed out")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error discovering Tailscale devices: {str(e)}")
 
 
 if __name__ == "__main__":

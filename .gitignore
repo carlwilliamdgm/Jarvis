@@ -2,5 +2,6 @@ __pycache__/
 *.py[cod]
 .dist/
 memory.json
+gui/targets.json
 
 .aider*

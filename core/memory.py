@@ -2,7 +2,9 @@
 
 import json
 import os
+import shutil
 import threading
+import time
 from collections import Counter
 from datetime import datetime
 from json import JSONDecodeError
@@ -35,9 +37,36 @@ def charger_memoire() -> dict:
 def sauvegarder_memoire(data: dict):
     with _MEMORY_LOCK:
         tmp_path = MEMORY_PATH.with_suffix(".json.tmp")
+
+        # Écriture + flush disque avant tout replace
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, MEMORY_PATH)
+            f.flush()
+            os.fsync(f.fileno())
+
+        # Replace avec retry — protège contre WinError 5/32 (double instance)
+        derniere_erreur = None
+        for tentative in range(5):
+            try:
+                os.replace(tmp_path, MEMORY_PATH)
+                return  # succès
+            except OSError as e:
+                derniere_erreur = e
+                if e.errno in (5, 32):
+                    time.sleep(0.05 * (tentative + 1))  # 50ms → 250ms
+                    continue
+                raise  # autre erreur OS → on remonte immédiatement
+
+        # Dernier recours : copy2 + suppression du tmp
+        try:
+            shutil.copy2(tmp_path, MEMORY_PATH)
+            tmp_path.unlink(missing_ok=True)
+        except Exception as e2:
+            raise OSError(
+                f"sauvegarder_memoire : impossible d'écrire memory.json "
+                f"après 5 tentatives. Dernière erreur replace : {derniere_erreur} | "
+                f"Erreur fallback : {e2}"
+            )
 
 
 def normaliser_memoire(data: dict) -> dict:

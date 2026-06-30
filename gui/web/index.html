@@ -160,6 +160,216 @@
       flex: 0 0 auto;
     }
 
+    .instance-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .instance-select {
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 140px;
+    }
+
+    .instance-badge {
+      background: var(--button);
+      color: #fff;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--chat);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      width: min(90%, 500px);
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+    }
+
+    .modal-close:hover {
+      color: var(--text);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .form-input {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--button);
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--button);
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: var(--muted-button-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-danger {
+      background: #6a1a1a;
+      color: #ffd0d0;
+    }
+
+    .instance-list {
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+
+    .instance-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      background: var(--input-bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .instance-item-info {
+      flex: 1;
+    }
+
+    .instance-item-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .instance-item-url {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .instance-item-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .discovery-section {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .discovery-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .discovery-results {
+      margin-top: 12px;
+    }
+
+    .discovery-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      background: var(--input-bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .discovery-item-status {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .discovery-item-status.online {
+      background: #1a4a1a;
+      color: #d5ecd5;
+    }
+
+    .discovery-item-status.offline {
+      background: #4a1a1a;
+      color: #ffd0d0;
+    }
+
     main {
       flex: 1 1 auto;
       min-height: 0;
@@ -356,10 +566,15 @@
         <div class="subtitle">by Carl-William</div>
       </div>
       <div class="header-actions">
+        <div class="instance-selector">
+          <select id="instanceSelect" class="instance-select" title="Sélectionner l'instance Jarvis"></select>
+          <span id="instanceBadge" class="instance-badge"></span>
+        </div>
         <div class="status">
           <span id="statusDot" class="dot"></span>
-          <span id="statusText">Service en ligne</span>
+          <span id="statusText hidden-mobile">Service en ligne</span>
         </div>
+        <button id="manageInstancesButton" class="icon-button" type="button" title="Gérer les instances">⚙</button>
         <button id="themeButton" class="icon-button" type="button" title="Changer le thème">☾</button>
       </div>
     </header>
@@ -373,6 +588,41 @@
     </footer>
   </section>
 
+  <!-- Instance Management Modal -->
+  <div id="instanceModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Gérer les instances Jarvis</h2>
+        <button id="closeModal" class="modal-close">×</button>
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">Nom</label>
+        <input type="text" id="newInstanceName" class="form-input" placeholder="Ex: PC2">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input type="text" id="newInstanceUrl" class="form-input" placeholder="http://100.x.x.x:8000">
+      </div>
+      
+      <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+        <button id="testConnection" class="btn btn-secondary">Tester la connexion</button>
+        <button id="addInstance" class="btn btn-primary">Ajouter</button>
+      </div>
+      
+      <div class="instance-list" id="instanceList"></div>
+      
+      <div class="discovery-section">
+        <div class="discovery-toggle">
+          <input type="checkbox" id="discoveryToggle">
+          <label for="discoveryToggle">Découverte réseau Tailscale</label>
+        </div>
+        <div id="discoveryResults" class="discovery-results"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const conversation = document.getElementById("conversation");
     const input = document.getElementById("messageInput");
@@ -381,7 +631,24 @@
     const themeButton = document.getElementById("themeButton");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
+    const instanceSelect = document.getElementById("instanceSelect");
+    const instanceBadge = document.getElementById("instanceBadge");
+    const manageInstancesButton = document.getElementById("manageInstancesButton");
+    const instanceModal = document.getElementById("instanceModal");
+    const closeModal = document.getElementById("closeModal");
+    const newInstanceName = document.getElementById("newInstanceName");
+    const newInstanceUrl = document.getElementById("newInstanceUrl");
+    const testConnection = document.getElementById("testConnection");
+    const addInstance = document.getElementById("addInstance");
+    const instanceList = document.getElementById("instanceList");
+    const discoveryToggle = document.getElementById("discoveryToggle");
+    const discoveryResults = document.getElementById("discoveryResults");
+    
     let source = null;
+    let apiBase = "http://localhost:8000";
+    let instances = [];
+    let activeInstanceId = "pc1-local";
+    let editingInstanceId = null;
 
     function scrollBottom() {
       conversation.scrollTop = conversation.scrollHeight;
@@ -476,7 +743,7 @@
       addBubble("user", "Vous", message);
       setStreaming(true);
 
-      source = new EventSource(`/jarvis/stream?message=${encodeURIComponent(message)}`);
+      source = new EventSource(`${apiBase}/jarvis/stream?message=${encodeURIComponent(message)}`);
       source.onmessage = (rawEvent) => {
         try {
           handleEvent(JSON.parse(rawEvent.data));
@@ -503,7 +770,7 @@
 
     async function refreshStatus() {
       try {
-        const response = await fetch("/jarvis/status", { cache: "no-store" });
+        const response = await fetch(`${apiBase}/jarvis/status`, { cache: "no-store" });
         if (!response.ok) {
           throw new Error("offline");
         }
@@ -514,6 +781,275 @@
         statusText.textContent = "Service hors ligne";
       }
     }
+
+    // Instance Management Functions
+    function loadInstances() {
+      const saved = localStorage.getItem("jarvis-instances");
+      if (saved) {
+        instances = JSON.parse(saved);
+      } else {
+        instances = [
+          { id: "pc1-local", nom: "PC1 (local)", url: "http://localhost:8000" }
+        ];
+      }
+      activeInstanceId = localStorage.getItem("jarvis-active-instance") || "pc1-local";
+      updateInstanceUI();
+    }
+
+    function saveInstances() {
+      localStorage.setItem("jarvis-instances", JSON.stringify(instances));
+      localStorage.setItem("jarvis-active-instance", activeInstanceId);
+    }
+
+    function updateInstanceUI() {
+      instanceSelect.innerHTML = "";
+      instances.forEach(inst => {
+        const option = document.createElement("option");
+        option.value = inst.id;
+        option.textContent = inst.nom;
+        option.selected = inst.id === activeInstanceId;
+        instanceSelect.appendChild(option);
+      });
+      
+      const activeInstance = instances.find(i => i.id === activeInstanceId);
+      if (activeInstance) {
+        instanceBadge.textContent = activeInstance.nom;
+        apiBase = activeInstance.url;
+        document.title = `Jarvis — ${activeInstance.nom}`;
+      }
+    }
+
+    function switchInstance(instanceId) {
+      activeInstanceId = instanceId;
+      const instance = instances.find(i => i.id === instanceId);
+      if (instance) {
+        apiBase = instance.url;
+        saveInstances();
+        updateInstanceUI();
+        refreshStatus();
+      }
+    }
+
+    function renderInstanceList() {
+      instanceList.innerHTML = "";
+      instances.forEach(inst => {
+        const item = document.createElement("div");
+        item.className = "instance-item";
+        
+        const info = document.createElement("div");
+        info.className = "instance-item-info";
+        
+        const name = document.createElement("div");
+        name.className = "instance-item-name";
+        name.textContent = inst.nom;
+        
+        const url = document.createElement("div");
+        url.className = "instance-item-url";
+        url.textContent = inst.url;
+        
+        info.appendChild(name);
+        info.appendChild(url);
+        
+        const actions = document.createElement("div");
+        actions.className = "instance-item-actions";
+        
+        if (inst.id !== "pc1-local") {
+          const editBtn = document.createElement("button");
+          editBtn.className = "btn btn-secondary";
+          editBtn.textContent = "Modifier";
+          editBtn.onclick = () => editInstance(inst.id);
+          
+          const deleteBtn = document.createElement("button");
+          deleteBtn.className = "btn btn-danger";
+          deleteBtn.textContent = "Supprimer";
+          deleteBtn.onclick = () => deleteInstance(inst.id);
+          
+          actions.appendChild(editBtn);
+          actions.appendChild(deleteBtn);
+        }
+        
+        item.appendChild(info);
+        item.appendChild(actions);
+        instanceList.appendChild(item);
+      });
+    }
+
+    function generateId() {
+      return "inst-" + Math.random().toString(36).substr(2, 9);
+    }
+
+    function validateUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }
+
+    async function testInstanceConnection(url) {
+      try {
+        const response = await fetch(`${url}/jarvis/status`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    function addOrUpdateInstance() {
+      const name = newInstanceName.value.trim();
+      const url = newInstanceUrl.value.trim();
+      
+      if (!name || !url) {
+        alert("Veuillez remplir le nom et l'URL");
+        return;
+      }
+      
+      if (!validateUrl(url)) {
+        alert("URL invalide (doit commencer par http:// ou https://)");
+        return;
+      }
+      
+      if (editingInstanceId) {
+        const inst = instances.find(i => i.id === editingInstanceId);
+        if (inst) {
+          inst.nom = name;
+          inst.url = url;
+        }
+        editingInstanceId = null;
+        addInstance.textContent = "Ajouter";
+      } else {
+        const newInst = {
+          id: generateId(),
+          nom: name,
+          url: url
+        };
+        instances.push(newInst);
+      }
+      
+      saveInstances();
+      updateInstanceUI();
+      renderInstanceList();
+      newInstanceName.value = "";
+      newInstanceUrl.value = "";
+    }
+
+    function editInstance(id) {
+      const inst = instances.find(i => i.id === id);
+      if (inst) {
+        editingInstanceId = id;
+        newInstanceName.value = inst.nom;
+        newInstanceUrl.value = inst.url;
+        addInstance.textContent = "Mettre à jour";
+      }
+    }
+
+    function deleteInstance(id) {
+      if (confirm("Supprimer cette instance ?")) {
+        instances = instances.filter(i => i.id !== id);
+        if (activeInstanceId === id) {
+          activeInstanceId = "pc1-local";
+        }
+        saveInstances();
+        updateInstanceUI();
+        renderInstanceList();
+      }
+    }
+
+    async function discoverNetwork() {
+      if (!discoveryToggle.checked) {
+        discoveryResults.innerHTML = "";
+        return;
+      }
+      
+      discoveryResults.innerHTML = "<div style='color: var(--muted);'>Recherche en cours...</div>";
+      
+      try {
+        const response = await fetch(`${apiBase}/jarvis/discover`);
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || "Erreur de découverte");
+        }
+        
+        const data = await response.json();
+        const devices = data.devices || [];
+        
+        if (devices.length === 0) {
+          discoveryResults.innerHTML = "<div style='color: var(--muted);'>Aucun appareil détecté</div>";
+          return;
+        }
+        
+        discoveryResults.innerHTML = "";
+        
+        for (const device of devices) {
+          const item = document.createElement("div");
+          item.className = "discovery-item";
+          
+          const info = document.createElement("div");
+          info.innerHTML = `<strong>${device.nom}</strong><br><small>${device.ip}</small>`;
+          
+          const status = document.createElement("span");
+          status.className = "discovery-item-status";
+          status.textContent = "Test...";
+          
+          const actions = document.createElement("div");
+          
+          item.appendChild(info);
+          item.appendChild(status);
+          item.appendChild(actions);
+          discoveryResults.appendChild(item);
+          
+          // Test if Jarvis is running on port 8000
+          const jarvisUrl = `http://${device.ip}:8000`;
+          const isOnline = await testInstanceConnection(jarvisUrl);
+          
+          status.className = `discovery-item-status ${isOnline ? "online" : "offline"}`;
+          status.textContent = isOnline ? "Jarvis actif" : "Hors ligne";
+          
+          if (isOnline) {
+            const addBtn = document.createElement("button");
+            addBtn.className = "btn btn-primary";
+            addBtn.textContent = "Ajouter";
+            addBtn.style.fontSize = "12px";
+            addBtn.style.padding = "4px 8px";
+            addBtn.onclick = () => {
+              newInstanceName.value = device.nom;
+              newInstanceUrl.value = jarvisUrl;
+              discoveryToggle.checked = false;
+              discoveryResults.innerHTML = "";
+            };
+            actions.appendChild(addBtn);
+          }
+        }
+      } catch (error) {
+        discoveryResults.innerHTML = `<div style='color: #ff4444;'>Erreur: ${error.message}</div>`;
+      }
+    }
+
+    // Event Listeners for Instance Management
+    instanceSelect.addEventListener("change", (e) => switchInstance(e.target.value));
+    manageInstancesButton.addEventListener("click", () => {
+      renderInstanceList();
+      instanceModal.classList.add("active");
+    });
+    closeModal.addEventListener("click", () => {
+      instanceModal.classList.remove("active");
+      editingInstanceId = null;
+      addInstance.textContent = "Ajouter";
+      newInstanceName.value = "";
+      newInstanceUrl.value = "";
+    });
+    testConnection.addEventListener("click", async () => {
+      const url = newInstanceUrl.value.trim();
+      if (!url) {
+        alert("Veuillez entrer une URL");
+        return;
+      }
+      const isOnline = await testInstanceConnection(url);
+      alert(isOnline ? "Connexion réussie !" : "Connexion échouée");
+    });
+    addInstance.addEventListener("click", addOrUpdateInstance);
+    discoveryToggle.addEventListener("change", discoverNetwork);
 
     sendButton.addEventListener("click", sendMessage);
     cancelButton.addEventListener("click", () => closeStream(true));
@@ -526,6 +1062,7 @@
       }
     });
 
+    loadInstances();
     applyTheme(localStorage.getItem("jarvis-theme") || "dark");
     resizeTextarea();
     refreshStatus();
