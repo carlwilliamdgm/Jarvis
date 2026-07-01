@@ -390,6 +390,22 @@ if ($ollamaInstalled) {
     }
 }
 
+# ÉTAPE 5bis — Initialisation de memory.json
+Write-Log "=== Step 5bis: Initialize memory.json ==="
+$memoryPath = Join-Path $JarvisDir "memory.json"
+if (-not (Test-Path $memoryPath)) {
+    try {
+        "{}" | Out-File -FilePath $memoryPath -Encoding utf8 -NoNewline
+        Write-Log "memory.json initialized (empty object)"
+    } catch {
+        Write-Log "Failed to initialize memory.json: $_" "ERROR"
+        Write-Host "ERROR: Failed to create memory.json" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Log "memory.json already exists, skipping initialization (existing memory preserved)"
+}
+
 # ÉTAPE 6 — Enregistrement service Windows JarvisService
 Write-Log "=== Step 6: Register Windows Service ==="
 $serviceName = "JarvisService"
