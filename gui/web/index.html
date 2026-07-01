@@ -213,6 +213,7 @@
       padding: 24px;
       width: min(90%, 500px);
       max-height: 80vh;
+      max-height: 80dvh;
       overflow-y: auto;
     }
 
@@ -540,7 +541,30 @@
       }
 
       header {
+        flex-wrap: wrap;
+        row-gap: 12px;
         padding: 14px;
+      }
+
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        row-gap: 8px;
+      }
+
+      .instance-selector {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .instance-select {
+        min-width: 0;
+        width: 100%;
+      }
+
+      .instance-badge {
+        flex: 0 0 auto;
       }
 
       .status span:last-child {
@@ -618,8 +642,7 @@
       
       <div class="discovery-section">
         <div class="discovery-toggle">
-          <input type="checkbox" id="discoveryToggle">
-          <label for="discoveryToggle">Découverte réseau Tailscale</label>
+          <button id="discoveryButton" class="btn btn-secondary" type="button">Découverte réseau Tailscale</button>
         </div>
         <div id="discoveryResults" class="discovery-results"></div>
       </div>
@@ -644,11 +667,12 @@
     const testConnection = document.getElementById("testConnection");
     const addInstance = document.getElementById("addInstance");
     const instanceList = document.getElementById("instanceList");
-    const discoveryToggle = document.getElementById("discoveryToggle");
+    const discoveryButton = document.getElementById("discoveryButton");
     const discoveryResults = document.getElementById("discoveryResults");
+    let discoveryActive = false;
     
     let source = null;
-    let apiBase = "http://localhost:8000";
+    let apiBase = window.location.origin;
     let instances = [];
     let activeInstanceId = "pc1-local";
     let editingInstanceId = null;
@@ -792,7 +816,7 @@
         instances = JSON.parse(saved);
       } else {
         instances = [
-          { id: "pc1-local", nom: "PC1 (local)", url: "http://localhost:8000" }
+          { id: "pc1-local", nom: "PC1 (local)", url: window.location.origin }
         ];
       }
       activeInstanceId = localStorage.getItem("jarvis-active-instance") || "pc1-local";
@@ -959,8 +983,16 @@
       }
     }
 
+    function setDiscoveryButtonState() {
+      discoveryButton.classList.toggle("btn-primary", discoveryActive);
+      discoveryButton.classList.toggle("btn-secondary", !discoveryActive);
+      discoveryButton.textContent = discoveryActive
+        ? "Arrêter la découverte"
+        : "Découverte réseau Tailscale";
+    }
+
     async function discoverNetwork() {
-      if (!discoveryToggle.checked) {
+      if (!discoveryActive) {
         discoveryResults.innerHTML = "";
         return;
       }
@@ -1018,7 +1050,8 @@
             addBtn.onclick = () => {
               newInstanceName.value = device.nom;
               newInstanceUrl.value = jarvisUrl;
-              discoveryToggle.checked = false;
+              discoveryActive = false;
+              setDiscoveryButtonState();
               discoveryResults.innerHTML = "";
             };
             actions.appendChild(addBtn);
@@ -1052,7 +1085,11 @@
       alert(isOnline ? "Connexion réussie !" : "Connexion échouée");
     });
     addInstance.addEventListener("click", addOrUpdateInstance);
-    discoveryToggle.addEventListener("change", discoverNetwork);
+    discoveryButton.addEventListener("click", () => {
+      discoveryActive = !discoveryActive;
+      setDiscoveryButtonState();
+      discoverNetwork();
+    });
 
     sendButton.addEventListener("click", sendMessage);
     cancelButton.addEventListener("click", () => closeStream(true));
