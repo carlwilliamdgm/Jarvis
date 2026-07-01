@@ -54,6 +54,7 @@
       margin: 0;
       width: 100%;
       height: 100%;
+      height: 100dvh;
       overflow: hidden;
       background: var(--page);
       color: var(--text);
@@ -69,6 +70,7 @@
     .chat {
       width: min(100%, 720px);
       height: calc(100vh - 36px);
+      height: calc(100dvh - 36px);
       background: var(--chat);
       display: flex;
       flex-direction: column;
@@ -532,6 +534,7 @@
       .chat {
         width: 100%;
         height: 100vh;
+        height: 100dvh;
         border-left: 0;
         border-right: 0;
       }
@@ -572,7 +575,7 @@
         </div>
         <div class="status">
           <span id="statusDot" class="dot"></span>
-          <span id="statusText hidden-mobile">Service en ligne</span>
+          <span id="statusText">Service en ligne</span>
         </div>
         <button id="manageInstancesButton" class="icon-button" type="button" title="Gérer les instances">⚙</button>
         <button id="themeButton" class="icon-button" type="button" title="Changer le thème">☾</button>

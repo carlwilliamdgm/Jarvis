@@ -11,20 +11,11 @@ function Write-Log {
 try {
     Write-Log "=== Starting Jarvis Auto-Update ==="
     
-    # Retrieve PAT from Credential Manager
-    $pat = $null
-    try {
-        $credOutput = cmdkey /list:JarvisGitPAT 2>&1
-        if ($credOutput -match "Password\s*:\s*(.+)") {
-            $pat = $matches[1].Trim()
-        }
-    } catch {
-        # Fallback to environment variable
-        $pat = [System.Environment]::GetEnvironmentVariable("GIT_PAT_JARVIS", "Machine")
-    }
+    # Retrieve PAT from environment variable
+    $pat = [System.Environment]::GetEnvironmentVariable("GIT_PAT_JARVIS", "Machine")
     
     if (-not $pat) {
-        Write-Log "PAT not found in Credential Manager or environment" "ERROR"
+        Write-Log "GIT_PAT_JARVIS introuvable — mise à jour impossible" "ERROR"
         exit 1
     }
     
@@ -34,9 +25,8 @@ try {
     $currentHash = git rev-parse HEAD 2>&1
     Write-Log "Current commit: $currentHash"
     
-    # Perform git pull
-    $repoUrl = "https://${pat}@github.com/carlwilliamdgm/Jarvis.git"
-    git pull origin main
+    # Perform git pull with PAT via http.extraHeader (not stored in remote)
+    git -c "http.extraHeader=Authorization: token $pat" pull origin main
     
     if ($LASTEXITCODE -eq 0) {
         $newHash = git rev-parse HEAD 2>&1
