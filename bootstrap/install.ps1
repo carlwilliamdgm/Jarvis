@@ -240,21 +240,33 @@ if (-not $ollamaInstalled) {
     Write-Log "Ollama already installed"
 }
 
-# Pull qwen2.5:7b model
+# Pull qwen2.5:7b model (skip if already present)
 if ($ollamaInstalled) {
-    Write-Log "Pulling Ollama model qwen2.5:7b (this may take several minutes)..."
+    $modelPresent = $false
     try {
-        $process = Start-Process -FilePath "ollama" -ArgumentList "pull", "qwen2.5:7b" -Wait -PassThru -NoNewWindow
-        if ($process.ExitCode -eq 0) {
-            Write-Log "Ollama model qwen2.5:7b pulled successfully"
-        } else {
-            Write-Log "Ollama pull failed with exit code $($process.ExitCode)" "WARN"
+        $existingModels = & ollama list 2>&1
+        if ($existingModels -match "qwen2\.5:7b") {
+            $modelPresent = $true
+            Write-Log "Ollama model qwen2.5:7b already present — skipping pull"
         }
     } catch {
-        Write-Log "Failed to pull Ollama model: $_" "WARN"
+        Write-Log "Could not check existing Ollama models: $_" "WARN"
+    }
+
+    if (-not $modelPresent) {
+        Write-Log "Pulling Ollama model qwen2.5:7b (this may take several minutes)..."
+        try {
+            $process = Start-Process -FilePath "ollama" -ArgumentList "pull", "qwen2.5:7b" -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -eq 0) {
+                Write-Log "Ollama model qwen2.5:7b pulled successfully"
+            } else {
+                Write-Log "Ollama pull failed with exit code $($process.ExitCode)" "WARN"
+            }
+        } catch {
+            Write-Log "Failed to pull Ollama model: $_" "WARN"
+        }
     }
 }
-
 # Step 6: Register Windows service JarvisService
 Write-Log "=== Step 6: Register Windows Service ==="
 $serviceName = "JarvisService"
