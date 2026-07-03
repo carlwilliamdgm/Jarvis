@@ -107,6 +107,8 @@ Routes principales :
 - `POST /jarvis/signal` : reception de signaux externes.
 - `GET /jarvis/alerts` : lecture/vidage des alertes en memoire.
 - `POST /jarvis/confirm` : endpoint de confirmation reserve aux extensions.
+- `GET /jarvis/discover` : decouverte des appareils Tailscale sur le tailnet pour la gestion multi-instance.
+- `POST /jarvis/kill` : auto-destruction complete de l'instance distante (service, tache planifiee, variables d'environnement, dossier Jarvis).
 - `/web` : fichiers statiques de `gui/web`.
 
 Au demarrage, le serveur :
@@ -125,14 +127,20 @@ Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette q
 - client Tkinter local;
 - consomme `/jarvis/stream` avec `requests.get(..., stream=True)`;
 - met a jour l'UI via `root.after()`;
-- desactive le champ de saisie pendant le stream.
+- desactive le champ de saisie pendant le stream;
+- gestion multi-instance avec sélecteur dans le header;
+- découverte réseau Tailscale intégrée via `/jarvis/discover`;
+- bouton "Effacer" visible uniquement sur instances distantes pour déclencher `/jarvis/kill`.
 
 `gui/web/index.html` :
 
 - fichier HTML/CSS/JS unique;
 - consomme `/jarvis/stream` avec `EventSource`;
 - surveille `/jarvis/status`;
-- fonctionne depuis un autre appareil du reseau si le port `8000` est accessible.
+- fonctionne depuis un autre appareil du reseau si le port `8000` est accessible;
+- gestion multi-instance avec localStorage et sélecteur dans le header;
+- découverte réseau Tailscale intégrée via `/jarvis/discover`;
+- bouton "Effacer cette instance" visible uniquement sur instances distantes pour déclencher `/jarvis/kill`.
 
 ### Service Windows
 

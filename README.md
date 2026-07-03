@@ -6,6 +6,10 @@ Le projet est pensé autour d'un principe simple : le raisonnement est centralis
 
 ## Vue d'ensemble
 
+### Premier lancement ?
+
+Pour une installation et configuration pas à pas, consultez le guide [PREMIER_LANCEMENT.md](PREMIER_LANCEMENT.md).
+
 ### Capacités principales
 
 - Assistant conversationnel local avec mémoire persistante.
@@ -361,6 +365,25 @@ Retourne puis vide la queue d'alertes en mémoire.
 }
 ```
 
+### `GET /jarvis/discover`
+
+Découvre les appareils Tailscale sur le tailnet pour faciliter l'ajout d'instances distantes.
+
+Réponse :
+
+```json
+{
+  "devices": [
+    {
+      "nom": "PC2",
+      "ip": "100.x.x.x"
+    }
+  ]
+}
+```
+
+Retourne une erreur 503 si Tailscale n'est pas disponible sur l'instance.
+
 ### `POST /jarvis/confirm`
 
 Endpoint de confirmation prévu pour extension. Actuellement il accuse réception.
@@ -371,6 +394,32 @@ Endpoint de confirmation prévu pour extension. Actuellement il accuse réceptio
   "confirmed": true
 }
 ```
+
+### `POST /jarvis/kill`
+
+Déclenche l'auto-destruction complète de l'instance Jarvis distante. Cet endpoint ne doit être appelé que sur des instances distantes, jamais sur localhost.
+
+Réponse immédiate :
+
+```json
+{
+  "status": "kill_initiated"
+}
+```
+
+La destruction s'effectue en arrière-plan avec un délai de 2 secondes après la réponse HTTP. La séquence d'effacement est :
+
+1. Arrêt et suppression du service Windows JarvisService (sc.exe)
+2. Suppression de la tâche planifiée JarvisAutoUpdate (PowerShell)
+3. Suppression des variables d'environnement Machine-level :
+   - GIT_PAT_JARVIS
+   - GROQ_API_KEY_1 à GROQ_API_KEY_5
+   - OPENROUTER_API_KEY
+4. Suppression complète du dossier Jarvis (C:\Users\<USERPROFILE>\Jarvis)
+
+Chaque étape continue même si la précédente échoue. Aucune erreur n'est retournée après le 200 initial (connexion déjà fermée).
+
+**Sécurité** : Les interfaces web et Tkinter masquent ce bouton sur localhost. Il n'apparaît que pour les instances distantes.
 
 ## Interfaces
 
@@ -391,6 +440,9 @@ Comportement :
 - Désactive l'input pendant la réponse.
 - Réactive l'input à `done`.
 - Affiche tous les événements intermédiaires, pas seulement la réponse finale.
+- Gestion multi-instance : sélecteur d'instance dans le header, ajout/modification/suppression d'instances distantes.
+- Découverte réseau Tailscale intégrée pour détecter automatiquement les appareils Jarvis sur le tailnet.
+- Bouton "Effacer" visible uniquement sur les instances distantes (jamais localhost) pour déclencher l'auto-destruction complète via `/jarvis/kill`.
 
 ### Web
 
@@ -414,6 +466,9 @@ Comportement :
 - Désactive l'input pendant le stream.
 - Affiche le statut du service via `/jarvis/status`.
 - Peut être utilisé depuis un autre appareil du réseau si le port `8000` est accessible.
+- Gestion multi-instance : sélecteur d'instance dans le header, ajout/modification/suppression d'instances distantes via localStorage.
+- Découverte réseau Tailscale intégrée pour détecter automatiquement les appareils Jarvis sur le tailnet.
+- Bouton "Effacer cette instance" visible uniquement sur les instances distantes (jamais localhost) pour déclencher l'auto-destruction complète via `/jarvis/kill`.
 
 ## Modes de conversation
 
