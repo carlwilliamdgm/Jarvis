@@ -32,6 +32,34 @@ function Test-Command {
     }
 }
 
+# Helper: run a git command against the Jarvis repo without ever putting the
+# PAT in the remote URL or in .git/config. The PAT is only ever exposed to
+# git via a short-lived GIT_ASKPASS script, cleaned up immediately after use.
+function Invoke-GitWithPAT {
+    param(
+        [Parameter(Mandatory=$true)][string[]]$GitArgs,
+        [Parameter(Mandatory=$true)][string]$Pat
+    )
+    $askPassPath = Join-Path $env:TEMP "jarvis_askpass_$PID.cmd"
+    "@echo off`r`necho %JARVIS_GIT_PAT%" | Out-File -FilePath $askPassPath -Encoding ASCII -Force
+
+    $prevAskPass = $env:GIT_ASKPASS
+    $prevTerminalPrompt = $env:GIT_TERMINAL_PROMPT
+    $env:GIT_ASKPASS = $askPassPath
+    $env:JARVIS_GIT_PAT = $Pat
+    $env:GIT_TERMINAL_PROMPT = "0"
+
+    try {
+        & git @GitArgs
+        return $LASTEXITCODE
+    } finally {
+        Remove-Item $askPassPath -Force -ErrorAction SilentlyContinue
+        Remove-Item Env:\JARVIS_GIT_PAT -ErrorAction SilentlyContinue
+        if ($null -ne $prevAskPass) { $env:GIT_ASKPASS = $prevAskPass } else { Remove-Item Env:\GIT_ASKPASS -ErrorAction SilentlyContinue }
+        if ($null -ne $prevTerminalPrompt) { $env:GIT_TERMINAL_PROMPT = $prevTerminalPrompt } else { Remove-Item Env:\GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue }
+    }
+}
+
 # Step 1: Detect/install Python 3.12
 Write-Log "=== Step 1: Python 3.12 Detection/Installation ==="
 $pythonInstalled = $false
@@ -52,21 +80,26 @@ foreach ($path in $standardPaths) {
     }
 }
 
-# Check via py launcher or python command
+# Check via py launcher or python command — always resolve to a real .exe
+# path (never a multi-token string like "py -3.12"), so every later
+# invocation via `& $pythonPath ...` works without quoting tricks.
 if (-not $pythonInstalled) {
     if (Test-Command "py") {
         $version = & py -3.12 --version 2>&1
         if ($LASTEXITCODE -eq 0) {
-            $pythonInstalled = $true
-            $pythonPath = "py -3.12"
-            Write-Log "Python 3.12 found via py launcher: $version"
+            $resolved = (& py -3.12 -c "import sys; print(sys.executable)" 2>&1)
+            if ($LASTEXITCODE -eq 0 -and (Test-Path ($resolved.Trim()))) {
+                $pythonPath = $resolved.Trim()
+                $pythonInstalled = $true
+                Write-Log "Python 3.12 found via py launcher, resolved to: $pythonPath"
+            }
         }
     } elseif (Test-Command "python") {
         $version = & python --version 2>&1
         if ($version -match "3\.12") {
+            $pythonPath = (Get-Command python).Source
             $pythonInstalled = $true
-            $pythonPath = "python"
-            Write-Log "Python 3.12 found via python command: $version"
+            Write-Log "Python 3.12 found via python command, resolved to: $pythonPath"
         }
     }
 }
@@ -76,10 +109,10 @@ if (-not $pythonInstalled) {
     try {
         $installerUrl = "https://www.python.org/ftp/python/3.12.7/python-3.12.7-amd64.exe"
         $installerPath = Join-Path $env:TEMP "python-3.12.7-amd64.exe"
-        
+
         Write-Log "Downloading Python installer from $installerUrl"
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
-        
+
         Write-Log "Installing Python 3.12 silently..."
         $process = Start-Process -FilePath $installerPath -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1" -Wait -PassThru
         if ($process.ExitCode -eq 0) {
@@ -89,7 +122,7 @@ if (-not $pythonInstalled) {
         } else {
             throw "Python installer exited with code $($process.ExitCode)"
         }
-        
+
         Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
     } catch {
         Write-Log "Failed to install Python 3.12: $_" "ERROR"
@@ -101,11 +134,13 @@ if (-not $pythonInstalled) {
 $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 
 # Step 2: Clone the repo Jarvis
+# The PAT is never embedded in the remote URL and never written to
+# .git/config — it only ever exists transiently via GIT_ASKPASS (see
+# Invoke-GitWithPAT above), for the duration of clone/pull.
 Write-Log "=== Step 2: Clone Jarvis Repository ==="
-$repoUrl = "https://${GitHubPAT}@github.com/carlwilliamdgm/Jarvis.git"
+$repoUrl = "https://github.com/carlwilliamdgm/Jarvis.git"
 
 if (Test-Path $JarvisDir) {
-    # Check if it's a valid git repo
     $gitDir = Join-Path $JarvisDir ".git"
     if (Test-Path $gitDir) {
         Write-Log "Repository already exists. Performing git pull..."
@@ -113,9 +148,9 @@ if (Test-Path $JarvisDir) {
             Push-Location $JarvisDir
             $currentHash = & git rev-parse HEAD 2>&1
             Write-Log "Current commit: $currentHash"
-            
-            & git pull origin main
-            if ($LASTEXITCODE -eq 0) {
+
+            $pullExit = Invoke-GitWithPAT -GitArgs @("pull", "origin", "main") -Pat $GitHubPAT
+            if ($pullExit -eq 0) {
                 $newHash = & git rev-parse HEAD 2>&1
                 Write-Log "Git pull successful. New commit: $newHash"
             } else {
@@ -129,8 +164,8 @@ if (Test-Path $JarvisDir) {
     } else {
         Write-Log "Directory exists but is not a git repo. Removing and cloning..."
         Remove-Item $JarvisDir -Recurse -Force
-        & git clone $repoUrl $JarvisDir
-        if ($LASTEXITCODE -ne 0) {
+        $cloneExit = Invoke-GitWithPAT -GitArgs @("clone", $repoUrl, $JarvisDir) -Pat $GitHubPAT
+        if ($cloneExit -ne 0) {
             Write-Log "Git clone failed" "ERROR"
             throw "Failed to clone repository"
         }
@@ -138,8 +173,8 @@ if (Test-Path $JarvisDir) {
     }
 } else {
     Write-Log "Cloning repository to $JarvisDir"
-    & git clone $repoUrl $JarvisDir
-    if ($LASTEXITCODE -ne 0) {
+    $cloneExit = Invoke-GitWithPAT -GitArgs @("clone", $repoUrl, $JarvisDir) -Pat $GitHubPAT
+    if ($cloneExit -ne 0) {
         Write-Log "Git clone failed" "ERROR"
         throw "Failed to clone repository"
     }
@@ -170,7 +205,7 @@ if (Test-Path $requirementsPath) {
     throw "requirements.txt not found"
 }
 
-# Step 4: Configure API keys
+# Step 4: Configure API keys (skips prompts if keys already exist Machine-level)
 Write-Log "=== Step 4: Configure API Keys ==="
 
 $existingGroqKeys = @()
@@ -235,10 +270,10 @@ if (-not $ollamaInstalled) {
     try {
         $ollamaUrl = "https://ollama.com/download/OllamaSetup.exe"
         $ollamaInstaller = Join-Path $env:TEMP "OllamaSetup.exe"
-        
+
         Write-Log "Downloading Ollama installer from $ollamaUrl"
         Invoke-WebRequest -Uri $ollamaUrl -OutFile $ollamaInstaller -UseBasicParsing
-        
+
         Write-Log "Installing Ollama silently..."
         $process = Start-Process -FilePath $ollamaInstaller -ArgumentList "/silent" -Wait -PassThru
         if ($process.ExitCode -eq 0) {
@@ -247,9 +282,9 @@ if (-not $ollamaInstalled) {
         } else {
             Write-Log "Ollama installer exited with code $($process.ExitCode)" "WARN"
         }
-        
+
         Remove-Item $ollamaInstaller -Force -ErrorAction SilentlyContinue
-        
+
         # Refresh PATH
         $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
         $ollamaInstalled = Test-Command "ollama"
@@ -288,10 +323,13 @@ if ($ollamaInstalled) {
         }
     }
 }
+
 # Step 6: Register Windows service
 Write-Log "=== Step 6: Register Windows Service ==="
 $serviceScript = Join-Path $JarvisDir "service\windows_service.py"
 
+# $pythonPath is now always a resolved .exe path (see Step 1), so no
+# separate args string is needed to work around a multi-token invocation.
 $pythonExeForService = $pythonPath
 $pythonArgsForService = ""
 $userSitePackages = ""
@@ -315,9 +353,8 @@ if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
 }
 
 if (Test-Path $serviceScript) {
-    # Check if service already exists
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-    
+
     if ($service) {
         Write-Log "Service $serviceName already exists"
         if ($service.Status -eq "Running") {
@@ -334,12 +371,10 @@ if (Test-Path $serviceScript) {
             & $pythonPath $serviceScript install
             if ($LASTEXITCODE -eq 0) {
                 Write-Log "Service registered successfully"
-                
-                # Set to automatic startup
+
                 & sc.exe config $serviceName start= auto
                 Write-Log "Service configured for automatic startup"
-                
-                # Start the service
+
                 Write-Log "Starting service..."
                 Start-Service -Name $serviceName
                 Write-Log "Service started"
@@ -354,8 +389,7 @@ if (Test-Path $serviceScript) {
             throw
         }
     }
-    
-    # Verify service is running
+
     $service = Get-Service -Name $serviceName
     if ($service.Status -eq "Running") {
         Write-Log "Service $serviceName is running"
@@ -367,26 +401,14 @@ if (Test-Path $serviceScript) {
     throw "Service script not found"
 }
 
-# Step 7: Store PAT securely for future updates
+# Step 7: Store PAT for future updates
+# No cmdkey / Credential Manager: the PAT lives only in the Machine-level
+# GIT_PAT_JARVIS env var, read by update.ps1 via GIT_ASKPASS (never in
+# .git/config, never in a remote URL, never in logs).
 Write-Log "=== Step 7: Store PAT for Future Updates ==="
-# Use Windows Credential Manager
-try {
-    Write-Log "Storing PAT in Windows Credential Manager"
-    & cmdkey /generic:JarvisGitPAT /user:GitHubPAT /pass:$GitHubPAT
-    if ($LASTEXITCODE -eq 0) {
-        Write-Log "PAT stored successfully in Credential Manager"
-    } else {
-        Write-Log "Failed to store PAT in Credential Manager (exit code $LASTEXITCODE)" "WARN"
-        # Fallback to environment variable
-        [System.Environment]::SetEnvironmentVariable("GIT_PAT_JARVIS", $GitHubPAT, "Machine")
-        Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (fallback)"
-    }
-} catch {
-    Write-Log "Failed to store PAT: $_" "WARN"
-    # Fallback to environment variable
-    [System.Environment]::SetEnvironmentVariable("GIT_PAT_JARVIS", $GitHubPAT, "Machine")
-    Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (fallback)"
-}
+[System.Environment]::SetEnvironmentVariable("GIT_PAT_JARVIS", $GitHubPAT, "Machine")
+$env:GIT_PAT_JARVIS = $GitHubPAT
+Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (Machine-level)"
 
 # Step 8: Display summary
 Write-Log "=== Installation Summary ==="
@@ -407,7 +429,6 @@ Write-Host ""
 Write-Host "Service Port: 8000" -ForegroundColor Yellow
 Write-Host "Jarvis Directory: $JarvisDir" -ForegroundColor Yellow
 
-# Try to get Tailscale IP
 $tailscaleIP = "N/A"
 if (Test-Command "tailscale") {
     try {
@@ -444,54 +465,54 @@ function Write-Log {
 
 try {
     Write-Log "=== Starting Jarvis Auto-Update ==="
-    
-    # Retrieve PAT from Credential Manager
-    $pat = $null
-    try {
-        $credOutput = cmdkey /list:JarvisGitPAT 2>&1
-        if ($credOutput -match "Password\s*:\s*(.+)") {
-            $pat = $matches[1].Trim()
-        }
-    } catch {
-        # Fallback to environment variable
-        $pat = [System.Environment]::GetEnvironmentVariable("GIT_PAT_JARVIS", "Machine")
-    }
-    
+
+    # PAT read from the Machine-level env var only — never from Credential
+    # Manager/cmdkey, never embedded in a remote URL or .git/config.
+    $pat = [System.Environment]::GetEnvironmentVariable("GIT_PAT_JARVIS", "Machine")
+
     if (-not $pat) {
-        Write-Log "PAT not found in Credential Manager or environment" "ERROR"
+        Write-Log "PAT not found in GIT_PAT_JARVIS environment variable" "ERROR"
         exit 1
     }
-    
+
     Push-Location $JarvisDir
-    
-    # Get current commit hash
+
     $currentHash = git rev-parse HEAD 2>&1
     Write-Log "Current commit: $currentHash"
-    
-    # Perform git pull
-    $repoUrl = "https://${pat}@github.com/carlwilliamdgm/Jarvis.git"
+
+    # Transient GIT_ASKPASS: the PAT is exposed to git only for the
+    # duration of this pull, via an env var read by a throwaway script.
+    $askPassPath = Join-Path $env:TEMP "jarvis_update_askpass_$PID.cmd"
+    "@echo off`r`necho %JARVIS_UPDATE_PAT%" | Out-File -FilePath $askPassPath -Encoding ASCII -Force
+    $env:GIT_ASKPASS = $askPassPath
+    $env:JARVIS_UPDATE_PAT = $pat
+    $env:GIT_TERMINAL_PROMPT = "0"
+
     git pull origin main
-    
-    if ($LASTEXITCODE -eq 0) {
+    $pullExit = $LASTEXITCODE
+
+    Remove-Item $askPassPath -Force -ErrorAction SilentlyContinue
+    Remove-Item Env:\JARVIS_UPDATE_PAT -ErrorAction SilentlyContinue
+
+    if ($pullExit -eq 0) {
         $newHash = git rev-parse HEAD 2>&1
         Write-Log "New commit: $newHash"
-        
+
         if ($currentHash -eq $newHash) {
             Write-Log "OK — no changes detected"
         } else {
             Write-Log "Changes detected — restarting $ServiceName"
-            
-            # Stop and restart service
+
             Stop-Service -Name $ServiceName -Force
             Start-Sleep -Seconds 5
             Start-Service -Name $ServiceName
-            
+
             Write-Log "Update applied — commit $currentHash → $newHash, service restarted"
         }
     } else {
         Write-Log "Git pull failed — service unchanged, reason: git error" "ERROR"
     }
-    
+
     Pop-Location
 } catch {
     Write-Log "Update failed: $_" "ERROR"
@@ -513,7 +534,7 @@ if (-not $taskExists) {
         $trigger = New-ScheduledTaskTrigger -Daily -DaysInterval 2 -At 4am
         $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-        
+
         Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Jarvis auto-update task (every 2 days)"
         Write-Log "Scheduled task '$taskName' registered successfully"
     } catch {
