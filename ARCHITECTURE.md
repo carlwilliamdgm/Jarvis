@@ -147,14 +147,15 @@ Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette q
 Il lance :
 
 ```text
-C:\Program Files\Python312\python.exe -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-Le service ajoute explicitement les packages utilisateur au path :
+Le service utilise les chemins détectés lors de l'installation :
 
-```text
-C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages
-```
+- Chemin Python : variable d'environnement `JARVIS_PYTHON_EXE`
+- Packages utilisateur : variable d'environnement `JARVIS_USER_SITE_PACKAGES`
+
+Ces variables sont définies automatiquement par le script d'installation `bootstrap/install.ps1`.
 
 Logs :
 

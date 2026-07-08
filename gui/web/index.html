@@ -610,7 +610,7 @@
 
     <footer>
       <textarea id="messageInput" placeholder="Entrez votre commande, Sir…" autocomplete="off" rows="1"></textarea>
-      <button id="sendButton" class="icon-button" type="button" title="Envoyer">→</button>
+      <button id="sendButton" class="icon-button" type="button" title="Envoyer">-></button>
       <button id="cancelButton" class="icon-button" type="button" title="Annuler">✕</button>
     </footer>
   </section>
@@ -737,7 +737,7 @@
         addEvent("stark-start", `⚡ Mode Stark activé — ${data.objectif || ""}`);
       } else if (type === "stark_action") {
         const result = String(data.resultat || "").slice(0, 120);
-        addEvent(`stark-action${data.erreur ? " error" : ""}`, `  ⚡ ${data.outil || "?"} → ${result}`);
+        addEvent(`stark-action${data.erreur ? " error" : ""}`, `  ⚡ ${data.outil || "?"} -> ${result}`);
       } else if (type === "stark_terminated") {
         const interrupted = data.statut === "interrompu" ? " interrupted" : "";
         addEvent(`stark-end${interrupted}`, data.rapport || "");

@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import threading
 import uuid
 from urllib.parse import quote
@@ -7,6 +8,12 @@ from urllib.parse import quote
 import requests
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+
+# Force UTF-8 encoding to avoid charmap errors on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
 
 
 HEADER_BG = "#0a0a0f"
@@ -208,7 +215,7 @@ class JarvisGUI:
 
         self.send_button = tk.Button(
             self.input_row,
-            text="→",
+            text="->",
             command=self.send_message,
             bg=self.theme["button_bg"],
             fg=self.theme["button_fg"],
@@ -349,7 +356,7 @@ class JarvisGUI:
             resultat = str(data.get("resultat", ""))[:120]
             bg = "#4a1a1a" if data.get("erreur") else "#1a4a1a"
             fg = "#ffd0d0" if data.get("erreur") else "#d5ecd5"
-            self._add_action(f"  ⚡ {outil} → {resultat}", bg, fg)
+            self._add_action(f"  ⚡ {outil} -> {resultat}", bg, fg)
         elif event_type == "stark_terminated":
             statut = data.get("statut", "")
             bg = "#0a1a0a" if statut == "terminé" else "#1a0f00"

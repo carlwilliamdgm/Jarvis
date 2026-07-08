@@ -5,6 +5,12 @@ import time
 import traceback
 from pathlib import Path
 
+# Force UTF-8 encoding to avoid charmap errors on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
+
 SERVICE_NAME = "JarvisService"
 
 

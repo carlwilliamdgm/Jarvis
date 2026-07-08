@@ -7,6 +7,7 @@ import os
 import platform
 import queue
 import re
+import sys
 import threading
 import time
 import urllib.request
@@ -18,6 +19,12 @@ from groq import Groq as GroqClient
 from rich.console import Console
 from rich.panel import Panel
 from rich.markup import escape
+
+# Force UTF-8 encoding to avoid charmap errors on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
 from core.error_classification import resultat_erreur
 from core.memory import (
     charger_memoire,

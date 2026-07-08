@@ -271,9 +271,9 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 
 
         if providers_cloud:
             if tentative == 0:
-                console.print(f"[dim]→ Cle API cloud detectee. Tentative modeles cloud...[/dim]")
+                console.print(f"[dim]-> Cle API cloud detectee. Tentative modeles cloud...[/dim]")
             else:
-                console.print(f"[dim yellow]→ Retry modeles cloud (tentative {tentative + 1})...[/dim yellow]")
+                console.print(f"[dim yellow]-> Retry modeles cloud (tentative {tentative + 1})...[/dim yellow]")
 
             for provider in providers_cloud:
                 nom = provider["nom"]
@@ -288,7 +288,7 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 
 
         # Fallback local
         if tentative == 0:
-            console.print(f"[dim]→ Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
+            console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
         try:
             return ollama.chat(model=MODELE_LOCAL, messages=messages, options={"think": False, "temperature": temperature})
         except Exception as e:

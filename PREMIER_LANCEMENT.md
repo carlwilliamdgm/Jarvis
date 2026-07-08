@@ -7,8 +7,8 @@ Ce guide vous accompagne lors de la première installation et configuration de J
 ### Environnement système
 
 - **OS** : Windows 10 ou 11
-- **Python** : Python 3.12 recommandé (`C:\Program Files\Python312\python.exe`)
-- **Dossier projet** : `C:\Users\Carl\Jarvis`
+- **Python** : Python 3.12 recommandé (chemin détecté automatiquement par le script d'installation)
+- **Dossier projet** : `%USERPROFILE%\Jarvis` (configurable via paramètre d'installation)
 
 ### Vérification de Python
 
@@ -25,19 +25,19 @@ Si Python n'est pas installé, téléchargez-le depuis [python.org](https://www.
 Si vous avez accès au dépôt GitHub privé :
 
 ```powershell
-cd C:\Users\Carl
+cd %USERPROFILE%
 git clone <url-du-repo> Jarvis
 cd Jarvis
 ```
 
-Sinon, placez simplement le dossier Jarvis dans `C:\Users\Carl\`.
+Sinon, placez simplement le dossier Jarvis dans `%USERPROFILE%\`.
 
 ## Étape 2 - Installation des dépendances
 
 ### Méthode recommandée : via requirements.txt
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m pip install -r requirements.txt
 ```
 
@@ -46,7 +46,7 @@ python -m pip install -r requirements.txt
 Si `requirements.txt` est incomplet ou pour une installation minimale :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m pip install fastapi uvicorn requests pywin32 psutil rich ollama groq plyer
 ```
 
@@ -110,7 +110,7 @@ Ollama sera utilisé automatiquement en fallback si Groq et OpenRouter ne sont p
 ### Lancement console (interface terminal)
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python jarvis.py
 ```
 
@@ -120,12 +120,14 @@ Ou utilisez le raccourci Windows si présent :
 jarvis.cmd
 ```
 
+Note : `jarvis.cmd` utilise le chemin dynamique du script, il fonctionne quel que soit l'emplacement d'installation.
+
 **Test de base** : Tapez "Bonjour Jarvis" et vérifiez que vous recevez une réponse.
 
 ### Lancement serveur API (pour interfaces web/Tkinter)
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
@@ -141,7 +143,7 @@ Une fois lancé, vous pouvez :
 Dans une nouvelle fenêtre PowerShell :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python gui\app.py
 ```
 
@@ -150,21 +152,21 @@ python gui\app.py
 ### Console manuelle
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python jarvis.py
 ```
 
 ### API manuelle
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
 ### Tkinter manuelle
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python gui\app.py
 ```
 
@@ -217,7 +219,7 @@ Pour un démarrage automatique de Jarvis au démarrage de Windows :
 ### Installation du service
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python service\windows_service.py install
 ```
 
@@ -246,7 +248,7 @@ net stop JarvisService
 ### Suppression du service
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python service\windows_service.py remove
 ```
 
@@ -318,7 +320,7 @@ python -m uvicorn api.server:app --host 0.0.0.0 --port 8001
 
 **Vérifications** :
 1. Consultez les logs : `service/jarvis_service.log` et `service/uvicorn.log`
-2. Vérifiez que Python existe à `C:\Program Files\Python312\python.exe`
+2. Vérifiez que Python est installé et détecté par le script d'installation
 3. Vérifiez que les dépendances sont installées pour ce Python
 4. Lancez les commandes en tant qu'administrateur
 
@@ -348,7 +350,7 @@ Get-ChildItem Env:
 ## Résumé rapide
 
 1. Installer Python 3.12
-2. Cloner/télécharger Jarvis dans `C:\Users\Carl\Jarvis`
+2. Cloner/télécharger Jarvis dans `%USERPROFILE%\Jarvis`
 3. Installer les dépendances : `python -m pip install -r requirements.txt`
 4. Configurer un provider LLM (Groq recommandé)
 5. Lancer : `python jarvis.py` ou `python -m uvicorn api.server:app`

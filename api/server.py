@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import queue
 import subprocess
+import sys
 import threading
 from typing import Dict, List
 
@@ -14,6 +15,12 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+
+# Force UTF-8 encoding to avoid charmap errors on Windows
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8')
 
 from jarvis import AutonomousAgent, event_bus, executer_agent, initialiser
 from core.safety import action_bloquee, action_requiert_confirmation

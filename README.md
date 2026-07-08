@@ -39,9 +39,9 @@ Pour une installation et configuration pas à pas, consultez le guide [PREMIER_L
 ### Environnement cible
 
 - Windows est la plateforme principale.
-- Python recommandé : `C:\Program Files\Python312\python.exe`.
-- Dossier projet : `C:\Users\Carl\Jarvis`.
-- Packages utilisateur : `C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages`.
+- Python recommandé : Python 3.12 (chemin détecté automatiquement par le script d'installation).
+- Dossier projet : `%USERPROFILE%\Jarvis` (configurable via paramètre d'installation).
+- Packages utilisateur : détecté automatiquement par le script d'installation.
 
 ### Dépendances Python
 
@@ -60,12 +60,12 @@ Le fichier `requirements.txt` contient les dépendances historiques du projet. S
 Installation typique :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m pip install -r requirements.txt
 python -m pip install fastapi uvicorn requests pywin32
 ```
 
-Avec le Python explicite du projet :
+Avec un chemin Python explicite (si nécessaire) :
 
 ```powershell
 & "C:\Program Files\Python312\python.exe" -m pip install -r requirements.txt
@@ -101,32 +101,32 @@ ollama pull qwen2.5:7b
 La console est l'expérience directe historique.
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python jarvis.py
 ```
 
 Ou avec le Python explicite :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 & "C:\Program Files\Python312\python.exe" jarvis.py
 ```
 
-Sur Windows, `jarvis.cmd` peut aussi servir de raccourci.
+Sur Windows, `jarvis.cmd` peut aussi servir de raccourci (il utilise le chemin dynamique du script).
 
 ### 2. Serveur FastAPI manuel
 
 Le serveur expose l'API, le streaming SSE et l'interface web.
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
 Avec le Python explicite :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 & "C:\Program Files\Python312\python.exe" -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
@@ -144,7 +144,7 @@ Le serveur initialise la mémoire avec `initialiser()`, construit un historique 
 L'interface Tkinter est un client local. Elle ne lance pas l'API elle-même : le serveur FastAPI doit déjà tourner.
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python gui\app.py
 ```
 
@@ -197,8 +197,8 @@ service/windows_service.py
 
 Caractéristiques :
 
-- Utilise explicitement `C:\Program Files\Python312\python.exe`.
-- Ajoute `C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages` au path.
+- Utilise le chemin Python détecté lors de l'installation (variable d'environnement `JARVIS_PYTHON_EXE`).
+- Ajoute les packages utilisateur détectés au path (variable d'environnement `JARVIS_USER_SITE_PACKAGES`).
 - Lance uniquement `uvicorn api.server:app`.
 - Ne charge pas `jarvis.py` comme agent console.
 - Écrit les logs dans :
@@ -208,7 +208,7 @@ Caractéristiques :
 Installation :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python service\windows_service.py install
 ```
 
@@ -690,7 +690,7 @@ Les chemins passent par `core.safety.chemin_autorise()` lorsque l'outil manipule
 Compilation rapide :
 
 ```powershell
-cd C:\Users\Carl\Jarvis
+cd %USERPROFILE%\Jarvis
 python -m py_compile jarvis.py api\server.py gui\app.py tools.py core\tool_signatures.py
 ```
 
@@ -761,7 +761,7 @@ service/uvicorn.log
 
 Vérifier :
 
-- Python existe à `C:\Program Files\Python312\python.exe`;
+- Python est installé et détecté par le script d'installation;
 - `pywin32`, `fastapi`, `uvicorn` sont installés pour ce Python;
 - le port `8000` n'est pas déjà occupé;
 - les commandes sont lancées en administrateur.
