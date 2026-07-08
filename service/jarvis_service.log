@@ -86,3 +86,5 @@
 2026-07-07 09:49:31,932 [INFO] uvicorn started, PID=7448.
 2026-07-07 15:58:24,198 [INFO] Service starting.
 2026-07-07 15:58:24,204 [INFO] uvicorn started, PID=7840.
+2026-07-08 10:57:49,129 [INFO] Stop requested.
+2026-07-08 10:57:49,140 [INFO] Service stopped.
