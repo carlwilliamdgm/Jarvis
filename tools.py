@@ -1,5 +1,6 @@
 #tools.py
 
+import getpass
 from datetime import datetime, timedelta
 
 from capabilities.commands import executer_commande_direct, executer_powershell_direct
@@ -264,7 +265,7 @@ def modifier_traducteur(cle: str, patterns_fr: str, patterns_en: str, outil: str
     """
     Modifie ou ajoute une entrée au traducteur.
     
-    Confirmation Carl-William OBLIGATOIRE avant écriture.
+    Confirmation utilisateur OBLIGATOIRE avant écriture.
     """
     # Demander confirmation
     _console.print(f"\n[yellow]⚠️  Modification du traducteur demandée[/yellow]")
@@ -275,7 +276,8 @@ def modifier_traducteur(cle: str, patterns_fr: str, patterns_en: str, outil: str
         _console.print(f"[cyan]Outil : {outil}[/cyan]")
         _console.print(f"[cyan]Args : {args_json}[/cyan]")
     
-    confirmation = _console.input("[bold]Confirmer la modification ? (Carl-William uniquement - o/n) >[/bold] ").strip().lower()
+    utilisateur = getpass.getuser() or "utilisateur courant"
+    confirmation = _console.input(f"[bold]Confirmer la modification ? ({utilisateur} uniquement - o/n) >[/bold] ").strip().lower()
     
     if confirmation not in {"o", "oui", "yes", "y"}:
         return "Modification annulée."

@@ -1,14 +1,18 @@
 import os
 import sys
+from pathlib import Path
 
-JARVIS_DIR = r"C:\Users\Carl\Jarvis"
+JARVIS_DIR = os.environ.get("JARVIS_INSTALL_DIR") or str(Path(__file__).resolve().parents[1])
+SERVICE_NAME = "JarvisService"
 SERVICE_DIR = os.path.join(JARVIS_DIR, "service")
-PYTHON_EXE = r"C:\Program Files\Python312\python.exe"
-USER_SITE_PACKAGES = r"C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages"
+PYTHON_EXE = os.environ.get("JARVIS_PYTHON_EXE", sys.executable)
+PYTHON_ARGS = os.environ.get("JARVIS_PYTHON_ARGS", "").split()
+PYTHON_COMMAND = [PYTHON_EXE] + PYTHON_ARGS
+USER_SITE_PACKAGES = os.environ.get("JARVIS_USER_SITE_PACKAGES")
 LOG_PATH = os.path.join(SERVICE_DIR, "jarvis_service.log")
 UVICORN_LOG_PATH = os.path.join(SERVICE_DIR, "uvicorn.log")
 
-if USER_SITE_PACKAGES not in sys.path:
+if USER_SITE_PACKAGES and USER_SITE_PACKAGES not in sys.path:
     sys.path.insert(0, USER_SITE_PACKAGES)
 
 import logging
@@ -26,11 +30,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
-log = logging.getLogger("JarvisService")
+log = logging.getLogger(SERVICE_NAME)
 
 
 class JarvisService(win32serviceutil.ServiceFramework):
-    _svc_name_ = "JarvisService"
+    _svc_name_ = SERVICE_NAME
     _svc_display_name_ = "Jarvis AI Agent"
     _svc_description_ = "Runs the Jarvis FastAPI service with uvicorn."
 
@@ -69,17 +73,22 @@ class JarvisService(win32serviceutil.ServiceFramework):
             os.chdir(JARVIS_DIR)
             if JARVIS_DIR not in sys.path:
                 sys.path.insert(0, JARVIS_DIR)
-            import site
-
-            sys.path.insert(0, r"C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages")
+            if USER_SITE_PACKAGES and USER_SITE_PACKAGES not in sys.path:
+                sys.path.insert(0, USER_SITE_PACKAGES)
 
             env = os.environ.copy()
-            env["PYTHONPATH"] = r"C:\Users\Carl\AppData\Roaming\Python\Python312\site-packages"
+            python_path = [JARVIS_DIR]
+            if USER_SITE_PACKAGES:
+                python_path.append(USER_SITE_PACKAGES)
+            existing_pythonpath = env.get("PYTHONPATH")
+            if existing_pythonpath:
+                python_path.append(existing_pythonpath)
+            env["PYTHONPATH"] = os.pathsep.join(python_path)
 
-            self.uvicorn_log = open(os.path.join(JARVIS_DIR, "service", "uvicorn.log"), "w")
+            self.uvicorn_log = open(UVICORN_LOG_PATH, "w")
             self.process = subprocess.Popen(
-                [
-                    PYTHON_EXE,
+                PYTHON_COMMAND
+                + [
                     "-m",
                     "uvicorn",
                     "api.server:app",

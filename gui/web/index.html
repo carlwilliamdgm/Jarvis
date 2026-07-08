@@ -692,7 +692,9 @@
     let source = null;
     let apiBase = window.location.origin;
     let instances = [];
-    let activeInstanceId = "pc1-local";
+    const localInstanceId = "local";
+    const localInstance = { id: localInstanceId, nom: "Local", url: window.location.origin };
+    let activeInstanceId = localInstanceId;
     let editingInstanceId = null;
 
     function scrollBottom() {
@@ -834,10 +836,16 @@
         instances = JSON.parse(saved);
       } else {
         instances = [
-          { id: "pc1-local", nom: "PC1 (local)", url: window.location.origin }
+          { ...localInstance }
         ];
       }
-      activeInstanceId = localStorage.getItem("jarvis-active-instance") || "pc1-local";
+      if (!instances.some(inst => inst.id === localInstanceId)) {
+        instances.unshift({ ...localInstance });
+      }
+      activeInstanceId = localStorage.getItem("jarvis-active-instance") || localInstanceId;
+      if (!instances.some(inst => inst.id === activeInstanceId)) {
+        activeInstanceId = localInstanceId;
+      }
       updateInstanceUI();
     }
 
@@ -915,7 +923,7 @@
         const actions = document.createElement("div");
         actions.className = "instance-item-actions";
         
-        if (inst.id !== "pc1-local") {
+        if (inst.id !== localInstanceId) {
           const editBtn = document.createElement("button");
           editBtn.className = "btn btn-secondary";
           editBtn.textContent = "Modifier";
@@ -1010,7 +1018,7 @@
       if (confirm("Supprimer cette instance ?")) {
         instances = instances.filter(i => i.id !== id);
         if (activeInstanceId === id) {
-          activeInstanceId = "pc1-local";
+          activeInstanceId = localInstanceId;
         }
         saveInstances();
         updateInstanceUI();
@@ -1150,7 +1158,7 @@
           instances = instances.filter(i => i.id !== activeInstanceId);
           
           // Switch to localhost
-          activeInstanceId = "pc1-local";
+          activeInstanceId = localInstanceId;
           saveInstances();
           updateInstanceUI();
           refreshStatus();

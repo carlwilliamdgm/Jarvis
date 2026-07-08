@@ -1,6 +1,7 @@
 from collections import deque
 from datetime import datetime
 import json
+import os
 from pathlib import Path
 import queue
 import shutil
@@ -25,6 +26,9 @@ from core.prompt import construire_prompt_action
 
 app = FastAPI(title="Jarvis API", version="1.0.0")
 WEB_DIR = Path(__file__).resolve().parent.parent / "gui" / "web"
+JARVIS_DIR = Path(os.environ.get("JARVIS_INSTALL_DIR", Path(__file__).resolve().parent.parent))
+SERVICE_NAME = "JarvisService"
+SCHEDULED_TASK_NAME = "JarvisAutoUpdate"
 app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 # Global agent instance
@@ -294,17 +298,17 @@ async def discover_tailscale_devices() -> Dict:
 def perform_destruction():
     """Perform complete destruction of Jarvis instance."""
     try:
-        # Step a: Stop and delete JarvisService
+        # Step a: Stop and delete the installed Jarvis service
         try:
-            subprocess.run(["sc", "stop", "JarvisService"], capture_output=True, timeout=30)
-            subprocess.run(["sc", "delete", "JarvisService"], capture_output=True, timeout=30)
+            subprocess.run(["sc", "stop", SERVICE_NAME], capture_output=True, timeout=30)
+            subprocess.run(["sc", "delete", SERVICE_NAME], capture_output=True, timeout=30)
         except Exception:
             pass  # Continue even if service operations fail
         
-        # Step b: Delete scheduled task JarvisAutoUpdate
+        # Step b: Delete scheduled auto-update task
         try:
             subprocess.run(
-                ["powershell", "-Command", "Unregister-ScheduledTask -TaskName 'JarvisAutoUpdate' -Confirm:$false"],
+                ["schtasks", "/Delete", "/TN", SCHEDULED_TASK_NAME, "/F"],
                 capture_output=True,
                 timeout=30
             )
@@ -314,6 +318,12 @@ def perform_destruction():
         # Step c: Delete environment variables (Machine-level)
         env_vars_to_delete = [
             "GIT_PAT_JARVIS",
+            "JARVIS_INSTALL_DIR",
+            "JARVIS_SERVICE_NAME",
+            "JARVIS_SCHEDULED_TASK_NAME",
+            "JARVIS_PYTHON_EXE",
+            "JARVIS_PYTHON_ARGS",
+            "JARVIS_USER_SITE_PACKAGES",
             "GROQ_API_KEY_1",
             "GROQ_API_KEY_2",
             "GROQ_API_KEY_3",
@@ -348,7 +358,7 @@ def perform_destruction():
         
         # Step d: Delete Jarvis folder (last step)
         try:
-            jarvis_path = Path.home() / "Jarvis"
+            jarvis_path = JARVIS_DIR
             if jarvis_path.exists():
                 shutil.rmtree(jarvis_path, ignore_errors=True)
         except Exception:

@@ -11,6 +11,8 @@ from tkinter import ttk, messagebox, simpledialog
 
 HEADER_BG = "#0a0a0f"
 TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
+LOCAL_INSTANCE_ID = "local"
+LOCAL_INSTANCE = {"id": LOCAL_INSTANCE_ID, "nom": "Local", "url": "http://localhost:8000"}
 
 
 THEMES = {
@@ -70,7 +72,7 @@ class JarvisGUI:
         # Instance management
         self.api_base = "http://localhost:8000"
         self.instances = []
-        self.active_instance_id = "pc1-local"
+        self.active_instance_id = LOCAL_INSTANCE_ID
         self.load_instances()
 
         self.root.configure(bg=self.theme["root"])
@@ -531,25 +533,26 @@ class JarvisGUI:
         self.typing_label.configure(text="")
     
     # Instance Management Methods
+    def ensure_local_instance(self):
+        if not any(inst.get("id") == LOCAL_INSTANCE_ID for inst in self.instances):
+            self.instances.insert(0, dict(LOCAL_INSTANCE))
+
     def load_instances(self):
         if os.path.exists(TARGETS_FILE):
             try:
                 with open(TARGETS_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.instances = data.get("instances", [])
-                    self.active_instance_id = data.get("instance_active", "pc1-local")
+                    self.active_instance_id = data.get("instance_active", LOCAL_INSTANCE_ID)
             except Exception:
-                self.instances = [
-                    {"id": "pc1-local", "nom": "PC1 (local)", "url": "http://localhost:8000"}
-                ]
-                self.active_instance_id = "pc1-local"
+                self.instances = [dict(LOCAL_INSTANCE)]
+                self.active_instance_id = LOCAL_INSTANCE_ID
         else:
-            self.instances = [
-                {"id": "pc1-local", "nom": "PC1 (local)", "url": "http://localhost:8000"}
-            ]
-            self.active_instance_id = "pc1-local"
+            self.instances = [dict(LOCAL_INSTANCE)]
+            self.active_instance_id = LOCAL_INSTANCE_ID
             self.save_instances()
         
+        self.ensure_local_instance()
         self.update_instance_ui()
     
     def save_instances(self):
@@ -651,7 +654,7 @@ class JarvisGUI:
                 self.instances = [i for i in self.instances if i["id"] != self.active_instance_id]
                 
                 # Switch to localhost
-                self.active_instance_id = "pc1-local"
+                self.active_instance_id = LOCAL_INSTANCE_ID
                 self.save_instances()
                 self.update_instance_ui()
                 self.refresh_status()
@@ -828,7 +831,7 @@ class InstanceManager:
                 font=("Segoe UI", 9)
             ).pack(anchor="w")
             
-            if inst["id"] != "pc1-local":
+            if inst["id"] != LOCAL_INSTANCE_ID:
                 actions = tk.Frame(item, bg=self.gui.theme["input_bg"])
                 actions.pack(side="right", padx=8)
                 
@@ -931,7 +934,7 @@ class InstanceManager:
         if messagebox.askyesno("Confirmation", "Supprimer cette instance ?"):
             self.gui.instances = [i for i in self.gui.instances if i["id"] != instance_id]
             if self.gui.active_instance_id == instance_id:
-                self.gui.active_instance_id = "pc1-local"
+                self.gui.active_instance_id = LOCAL_INSTANCE_ID
             self.gui.save_instances()
             self.refresh_list()
     

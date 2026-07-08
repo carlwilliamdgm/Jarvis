@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)]
-    [string]$GitHubPAT
+    [string]$GitHubPAT,
+    [string]$InstallDir = ""
 )
 
 # Bootstrap installation script for Jarvis
@@ -9,7 +10,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $LogPath = Join-Path $PSScriptRoot "bootstrap_install.log"
-$JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
+$JarvisDir = if ([string]::IsNullOrWhiteSpace($InstallDir)) { Join-Path $env:USERPROFILE "Jarvis" } else { $InstallDir }
+$serviceName = "JarvisService"
+$taskName = "JarvisAutoUpdate"
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -37,7 +40,7 @@ $pythonPath = $null
 # Check for python in standard locations
 $standardPaths = @(
     "C:\Program Files\Python312\python.exe",
-    "C:\Users\$env:USERNAME\AppData\Local\Programs\Python\Python312\python.exe"
+    (Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe")
 )
 
 foreach ($path in $standardPaths) {
@@ -267,10 +270,31 @@ if ($ollamaInstalled) {
         }
     }
 }
-# Step 6: Register Windows service JarvisService
+# Step 6: Register Windows service
 Write-Log "=== Step 6: Register Windows Service ==="
-$serviceName = "JarvisService"
 $serviceScript = Join-Path $JarvisDir "service\windows_service.py"
+
+$pythonExeForService = $pythonPath
+$pythonArgsForService = ""
+$userSitePackages = ""
+try {
+    $userSitePackages = (& $pythonPath -m site --user-site 2>&1).Trim()
+} catch {
+    Write-Log "Could not detect Python user site-packages: $_" "WARN"
+}
+
+[System.Environment]::SetEnvironmentVariable("JARVIS_INSTALL_DIR", $JarvisDir, "Machine")
+[System.Environment]::SetEnvironmentVariable("JARVIS_PYTHON_EXE", $pythonExeForService, "Machine")
+[System.Environment]::SetEnvironmentVariable("JARVIS_PYTHON_ARGS", $pythonArgsForService, "Machine")
+if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
+    [System.Environment]::SetEnvironmentVariable("JARVIS_USER_SITE_PACKAGES", $userSitePackages, "Machine")
+}
+$env:JARVIS_INSTALL_DIR = $JarvisDir
+$env:JARVIS_PYTHON_EXE = $pythonExeForService
+$env:JARVIS_PYTHON_ARGS = $pythonArgsForService
+if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
+    $env:JARVIS_USER_SITE_PACKAGES = $userSitePackages
+}
 
 if (Test-Path $serviceScript) {
     # Check if service already exists
@@ -342,7 +366,7 @@ try {
 } catch {
     Write-Log "Failed to store PAT: $_" "WARN"
     # Fallback to environment variable
-    [System.Environment]::SetEnvironmentVariable("GIT_PAT_JARVIS", $GitHubPat, "Machine")
+    [System.Environment]::SetEnvironmentVariable("GIT_PAT_JARVIS", $GitHubPAT, "Machine")
     Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (fallback)"
 }
 
@@ -354,7 +378,7 @@ Write-Host "                    INSTALLATION SUMMARY" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 
-$status = @{ "Python 3.12" = $pythonInstalled; "Jarvis Repository" = (Test-Path $JarvisDir); "Dependencies" = $true; "API Keys" = ($groqKeys.Count -gt 0); "Ollama" = $ollamaInstalled; "JarvisService" = ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -ne $null); "PAT Storage" = $true }
+$status = @{ "Python 3.12" = $pythonInstalled; "Jarvis Repository" = (Test-Path $JarvisDir); "Dependencies" = $true; "API Keys" = ($groqKeys.Count -gt 0); "Ollama" = $ollamaInstalled; $serviceName = ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -ne $null); "PAT Storage" = $true }
 
 foreach ($item in $status.Keys) {
     $symbol = if ($status[$item]) { "✅" } else { "❌" }
@@ -386,7 +410,11 @@ Write-Host ""
 # Create update.ps1 script
 Write-Log "=== Creating update.ps1 script ==="
 $updateScript = @'
-$JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
+$JarvisDir = [System.Environment]::GetEnvironmentVariable("JARVIS_INSTALL_DIR", "Machine")
+if (-not $JarvisDir) {
+    $JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
+}
+$ServiceName = "JarvisService"
 $LogPath = Join-Path $JarvisDir "bootstrap\update.log"
 
 function Write-Log {
@@ -433,12 +461,12 @@ try {
         if ($currentHash -eq $newHash) {
             Write-Log "OK — no changes detected"
         } else {
-            Write-Log "Changes detected — restarting JarvisService"
+            Write-Log "Changes detected — restarting $ServiceName"
             
             # Stop and restart service
-            Stop-Service -Name JarvisService -Force
+            Stop-Service -Name $ServiceName -Force
             Start-Sleep -Seconds 5
-            Start-Service -Name JarvisService
+            Start-Service -Name $ServiceName
             
             Write-Log "Update applied — commit $currentHash → $newHash, service restarted"
         }
@@ -459,7 +487,6 @@ Write-Log "update.ps1 created at $updateScriptPath"
 
 # Register scheduled task for auto-update
 Write-Log "=== Registering Scheduled Task ==="
-$taskName = "JarvisAutoUpdate"
 $taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 
 if (-not $taskExists) {

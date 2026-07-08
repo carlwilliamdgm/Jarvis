@@ -1,4 +1,8 @@
-$JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
+$JarvisDir = [System.Environment]::GetEnvironmentVariable("JARVIS_INSTALL_DIR", "Machine")
+if (-not $JarvisDir) {
+    $JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
+}
+$ServiceName = "JarvisService"
 $LogPath = Join-Path $JarvisDir "bootstrap\update.log"
 
 function Write-Log {
@@ -35,12 +39,12 @@ try {
         if ($currentHash -eq $newHash) {
             Write-Log "OK — no changes detected"
         } else {
-            Write-Log "Changes detected — restarting JarvisService"
+            Write-Log "Changes detected — restarting $ServiceName"
             
             # Stop and restart service
-            Stop-Service -Name JarvisService -Force
+            Stop-Service -Name $ServiceName -Force
             Start-Sleep -Seconds 5
-            Start-Service -Name JarvisService
+            Start-Service -Name $ServiceName
             
             Write-Log "Update applied — commit $currentHash → $newHash, service restarted"
         }

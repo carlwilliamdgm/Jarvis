@@ -417,7 +417,7 @@ def ajouter_traduction(cle: str, patterns_fr: List[str], patterns_en: List[str],
     """
     Ajoute une nouvelle entrée au traducteur.
     
-    Cette fonction nécessite une confirmation de Carl-William avant écriture.
+    Cette fonction nécessite une confirmation de l'utilisateur courant avant écriture.
     
     Args:
         cle: La clé unique pour l'intention

@@ -1,3 +1,3 @@
 @echo off
-cd C:\Users\Carl\Jarvis
+cd /d "%~dp0"
 python jarvis.py
