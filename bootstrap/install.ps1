@@ -172,40 +172,58 @@ if (Test-Path $requirementsPath) {
 
 # Step 4: Configure API keys
 Write-Log "=== Step 4: Configure API Keys ==="
-$groqKeys = @()
-$keyIndex = 1
 
-Write-Host ""
-Write-Host "Configuration des clés API Groq (1 à 5 clés, minimum 1 requise)" -ForegroundColor Cyan
-Write-Host "Appuyez sur Entrée sans saisir de clé pour terminer" -ForegroundColor Cyan
-
-while ($keyIndex -le 5) {
-    $key = Read-Host "Clé Groq #$keyIndex (ou Entrée pour terminer)"
-    if ([string]::IsNullOrWhiteSpace($key)) {
-        if ($groqKeys.Count -eq 0) {
-            Write-Host "Au moins une clé Groq est requise" -ForegroundColor Red
-            continue
-        }
-        break
+$existingGroqKeys = @()
+for ($i = 1; $i -le 5; $i++) {
+    $existing = [System.Environment]::GetEnvironmentVariable("GROQ_API_KEY_$i", "Machine")
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        $existingGroqKeys += $existing
     }
-    $groqKeys += $key.Trim()
-    $keyIndex++
 }
 
-# Store Groq keys
-for ($i = 0; $i -lt $groqKeys.Count; $i++) {
-    $varName = "GROQ_API_KEY_$($i + 1)"
-    [System.Environment]::SetEnvironmentVariable($varName, $groqKeys[$i], "Machine")
-    Write-Log "Groq key #$($i + 1) stored in environment variable $varName"
+$groqKeys = @()
+
+if ($existingGroqKeys.Count -gt 0) {
+    Write-Log "$($existingGroqKeys.Count) clé(s) Groq déjà présente(s) — saisie ignorée"
+    $groqKeys = $existingGroqKeys
+} else {
+    $keyIndex = 1
+    Write-Host ""
+    Write-Host "Configuration des clés API Groq (1 à 5 clés, minimum 1 requise)" -ForegroundColor Cyan
+    Write-Host "Appuyez sur Entrée sans saisir de clé pour terminer" -ForegroundColor Cyan
+
+    while ($keyIndex -le 5) {
+        $key = Read-Host "Clé Groq #$keyIndex (ou Entrée pour terminer)"
+        if ([string]::IsNullOrWhiteSpace($key)) {
+            if ($groqKeys.Count -eq 0) {
+                Write-Host "Au moins une clé Groq est requise" -ForegroundColor Red
+                continue
+            }
+            break
+        }
+        $groqKeys += $key.Trim()
+        $keyIndex++
+    }
+
+    for ($i = 0; $i -lt $groqKeys.Count; $i++) {
+        $varName = "GROQ_API_KEY_$($i + 1)"
+        [System.Environment]::SetEnvironmentVariable($varName, $groqKeys[$i], "Machine")
+        Write-Log "Groq key #$($i + 1) stored in environment variable $varName"
+    }
 }
 
 # OpenRouter key (optional)
-Write-Host ""
-Write-Host "Clé API OpenRouter (optionnel, appuyez sur Entrée pour passer)" -ForegroundColor Cyan
-$openRouterKey = Read-Host "Clé OpenRouter"
-if (-not [string]::IsNullOrWhiteSpace($openRouterKey)) {
-    [System.Environment]::SetEnvironmentVariable("OPENROUTER_API_KEY", $openRouterKey.Trim(), "Machine")
-    Write-Log "OpenRouter key stored in environment variable OPENROUTER_API_KEY"
+$existingOpenRouter = [System.Environment]::GetEnvironmentVariable("OPENROUTER_API_KEY", "Machine")
+if (-not [string]::IsNullOrWhiteSpace($existingOpenRouter)) {
+    Write-Log "Clé OpenRouter déjà présente — saisie ignorée"
+} else {
+    Write-Host ""
+    Write-Host "Clé API OpenRouter (optionnel, appuyez sur Entrée pour passer)" -ForegroundColor Cyan
+    $openRouterKey = Read-Host "Clé OpenRouter"
+    if (-not [string]::IsNullOrWhiteSpace($openRouterKey)) {
+        [System.Environment]::SetEnvironmentVariable("OPENROUTER_API_KEY", $openRouterKey.Trim(), "Machine")
+        Write-Log "OpenRouter key stored in environment variable OPENROUTER_API_KEY"
+    }
 }
 
 # Step 5: Detect/install Ollama
