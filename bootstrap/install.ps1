@@ -9,6 +9,14 @@ param(
 # Requires Administrator privileges
 
 $ErrorActionPreference = "Stop"
+
+$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Ce script doit etre execute en tant qu'Administrateur." -ForegroundColor Red
+    Write-Host "Relancez PowerShell en mode Administrateur, puis reessayez." -ForegroundColor Red
+    throw "Privileges administrateur requis"
+}
+
 $LogPath = Join-Path $PSScriptRoot "bootstrap_install.log"
 $JarvisDir = if ([string]::IsNullOrWhiteSpace($InstallDir)) { Join-Path $env:USERPROFILE "Jarvis" } else { $InstallDir }
 $serviceName = "JarvisService"
@@ -22,6 +30,22 @@ function Write-Log {
     Write-Host $logLine
 }
 
+function Set-MachineEnvironmentVariableChecked {
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [AllowEmptyString()][string]$Value
+    )
+
+    [System.Environment]::SetEnvironmentVariable($Name, $Value, "Machine")
+    $confirmed = [System.Environment]::GetEnvironmentVariable($Name, "Machine")
+    if ($confirmed -ne $Value) {
+        Write-Log "Failed to persist Machine-level environment variable $Name. Expected '$Value', read back '$confirmed'." "ERROR"
+        throw "Machine-level environment variable verification failed for $Name"
+    }
+
+    Write-Log "Confirmed Machine-level environment variable $Name"
+}
+
 function Test-Command {
     param([string]$Command)
     try {
@@ -29,6 +53,47 @@ function Test-Command {
         return $true
     } catch {
         return $false
+    }
+}
+
+function Update-ProcessPathFromRegistry {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $pathParts = @()
+    if (-not [string]::IsNullOrWhiteSpace($machinePath)) { $pathParts += $machinePath }
+    if (-not [string]::IsNullOrWhiteSpace($userPath)) { $pathParts += $userPath }
+    $env:PATH = ($pathParts -join ";")
+}
+
+function Install-GitIfMissing {
+    if (Test-Command "git") {
+        Write-Log "Git already installed"
+        return
+    }
+
+    Write-Log "Git not found. Downloading and installing Git for Windows..."
+    $gitInstallerUrl = "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+    $gitInstallerPath = Join-Path $env:TEMP "Git-64-bit.exe"
+
+    try {
+        Invoke-WebRequest -Uri $gitInstallerUrl -OutFile $gitInstallerPath -UseBasicParsing
+        $gitArgs = "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS"
+        $process = Start-Process -FilePath $gitInstallerPath -ArgumentList $gitArgs -Wait -PassThru
+        if ($process.ExitCode -ne 0) {
+            throw "Git installer exited with code $($process.ExitCode)"
+        }
+
+        Update-ProcessPathFromRegistry
+        if (-not (Test-Command "git")) {
+            throw "Git installation completed but git.exe is still not available in PATH"
+        }
+
+        Write-Log "Git installed successfully"
+    } catch {
+        Write-Log "Failed to install Git: $_" "ERROR"
+        throw
+    } finally {
+        Remove-Item $gitInstallerPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -41,7 +106,7 @@ function Invoke-GitWithPAT {
         [Parameter(Mandatory=$true)][string]$Pat
     )
     $askPassPath = Join-Path $env:TEMP "jarvis_askpass_$PID.cmd"
-    "@echo off`r`necho %JARVIS_GIT_PAT%" | Out-File -FilePath $askPassPath -Encoding ASCII -Force
+    "@echo off`r`necho %1 | findstr /I `"Username`" >nul`r`nif %ERRORLEVEL%==0 (`r`n  echo x-access-token`r`n) else (`r`n  echo %JARVIS_GIT_PAT%`r`n)" | Out-File -FilePath $askPassPath -Encoding ASCII -Force
 
     $prevAskPass = $env:GIT_ASKPASS
     $prevTerminalPrompt = $env:GIT_TERMINAL_PROMPT
@@ -94,7 +159,8 @@ if (-not $pythonInstalled) {
                 Write-Log "Python 3.12 found via py launcher, resolved to: $pythonPath"
             }
         }
-    } elseif (Test-Command "python") {
+    }
+    if (-not $pythonInstalled -and (Test-Command "python")) {
         $version = & python --version 2>&1
         if ($version -match "3\.12") {
             $pythonPath = (Get-Command python).Source
@@ -131,7 +197,11 @@ if (-not $pythonInstalled) {
 }
 
 # Refresh environment variables
-$env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+Update-ProcessPathFromRegistry
+
+# Step 1b: Detect/install Git
+Write-Log "=== Step 1b: Git Detection/Installation ==="
+Install-GitIfMissing
 
 # Step 2: Clone the repo Jarvis
 # The PAT is never embedded in the remote URL and never written to
@@ -286,7 +356,7 @@ if (-not $ollamaInstalled) {
         Remove-Item $ollamaInstaller -Force -ErrorAction SilentlyContinue
 
         # Refresh PATH
-        $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        Update-ProcessPathFromRegistry
         $ollamaInstalled = Test-Command "ollama"
     } catch {
         Write-Log "Failed to install Ollama: $_" "ERROR"
@@ -339,11 +409,11 @@ try {
     Write-Log "Could not detect Python user site-packages: $_" "WARN"
 }
 
-[System.Environment]::SetEnvironmentVariable("JARVIS_INSTALL_DIR", $JarvisDir, "Machine")
-[System.Environment]::SetEnvironmentVariable("JARVIS_PYTHON_EXE", $pythonExeForService, "Machine")
-[System.Environment]::SetEnvironmentVariable("JARVIS_PYTHON_ARGS", $pythonArgsForService, "Machine")
+Set-MachineEnvironmentVariableChecked -Name "JARVIS_INSTALL_DIR" -Value $JarvisDir
+Set-MachineEnvironmentVariableChecked -Name "JARVIS_PYTHON_EXE" -Value $pythonExeForService
+Set-MachineEnvironmentVariableChecked -Name "JARVIS_PYTHON_ARGS" -Value $pythonArgsForService
 if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
-    [System.Environment]::SetEnvironmentVariable("JARVIS_USER_SITE_PACKAGES", $userSitePackages, "Machine")
+    Set-MachineEnvironmentVariableChecked -Name "JARVIS_USER_SITE_PACKAGES" -Value $userSitePackages
 }
 $env:JARVIS_INSTALL_DIR = $JarvisDir
 $env:JARVIS_PYTHON_EXE = $pythonExeForService
@@ -412,136 +482,25 @@ Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (Machine-level)"
 
 # Step 8: Display summary
 Write-Log "=== Installation Summary ==="
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "                    INSTALLATION SUMMARY" -ForegroundColor Cyan
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host ""
 
-$status = @{ "Python 3.12" = $pythonInstalled; "Jarvis Repository" = (Test-Path $JarvisDir); "Dependencies" = $true; "API Keys" = ($groqKeys.Count -gt 0); "Ollama" = $ollamaInstalled; $serviceName = ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -ne $null); "PAT Storage" = $true }
+$serviceRunning = ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -ne $null)
 
-foreach ($item in $status.Keys) {
-    $symbol = if ($status[$item]) { "✅" } else { "❌" }
-    Write-Host "$symbol $item" -ForegroundColor $(if ($status[$item]) { "Green" } else { "Red" })
+$status = [ordered]@{
+    "Python 3.12"       = $pythonInstalled
+    "Jarvis Repository" = (Test-Path $JarvisDir)
+    "Dependencies"      = $true
+    "API Keys"          = ($groqKeys.Count -gt 0)
+    "Ollama"            = $ollamaInstalled
+    "Windows Service"   = $serviceRunning
+    "PAT Storage"       = $true
 }
 
 Write-Host ""
-Write-Host "Service Port: 8000" -ForegroundColor Yellow
-Write-Host "Jarvis Directory: $JarvisDir" -ForegroundColor Yellow
-
-$tailscaleIP = "N/A"
-if (Test-Command "tailscale") {
-    try {
-        $tailscaleIP = & tailscale ip -4 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "Tailscale IP: $tailscaleIP" -ForegroundColor Yellow
-        }
-    } catch {
-        # Ignore Tailscale errors
-    }
+Write-Host "═══════════════════════════════════════════════════════════"
+Write-Host "                    INSTALLATION SUMMARY"
+Write-Host "═══════════════════════════════════════════════════════════"
+foreach ($key in $status.Keys) {
+    $mark = if ($status[$key]) { "[OK]" } else { "[--]" }
+    Write-Host ("  {0,-4} {1}" -f $mark, $key)
 }
-
-Write-Host ""
-Write-Host "Installation log: $LogPath" -ForegroundColor Gray
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host ""
-
-# Create update.ps1 script
-Write-Log "=== Creating update.ps1 script ==="
-$updateScript = @'
-$JarvisDir = [System.Environment]::GetEnvironmentVariable("JARVIS_INSTALL_DIR", "Machine")
-if (-not $JarvisDir) {
-    $JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
-}
-$ServiceName = "JarvisService"
-$LogPath = Join-Path $JarvisDir "bootstrap\update.log"
-
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logLine = "[$timestamp] [$Level] $Message"
-    Add-Content -Path $LogPath -Value $logLine -Encoding UTF8
-}
-
-try {
-    Write-Log "=== Starting Jarvis Auto-Update ==="
-
-    # PAT read from the Machine-level env var only — never from Credential
-    # Manager/cmdkey, never embedded in a remote URL or .git/config.
-    $pat = [System.Environment]::GetEnvironmentVariable("GIT_PAT_JARVIS", "Machine")
-
-    if (-not $pat) {
-        Write-Log "PAT not found in GIT_PAT_JARVIS environment variable" "ERROR"
-        exit 1
-    }
-
-    Push-Location $JarvisDir
-
-    $currentHash = git rev-parse HEAD 2>&1
-    Write-Log "Current commit: $currentHash"
-
-    # Transient GIT_ASKPASS: the PAT is exposed to git only for the
-    # duration of this pull, via an env var read by a throwaway script.
-    $askPassPath = Join-Path $env:TEMP "jarvis_update_askpass_$PID.cmd"
-    "@echo off`r`necho %JARVIS_UPDATE_PAT%" | Out-File -FilePath $askPassPath -Encoding ASCII -Force
-    $env:GIT_ASKPASS = $askPassPath
-    $env:JARVIS_UPDATE_PAT = $pat
-    $env:GIT_TERMINAL_PROMPT = "0"
-
-    git pull origin main
-    $pullExit = $LASTEXITCODE
-
-    Remove-Item $askPassPath -Force -ErrorAction SilentlyContinue
-    Remove-Item Env:\JARVIS_UPDATE_PAT -ErrorAction SilentlyContinue
-
-    if ($pullExit -eq 0) {
-        $newHash = git rev-parse HEAD 2>&1
-        Write-Log "New commit: $newHash"
-
-        if ($currentHash -eq $newHash) {
-            Write-Log "OK — no changes detected"
-        } else {
-            Write-Log "Changes detected — restarting $ServiceName"
-
-            Stop-Service -Name $ServiceName -Force
-            Start-Sleep -Seconds 5
-            Start-Service -Name $ServiceName
-
-            Write-Log "Update applied — commit $currentHash → $newHash, service restarted"
-        }
-    } else {
-        Write-Log "Git pull failed — service unchanged, reason: git error" "ERROR"
-    }
-
-    Pop-Location
-} catch {
-    Write-Log "Update failed: $_" "ERROR"
-    exit 1
-}
-'@
-
-$updateScriptPath = Join-Path $JarvisDir "bootstrap\update.ps1"
-$updateScript | Out-File -FilePath $updateScriptPath -Encoding UTF8
-Write-Log "update.ps1 created at $updateScriptPath"
-
-# Register scheduled task for auto-update
-Write-Log "=== Registering Scheduled Task ==="
-$taskExists = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-
-if (-not $taskExists) {
-    try {
-        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File `"$updateScriptPath`""
-        $trigger = New-ScheduledTaskTrigger -Daily -DaysInterval 2 -At 4am
-        $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-        $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
-
-        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description "Jarvis auto-update task (every 2 days)"
-        Write-Log "Scheduled task '$taskName' registered successfully"
-    } catch {
-        Write-Log "Failed to register scheduled task: $_" "WARN"
-    }
-} else {
-    Write-Log "Scheduled task '$taskName' already exists"
-}
-
-Write-Log "=== Installation Complete ==="
+Write-Host "═══════════════════════════════════════════════════════════"
