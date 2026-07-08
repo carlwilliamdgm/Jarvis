@@ -397,7 +397,12 @@ Endpoint de confirmation prévu pour extension. Actuellement il accuse réceptio
 
 ### `POST /jarvis/kill`
 
-Déclenche l'auto-destruction complète de l'instance Jarvis distante. Cet endpoint ne doit être appelé que sur des instances distantes, jamais sur localhost.
+Endpoint debug gardé explicitement. L'auto-destruction normale se déclenche par la commande interne en deux temps :
+
+1. `Jarvis, auto-destruction`
+2. `Jarvis, confirme auto-destruction` dans les 30 secondes
+
+L'appel HTTP direct est refusé sauf si `JARVIS_ALLOW_HTTP_KILL=1` et le header `X-Jarvis-Internal-Kill: true` sont présents.
 
 Réponse immédiate :
 
@@ -413,13 +418,16 @@ La destruction s'effectue en arrière-plan avec un délai de 2 secondes après l
 2. Suppression de la tâche planifiée JarvisAutoUpdate (PowerShell)
 3. Suppression des variables d'environnement Machine-level :
    - GIT_PAT_JARVIS
+   - JARVIS_INSTALL_DIR
+   - JARVIS_PYTHON_EXE
+   - JARVIS_PYTHON_ARGS
+   - JARVIS_USER_SITE_PACKAGES
    - GROQ_API_KEY_1 à GROQ_API_KEY_5
    - OPENROUTER_API_KEY
-4. Suppression complète du dossier Jarvis (C:\Users\<USERPROFILE>\Jarvis)
+4. Suppression du modèle Ollama `qwen2.5:7b` si aucune autre installation Jarvis locale active n'est détectée
+5. Suppression complète du dossier Jarvis (C:\Users\<USERPROFILE>\Jarvis)
 
 Chaque étape continue même si la précédente échoue. Aucune erreur n'est retournée après le 200 initial (connexion déjà fermée).
-
-**Sécurité** : Les interfaces web et Tkinter masquent ce bouton sur localhost. Il n'apparaît que pour les instances distantes.
 
 ## Interfaces
 
@@ -442,7 +450,6 @@ Comportement :
 - Affiche tous les événements intermédiaires, pas seulement la réponse finale.
 - Gestion multi-instance : sélecteur d'instance dans le header, ajout/modification/suppression d'instances distantes.
 - Découverte réseau Tailscale intégrée pour détecter automatiquement les appareils Jarvis sur le tailnet.
-- Bouton "Effacer" visible uniquement sur les instances distantes (jamais localhost) pour déclencher l'auto-destruction complète via `/jarvis/kill`.
 
 ### Web
 
@@ -468,7 +475,6 @@ Comportement :
 - Peut être utilisé depuis un autre appareil du réseau si le port `8000` est accessible.
 - Gestion multi-instance : sélecteur d'instance dans le header, ajout/modification/suppression d'instances distantes via localStorage.
 - Découverte réseau Tailscale intégrée pour détecter automatiquement les appareils Jarvis sur le tailnet.
-- Bouton "Effacer cette instance" visible uniquement sur les instances distantes (jamais localhost) pour déclencher l'auto-destruction complète via `/jarvis/kill`.
 
 ## Modes de conversation
 

@@ -295,22 +295,6 @@
       color: #ffd0d0;
     }
 
-    .kill-button {
-      display: none;
-      background: #6a1a1a;
-      color: #ffd0d0;
-      border: 1px solid #8a2a2a;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .kill-button.visible {
-      display: block;
-    }
-
     .instance-list {
       margin-top: 16px;
       border-top: 1px solid var(--border);
@@ -613,7 +597,6 @@
           <select id="instanceSelect" class="instance-select" title="Sélectionner l'instance Jarvis"></select>
           <span id="instanceBadge" class="instance-badge"></span>
         </div>
-        <button id="killButton" class="kill-button" type="button">Effacer cette instance</button>
         <div class="status">
           <span id="statusDot" class="dot"></span>
           <span id="statusText">Service en ligne</span>
@@ -676,7 +659,6 @@
     const statusText = document.getElementById("statusText");
     const instanceSelect = document.getElementById("instanceSelect");
     const instanceBadge = document.getElementById("instanceBadge");
-    const killButton = document.getElementById("killButton");
     const manageInstancesButton = document.getElementById("manageInstancesButton");
     const instanceModal = document.getElementById("instanceModal");
     const closeModal = document.getElementById("closeModal");
@@ -854,16 +836,6 @@
       localStorage.setItem("jarvis-active-instance", activeInstanceId);
     }
 
-    function isLocalhost(url) {
-      try {
-        const parsed = new URL(url);
-        const hostname = parsed.hostname.toLowerCase();
-        return hostname === "localhost" || hostname === "127.0.0.1";
-      } catch {
-        return false;
-      }
-    }
-
     function updateInstanceUI() {
       instanceSelect.innerHTML = "";
       instances.forEach(inst => {
@@ -879,13 +851,6 @@
         instanceBadge.textContent = activeInstance.nom;
         apiBase = activeInstance.url;
         document.title = `Jarvis — ${activeInstance.nom}`;
-        
-        // Show/hide kill button based on whether it's a remote instance
-        if (isLocalhost(activeInstance.url)) {
-          killButton.classList.remove("visible");
-        } else {
-          killButton.classList.add("visible");
-        }
       }
     }
 
@@ -1132,42 +1097,6 @@
       discoveryActive = !discoveryActive;
       setDiscoveryButtonState();
       discoverNetwork();
-    });
-
-    // Kill button handler
-    killButton.addEventListener("click", async () => {
-      const activeInstance = instances.find(i => i.id === activeInstanceId);
-      if (!activeInstance) return;
-
-      const confirmed = confirm(
-        `Effacer définitivement l'instance ${activeInstance.nom} ? Cette action est irréversible.`
-      );
-
-      if (!confirmed) return;
-
-      try {
-        const response = await fetch(`${activeInstance.url}/jarvis/kill`, {
-          method: "POST",
-          signal: AbortSignal.timeout(10000)
-        });
-
-        if (response.ok) {
-          addEvent("status-line", "Instance effacée");
-          
-          // Remove the instance from the list
-          instances = instances.filter(i => i.id !== activeInstanceId);
-          
-          // Switch to localhost
-          activeInstanceId = localInstanceId;
-          saveInstances();
-          updateInstanceUI();
-          refreshStatus();
-        } else {
-          addEvent("error", "Erreur lors de l'effacement de l'instance");
-        }
-      } catch (error) {
-        addEvent("error", "Impossible de joindre l'instance — vérifier Tailscale");
-      }
     });
 
     sendButton.addEventListener("click", sendMessage);

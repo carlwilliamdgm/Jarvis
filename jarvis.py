@@ -31,6 +31,7 @@ from core.intellect import interpreter_objectif
 from core.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
 from core.stark_parser import StarkSegment, parser_objectif_stark
 from core.stark_session import enregistrer_instance_stark, retirer_instance_stark, verifier_instances_stark
+from core.autodestruct import schedule_autodestruction
 from tools import OUTILS, demander_confirmation
 
 try:
@@ -88,6 +89,7 @@ MAX_CONTEXTE_TENTATIVES_STARK = 4000
 SEUIL_ECHECS_CONSECUTIFS_STARK = 3
 DERNIERS_DETAILS_STARK = []
 ATTENTE_DETAILS_STARK = False
+AUTODESTRUCT_CONFIRM_WINDOW_SEC = 30
 
 MOTS_ACTION = [
     "fais", "crée", "supprime", "liste", "exécute", "commande",
@@ -148,6 +150,64 @@ RACCOURCI_MODE_ACTION = "!a"
 
 # Mode Stark : "!S <objectif>" — l'objectif est extrait du message
 PATTERN_MODE_STARK = re.compile(r"^!s\s+(.+)$", re.IGNORECASE)
+
+
+@dataclass
+class EtatAutodestruction:
+    statut: str = "attente_declenchement"
+    deadline: float | None = None
+
+
+etat_autodestruction = EtatAutodestruction()
+
+
+def _normaliser_commande_autodestruction(message: str) -> str:
+    normalisee = message.casefold().strip()
+    normalisee = re.sub(r"[^\w]+", " ", normalisee, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", normalisee).strip()
+
+
+def _est_declenchement_autodestruction(message: str) -> bool:
+    return _normaliser_commande_autodestruction(message) == "jarvis auto destruction"
+
+
+def _est_confirmation_autodestruction(message: str) -> bool:
+    return _normaliser_commande_autodestruction(message) == "jarvis confirme auto destruction"
+
+
+def _gerer_autodestruction(message: str) -> tuple[bool, str | None, bool]:
+    now = time.time()
+
+    if etat_autodestruction.statut == "attente_confirmation":
+        if etat_autodestruction.deadline is not None and now > etat_autodestruction.deadline:
+            console.log("Demande d'auto-destruction expiree sans confirmation.")
+            etat_autodestruction.statut = "attente_declenchement"
+            etat_autodestruction.deadline = None
+        elif _est_confirmation_autodestruction(message):
+            etat_autodestruction.statut = "attente_declenchement"
+            etat_autodestruction.deadline = None
+            schedule_autodestruction(delay_sec=2)
+            return True, "Confirmation reçue, Sir. Teardown local lancé.", True
+        else:
+            etat_autodestruction.statut = "attente_declenchement"
+            etat_autodestruction.deadline = None
+            console.log("Demande d'auto-destruction annulee par entree non conforme.")
+            return True, "Auto-destruction annulée. Il faudra recommencer depuis le déclenchement, Sir.", False
+
+    if _est_declenchement_autodestruction(message):
+        etat_autodestruction.statut = "attente_confirmation"
+        etat_autodestruction.deadline = now + AUTODESTRUCT_CONFIRM_WINDOW_SEC
+        return (
+            True,
+            (
+                "Auto-destruction demandée. Confirmez dans les "
+                f"{AUTODESTRUCT_CONFIRM_WINDOW_SEC} secondes avec : "
+                "Jarvis, confirme auto-destruction"
+            ),
+            False,
+        )
+
+    return False, None, False
 
 
 def detecter_commande_mode(message: str):
@@ -1038,6 +1098,12 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     global mode_action_force, ATTENTE_DETAILS_STARK
 
     # ── Gestion commandes de mode ─────────────────────────────────────────────
+    handled_autodestruct, reponse_autodestruct, action_autodestruct = _gerer_autodestruction(message)
+    if handled_autodestruct:
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": reponse_autodestruct or ""})
+        return reponse_autodestruct or "", action_autodestruct
+
     if ATTENTE_DETAILS_STARK and _est_reponse_affirmative(message):
         ATTENTE_DETAILS_STARK = False
         reponse_details = _formater_details_stark(DERNIERS_DETAILS_STARK)

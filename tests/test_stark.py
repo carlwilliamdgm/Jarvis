@@ -34,6 +34,70 @@ class StarkParserTests(unittest.TestCase):
         self.assertEqual([["d"], ["e", "f"]], [branche.actions for branche in plan.segments[1].branches])
 
 
+class AutodestructionCommandTests(unittest.TestCase):
+    def setUp(self):
+        jarvis.etat_autodestruction.statut = "attente_declenchement"
+        jarvis.etat_autodestruction.deadline = None
+
+    def tearDown(self):
+        jarvis.etat_autodestruction.statut = "attente_declenchement"
+        jarvis.etat_autodestruction.deadline = None
+
+    def test_trigger_opens_confirmation_window_without_llm(self):
+        historique = []
+
+        reponse, intention_action = jarvis.parler("Jarvis, auto-destruction", historique, {})
+
+        self.assertFalse(intention_action)
+        self.assertEqual("attente_confirmation", jarvis.etat_autodestruction.statut)
+        self.assertIn("Jarvis, confirme auto-destruction", reponse)
+
+    def test_exact_confirmation_launches_teardown(self):
+        launches = []
+        old_schedule = jarvis.schedule_autodestruction
+        jarvis.schedule_autodestruction = lambda delay_sec=2: launches.append(delay_sec)
+        try:
+            jarvis.parler("Jarvis, auto-destruction", [], {})
+            reponse, intention_action = jarvis.parler("Jarvis, confirme auto-destruction", [], {})
+        finally:
+            jarvis.schedule_autodestruction = old_schedule
+
+        self.assertTrue(intention_action)
+        self.assertEqual([2], launches)
+        self.assertEqual("attente_declenchement", jarvis.etat_autodestruction.statut)
+        self.assertIn("Teardown local lancé", reponse)
+
+    def test_unrelated_input_cancels_pending_request(self):
+        old_interpreter = jarvis.interpreter_objectif
+        calls = []
+        jarvis.interpreter_objectif = lambda *args, **kwargs: calls.append(args) or {
+            "type": "conversation",
+            "actions": [],
+            "reponse": "ne devrait pas passer au LLM",
+        }
+        try:
+            jarvis.parler("Jarvis, auto-destruction", [], {})
+            reponse, intention_action = jarvis.parler("oui", [], {})
+        finally:
+            jarvis.interpreter_objectif = old_interpreter
+
+        self.assertFalse(intention_action)
+        self.assertEqual([], calls)
+        self.assertEqual("attente_declenchement", jarvis.etat_autodestruction.statut)
+        self.assertIn("annulée", reponse)
+
+    def test_timeout_expires_before_next_message(self):
+        jarvis.parler("Jarvis, auto-destruction", [], {})
+        jarvis.etat_autodestruction.deadline = 0
+
+        handled, reponse, intention_action = jarvis._gerer_autodestruction("bonjour")
+
+        self.assertFalse(handled)
+        self.assertIsNone(reponse)
+        self.assertFalse(intention_action)
+        self.assertEqual("attente_declenchement", jarvis.etat_autodestruction.statut)
+
+
 class StarkExecutionTests(unittest.TestCase):
     def tearDown(self):
         STARK_ACTIF_PATH.write_text("[]", encoding="utf-8")

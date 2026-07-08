@@ -130,21 +130,6 @@ class JarvisGUI:
         )
         self.instance_badge.pack(side="left")
         
-        self.kill_button = tk.Button(
-            self.instance_frame,
-            text="Effacer",
-            command=self.kill_instance,
-            bg="#6a1a1a",
-            fg="#ffd0d0",
-            activebackground="#8a2a2a",
-            activeforeground="#ffd0d0",
-            relief="flat",
-            font=("Segoe UI", 9),
-            padx=8,
-            pady=2
-        )
-        self.kill_button.pack(side="left", padx=(8, 0))
-        
         self.manage_button = tk.Button(
             self.header_grid,
             text="⚙",
@@ -566,16 +551,6 @@ class JarvisGUI:
         except Exception as e:
             messagebox.showerror("Erreur", f"Impossible de sauvegarder les instances: {e}")
     
-    def is_localhost(self, url):
-        """Check if URL points to localhost."""
-        try:
-            from urllib.parse import urlparse
-            parsed = urlparse(url)
-            hostname = parsed.hostname.lower() if parsed.hostname else ""
-            return hostname in ("localhost", "127.0.0.1")
-        except:
-            return False
-
     def update_instance_ui(self):
         instance_names = [inst["nom"] for inst in self.instances]
         self.instance_selector['values'] = instance_names
@@ -586,12 +561,6 @@ class JarvisGUI:
             self.api_base = active_inst["url"]
             self.instance_badge.config(text=active_inst["nom"])
             self.root.title(f"Jarvis — {active_inst['nom']}")
-            
-            # Show/hide kill button based on whether it's a remote instance
-            if self.is_localhost(active_inst["url"]):
-                self.kill_button.pack_forget()
-            else:
-                self.kill_button.pack(side="left", padx=(8, 0))
         else:
             # Fallback to first instance
             if self.instances:
@@ -622,48 +591,6 @@ class JarvisGUI:
                 pass  # Could add visual error indicator here
         except:
             pass  # Could add visual error indicator here
-
-    def kill_instance(self):
-        """Kill the remote Jarvis instance."""
-        active_inst = next((i for i in self.instances if i["id"] == self.active_instance_id), None)
-        if not active_inst:
-            return
-
-        if self.is_localhost(active_inst["url"]):
-            messagebox.showwarning("Avertissement", "Impossible d'effacer l'instance locale")
-            return
-
-        confirmed = messagebox.askyesno(
-            "Confirmation",
-            f"Effacer définitivement l'instance {active_inst['nom']} ?\n\nCette action est irréversible."
-        )
-
-        if not confirmed:
-            return
-
-        try:
-            response = requests.post(
-                f"{active_inst['url']}/jarvis/kill",
-                timeout=10
-            )
-
-            if response.ok:
-                self._add_status("Instance effacée", "#1a4a6a")
-                
-                # Remove the instance from the list
-                self.instances = [i for i in self.instances if i["id"] != self.active_instance_id]
-                
-                # Switch to localhost
-                self.active_instance_id = LOCAL_INSTANCE_ID
-                self.save_instances()
-                self.update_instance_ui()
-                self.refresh_status()
-            else:
-                self._add_error("Erreur lors de l'effacement de l'instance")
-        except requests.exceptions.Timeout:
-            self._add_error("Impossible de joindre l'instance — vérifier Tailscale")
-        except Exception as e:
-            self._add_error(f"Erreur: {e}")
 
 
 class InstanceManager:
