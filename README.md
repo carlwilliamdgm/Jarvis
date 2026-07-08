@@ -224,6 +224,59 @@ Arrêt :
 net stop JarvisService
 ```
 
+Suppression :
+
+```powershell
+cd %USERPROFILE%\Jarvis
+python service\windows_service.py remove
+```
+
+### Configuration du démarrage automatique
+
+Par défaut, le service est configuré en démarrage manuel. Pour le démarrer automatiquement au démarrage de Windows :
+
+```powershell
+sc config JarvisService start= auto
+```
+
+Options de démarrage disponibles :
+- `auto` : Démarrage automatique au démarrage de Windows
+- `demand` : Démarrage manuel (par défaut)
+- `delayed-auto` : Démarrage automatique différé (recommandé pour éviter de surcharger le démarrage)
+
+### Vérification de l'état du service
+
+Vérifier si le service est en cours d'exécution :
+
+```powershell
+sc query JarvisService
+```
+
+Attendu :
+```
+STATE              : 4 RUNNING
+```
+
+Vérifier les logs du service :
+
+```powershell
+type service\jarvis_service.log
+```
+
+Vérifier les logs uvicorn :
+
+```powershell
+type service\uvicorn.log
+```
+
+Tester l'API :
+
+```powershell
+curl.exe "http://localhost:8000/jarvis/status"
+```
+
+Attendu : JSON avec CPU, RAM et active status.
+
 Redémarrage :
 
 ```powershell

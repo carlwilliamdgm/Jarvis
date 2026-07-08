@@ -103,3 +103,26 @@
 2026-07-08 12:27:17,144 [INFO] Opening uvicorn log at 'C:\\Users\\Carl\\Jarvis\\service\\uvicorn.log'.
 2026-07-08 12:27:17,145 [INFO] Starting uvicorn command=['C:\\Program Files\\Python312\\python.exe', '-m', 'uvicorn', 'api.server:app', '--host', '0.0.0.0', '--port', '8000'] cwd='C:\\Users\\Carl\\Jarvis'.
 2026-07-08 12:27:17,157 [INFO] uvicorn started, PID=27344.
+2026-07-08 14:19:46,257 [INFO] Stop requested.
+2026-07-08 14:19:46,266 [INFO] Terminating uvicorn process, PID=27344.
+2026-07-08 14:19:46,298 [INFO] uvicorn process terminated.
+2026-07-08 14:19:46,301 [INFO] Service stopped.
+2026-07-08 14:21:22,431 [INFO] Service module loaded.
+2026-07-08 14:21:22,432 [INFO] Environment: JARVIS_INSTALL_DIR=None, JARVIS_PYTHON_EXE=None, JARVIS_PYTHON_ARGS='', JARVIS_USER_SITE_PACKAGES=None.
+2026-07-08 14:21:22,432 [INFO] Resolved paths: __file__='C:\\Users\\Carl\\Jarvis\\service\\windows_service.py', JARVIS_DIR='C:\\Users\\Carl\\Jarvis', SERVICE_DIR='C:\\Users\\Carl\\Jarvis\\service', LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\jarvis_service.log', UVICORN_LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\uvicorn.log'.
+2026-07-08 14:21:22,432 [INFO] Python command: ['C:\\Program Files\\Python312\\python.exe'].
+2026-07-08 14:21:49,736 [INFO] Service module loaded.
+2026-07-08 14:21:49,736 [INFO] Environment: JARVIS_INSTALL_DIR=None, JARVIS_PYTHON_EXE=None, JARVIS_PYTHON_ARGS='', JARVIS_USER_SITE_PACKAGES=None.
+2026-07-08 14:21:49,736 [INFO] Resolved paths: __file__='C:\\Users\\Carl\\Jarvis\\service\\windows_service.py', JARVIS_DIR='C:\\Users\\Carl\\Jarvis', SERVICE_DIR='C:\\Users\\Carl\\Jarvis\\service', LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\jarvis_service.log', UVICORN_LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\uvicorn.log'.
+2026-07-08 14:21:49,736 [INFO] Python command: ['C:\\Program Files\\Python312\\python.exe'].
+2026-07-08 14:23:00,460 [INFO] Service module loaded.
+2026-07-08 14:23:00,461 [INFO] Environment: JARVIS_INSTALL_DIR=None, JARVIS_PYTHON_EXE=None, JARVIS_PYTHON_ARGS='', JARVIS_USER_SITE_PACKAGES=None.
+2026-07-08 14:23:00,461 [INFO] Resolved paths: __file__='C:\\Users\\Carl\\Jarvis\\service\\windows_service.py', JARVIS_DIR='C:\\Users\\Carl\\Jarvis', SERVICE_DIR='C:\\Users\\Carl\\Jarvis\\service', LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\jarvis_service.log', UVICORN_LOG_PATH='C:\\Users\\Carl\\Jarvis\\service\\uvicorn.log'.
+2026-07-08 14:23:00,461 [INFO] Python command: ['C:\\Program Files\\Python312\\python.exe'].
+2026-07-08 14:23:00,462 [INFO] Service starting.
+2026-07-08 14:23:00,462 [INFO] Changing working directory to 'C:\\Users\\Carl\\Jarvis'.
+2026-07-08 14:23:00,462 [INFO] Adding JARVIS_DIR to sys.path.
+2026-07-08 14:23:00,462 [INFO] Prepared PYTHONPATH='C:\\Users\\Carl\\Jarvis'.
+2026-07-08 14:23:00,463 [INFO] Opening uvicorn log at 'C:\\Users\\Carl\\Jarvis\\service\\uvicorn.log'.
+2026-07-08 14:23:00,464 [INFO] Starting uvicorn command=['C:\\Program Files\\Python312\\python.exe', '-m', 'uvicorn', 'api.server:app', '--host', '0.0.0.0', '--port', '8000'] cwd='C:\\Users\\Carl\\Jarvis'.
+2026-07-08 14:23:00,478 [INFO] uvicorn started, PID=27644.
