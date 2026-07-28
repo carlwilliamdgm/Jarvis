@@ -1,9 +1,0 @@
-INFO:     Started server process [27644]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-Jarvis API server started successfully
-INFO:     127.0.0.1:57761 - "GET /jarvis/status HTTP/1.1" 200 OK
-INFO:     127.0.0.1:54757 - "GET /jarvis/status HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55711 - "GET /jarvis/status HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51583 - "GET /jarvis/status HTTP/1.1" 200 OK
