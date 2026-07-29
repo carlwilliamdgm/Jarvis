@@ -19,6 +19,7 @@ TABLE_ERREURS_SYSTEME = {
     # Microsoft System Error Codes, WinError.h.
     2: "cible_introuvable",  # ERROR_FILE_NOT_FOUND
     3: "cible_introuvable",  # ERROR_PATH_NOT_FOUND
+    5: "acces_refuse",  # ERROR_ACCESS_DENIED
     15: "cible_introuvable",  # ERROR_INVALID_DRIVE
     21: "ressource_systeme_insuffisante",  # ERROR_NOT_READY
     32: "ressource_systeme_insuffisante",  # ERROR_SHARING_VIOLATION

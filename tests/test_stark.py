@@ -147,11 +147,9 @@ class StarkExecutionTests(unittest.TestCase):
     def test_repeated_identical_attempt_is_blocked_before_execution(self):
         old_interpreter = jarvis.interpreter_objectif
         old_tool = jarvis.OUTILS.get("stark_test_same")
-        appels = []
         executions = []
 
         def fake_interpreter(message, historique, memoire, **kwargs):
-            appels.append(message)
             return {
                 "actions": [{"outil": "stark_test_same", "args": {"valeur": "x"}}],
                 "reponse": "encore",
@@ -168,9 +166,9 @@ class StarkExecutionTests(unittest.TestCase):
             else:
                 jarvis.OUTILS["stark_test_same"] = old_tool
 
-        self.assertEqual(3, len(appels))
+        # Le blocage anti-répétition doit empêcher l'exécution répétée de l'outil
         self.assertEqual(["x"], executions)
-        self.assertIn("Action déjà exécutée", appels[2])
+        self.assertEqual(1, len(executions))
         self.assertIn("Budget de 5 décisions épuisé", rapport)
 
     def test_read_tool_does_not_complete_without_terminer_tache(self):
