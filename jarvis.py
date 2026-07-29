@@ -771,7 +771,14 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
             spinner="dots",
         ):
             event_bus.emit("thinking", {"message": "Jarvis réfléchit..."})
-            resultat = interpreter_objectif(message_stark, historique, memoire, temperature=0.3, mode_stark=True)
+            resultat = interpreter_objectif(
+                message_stark,
+                historique,
+                memoire,
+                temperature=0.3,
+                mode_stark=True,
+                on_event=event_bus.emit,
+            )
 
         etat.decisions_utilisees += 1
 
@@ -881,6 +888,7 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
         )
         return
 
+    event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "stark"})
     try:
         resultat_outil = OUTILS[outil](**args)
         resultat_texte = str(resultat_outil)
@@ -899,6 +907,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             _journaliser_resultat_si_erreur(resultat_outil, "mode_stark", etat.objectif, outil, args)
         else:
             etat.echecs_consecutifs = 0
+        event_bus.emit(
+            "tool_failed" if entree["erreur"] else "tool_completed",
+            {
+                "outil": outil,
+                "args": args,
+                "resultat": resultat_texte,
+                "mode": "stark",
+            },
+        )
         console.print(f"[dim red]⚡ {outil} -> {resultat_texte[:120]}[/dim red]")
         event_bus.emit(
             "stark_action",
@@ -930,6 +947,7 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             resultat_brut=erreur,
         )
         console.print(f"[red]⚡ Erreur technique arguments {outil} : {e}[/red]")
+        event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "stark"})
         event_bus.emit(
             "stark_action",
             {
@@ -961,6 +979,7 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
             resultat_brut=erreur,
         )
         console.print(f"[red]⚡ Erreur {outil} : {e}[/red]")
+        event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "stark"})
         event_bus.emit(
             "stark_action",
             {
@@ -1154,7 +1173,13 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     memoire.update(normaliser_memoire(charger_memoire()))
 
     # Core Intellect comprend l'objectif réel en une seule passe LLM
-    resultat_intellect = interpreter_objectif(message, historique, memoire)
+    resultat_intellect = interpreter_objectif(
+        message,
+        historique,
+        memoire,
+        forcer_action=etait_mode_action_force,
+        on_event=event_bus.emit,
+    )
 
     type_demande = resultat_intellect["type"]
     actions = resultat_intellect["actions"]
@@ -1170,11 +1195,21 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         outil = action.get("outil")
         args = action.get("args", {})
         if outil and outil in OUTILS:
+            event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "normal"})
             try:
                 resultat = OUTILS[outil](**args)
                 contexte = "mode_action" if etait_mode_action_force else "conversation"
                 _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
                 resultats_outils.append(str(resultat))
+                event_bus.emit(
+                    "tool_failed" if resultat_est_erreur(resultat) else "tool_completed",
+                    {
+                        "outil": outil,
+                        "args": args,
+                        "resultat": str(resultat),
+                        "mode": "normal",
+                    },
+                )
             except TypeError as e:
                 erreur = f"Erreur outil {outil} : {e}"
                 journaliser_erreur_systeme(
@@ -1186,6 +1221,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     resultat_brut=erreur,
                 )
                 resultats_outils.append(erreur)
+                event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
             except Exception as e:
                 erreur = f"Erreur outil {outil} : {e}"
                 journaliser_erreur_systeme(
@@ -1197,6 +1233,7 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     resultat_brut=erreur,
                 )
                 resultats_outils.append(erreur)
+                event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
 
     if resultats_outils:
         reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
@@ -1235,6 +1272,27 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
     except Exception as e:
         event_bus.emit("error", {"message": str(e)})
         raise
+
+
+def preparer_message_utilisateur(message: str) -> str:
+    """Applique les enrichissements d'entrée communs à toutes les surfaces."""
+    message = message.strip()
+    if any(mot in message.lower() for mot in MOTS_OPTIMISATION):
+        return message + PLAN_OPTIMISATION
+    return message
+
+
+def executer_interaction_utilisateur(
+    message: str,
+    historique: list,
+    memoire: dict,
+) -> tuple[str, bool]:
+    """Exécute et journalise une interaction utilisateur, quelle que soit sa surface."""
+    message_prepare = preparer_message_utilisateur(message)
+    reponse, intention_action = executer_agent(message_prepare, historique, memoire)
+    texte = reponse if isinstance(reponse, str) else str(reponse)
+    OUTILS["enregistrer_echange"](message_prepare, texte)
+    return texte, intention_action
 
 
 class AutonomousAgent:
@@ -1475,6 +1533,19 @@ class AutonomousAgent:
                 self.console.print(f"[dim yellow]Agent autonome: {e}[/dim yellow]")
 
 
+def demarrer_agent_autonome(memoire: dict, console_instance: Console | None = None):
+    """Démarre la veille autonome utilisée par la console et l'API."""
+    stop_event = threading.Event()
+    agent = AutonomousAgent(
+        memoire=memoire,
+        outils=OUTILS,
+        console=console_instance or console,
+    )
+    veille = threading.Thread(target=agent.run, args=(stop_event,), daemon=True)
+    veille.start()
+    return agent, stop_event, veille
+
+
 def main():
     memoire = initialiser()
     nom = memoire["utilisateur"]["nom"]
@@ -1486,10 +1557,7 @@ def main():
         f"Mode Stark (boucle agentique, accès étendu) : '!S <objectif>'",
         style="bold cyan"
     ))
-    stop_event = threading.Event()
-    agent = AutonomousAgent(memoire=memoire, outils=OUTILS, console=console)
-    veille = threading.Thread(target=agent.run, args=(stop_event,), daemon=True)
-    veille.start()
+    _, stop_event, _ = demarrer_agent_autonome(memoire, console)
     while True:
         try:
             if mode_action_force:
@@ -1507,15 +1575,11 @@ def main():
                 stop_event.set()
                 break
 
-            if any(mot in user_input.lower() for mot in MOTS_OPTIMISATION):
-                user_input += PLAN_OPTIMISATION
-
             horodatage = datetime.now().strftime("%H:%M:%S")
             with console.status("[cyan]Jarvis réfléchit...[/cyan]", spinner="dots"):
-                reponse, intention_action = executer_agent(user_input, historique, memoire)
+                reponse, intention_action = executer_interaction_utilisateur(user_input, historique, memoire)
 
             reponse = reponse if isinstance(reponse, str) else ""
-            OUTILS["enregistrer_echange"](user_input, reponse)
             console.print(Panel(escape(reponse), title=f"Jarvis — {horodatage}", style="cyan"))
 
         except KeyboardInterrupt:

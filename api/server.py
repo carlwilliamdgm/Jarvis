@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 from typing import Dict, List
+from uuid import uuid4
 
 import psutil
 from fastapi import FastAPI, HTTPException, Request
@@ -22,10 +23,19 @@ if sys.stdout.encoding != 'utf-8':
 if sys.stderr.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 
-from jarvis import AutonomousAgent, event_bus, executer_agent, initialiser
-from core.safety import action_bloquee, action_requiert_confirmation
+from jarvis import (
+    demarrer_agent_autonome,
+    event_bus,
+    executer_interaction_utilisateur,
+    initialiser,
+)
 from core.prompt import construire_prompt_action
 from core.autodestruct import schedule_autodestruction
+from core.confirmations import (
+    StreamingConfirmationHandler,
+    confirmation_manager,
+    use_confirmation_handler,
+)
 
 app = FastAPI(title="Jarvis API", version="1.0.0")
 WEB_DIR = Path(__file__).resolve().parent.parent / "gui" / "web"
@@ -33,6 +43,7 @@ app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
 # Global agent instance
 agent = None
+agent_stop_event = None
 memoire = None
 historique = None
 
@@ -45,11 +56,13 @@ last_activity_time = datetime.now()
 
 
 def traiter_message(message: str) -> Dict:
-    """Wrapper around executer_agent for API usage."""
+    """Execute the same user interaction pipeline used by the CLI."""
     global historique, memoire
     
     try:
-        reponse, intention_action = executer_agent(message, historique, memoire)
+        reponse, intention_action = executer_interaction_utilisateur(
+            message, historique, memoire
+        )
         return {
             "response": reponse if isinstance(reponse, str) else str(reponse),
             "is_action": intention_action,
@@ -88,15 +101,14 @@ def detect_activity() -> bool:
 @app.on_event("startup")
 async def startup_event():
     """Initialize the global agent instance at startup."""
-    global agent, memoire, historique
+    global agent, agent_stop_event, memoire, historique
     
     try:
         memoire = initialiser()
-        from tools import OUTILS
         from rich.console import Console
         
         console = Console()
-        agent = AutonomousAgent(memoire=memoire, outils=OUTILS, console=console)
+        agent, agent_stop_event, _ = demarrer_agent_autonome(memoire, console)
         
         prompt = construire_prompt_action(memoire)
         historique = [{"role": "system", "content": prompt}]
@@ -105,6 +117,13 @@ async def startup_event():
     except Exception as e:
         print(f"Error initializing agent: {e}")
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop the API autonomous watch loop when the server shuts down."""
+    if agent_stop_event is not None:
+        agent_stop_event.set()
 
 
 # Pydantic Models
@@ -119,6 +138,7 @@ class SignalRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
+    session_id: str
     action_id: str
     confirmed: bool
 
@@ -137,8 +157,10 @@ async def ask_jarvis(request: AskRequest) -> Dict:
 
 
 @app.get("/jarvis/stream")
-async def stream_jarvis(message: str):
+async def stream_jarvis(message: str, session_id: str | None = None):
     """Stream Jarvis events with Server-Sent Events."""
+
+    active_session_id = session_id or uuid4().hex
 
     def event_stream():
         event_queue = event_bus.subscribe()
@@ -146,7 +168,9 @@ async def stream_jarvis(message: str):
         def worker():
             event_bus.bind(event_queue)
             try:
-                executer_agent(message, historique, memoire)
+                handler = StreamingConfirmationHandler(active_session_id, event_bus.emit)
+                with use_confirmation_handler(handler):
+                    executer_interaction_utilisateur(message, historique, memoire)
             except Exception as e:
                 event_bus.emit("error", {"message": str(e)})
             finally:
@@ -221,16 +245,18 @@ async def get_alerts() -> Dict:
 @app.post("/jarvis/confirm")
 async def confirm_action(request: ConfirmRequest) -> Dict:
     """Confirm or refuse a pending action."""
-    try:
-        # In a full implementation, this would interact with the safety system
-        # to process the confirmation for a specific action_id
-        # For now, we acknowledge the receipt
-        return {
-            "processed": True,
-            "action_id": request.action_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing confirmation: {str(e)}")
+    state = confirmation_manager.resolve(
+        session_id=request.session_id,
+        action_id=request.action_id,
+        confirmed=request.confirmed,
+    )
+    if state == "not_found":
+        raise HTTPException(status_code=404, detail="Confirmation introuvable ou expirée")
+    if state == "wrong_session":
+        raise HTTPException(status_code=403, detail="Confirmation liée à une autre session")
+    if state == "already_resolved":
+        raise HTTPException(status_code=409, detail="Confirmation déjà traitée")
+    return {"processed": True, "action_id": request.action_id, "confirmed": request.confirmed}
 
 
 @app.get("/jarvis/discover")

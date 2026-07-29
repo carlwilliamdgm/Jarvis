@@ -75,6 +75,7 @@ class JarvisGUI:
         self.is_streaming = False
         self.cancel_event = None
         self.themed_widgets = []
+        self.session_id = uuid.uuid4().hex
         
         # Instance management
         self.api_base = "http://localhost:8000"
@@ -316,7 +317,7 @@ class JarvisGUI:
         self._finish_stream()
 
     def stream_message(self, message, cancel_event):
-        url = f"{self.api_base}/jarvis/stream?message={quote(message)}"
+        url = f"{self.api_base}/jarvis/stream?message={quote(message)}&session_id={quote(self.session_id)}"
         try:
             with requests.get(url, stream=True, timeout=(5, None)) as response:
                 response.raise_for_status()
@@ -349,6 +350,16 @@ class JarvisGUI:
             provider = data.get("provider", "?")
             model = data.get("model", "?")
             self._add_status(f"✓ {provider} — {model}", "#1a6a3a")
+        elif event_type == "tool_started" and data.get("mode") != "stark":
+            self._add_action(f"⚙ {data.get('outil', '?')} en cours…", "#1a2a44", "#b8d8f0")
+        elif event_type == "tool_completed" and data.get("mode") != "stark":
+            resultat = str(data.get("resultat", ""))[:120]
+            self._add_action(f"✓ {data.get('outil', '?')} — {resultat}", "#1a4a1a", "#d5ecd5")
+        elif event_type == "tool_failed" and data.get("mode") != "stark":
+            resultat = str(data.get("resultat", ""))[:120]
+            self._add_action(f"✕ {data.get('outil', '?')} — {resultat}", "#4a1a1a", "#ffd0d0")
+        elif event_type == "confirmation_required":
+            self._request_confirmation(data)
         elif event_type == "stark_activated":
             self._add_banner(f"⚡ Mode Stark activé — {data.get('objectif', '')}", "#1a0a0a", "#5a1a1a", "#e0b8b8")
         elif event_type == "stark_action":
@@ -371,6 +382,27 @@ class JarvisGUI:
             self._add_error(data.get("message", "Erreur inconnue."))
         elif event_type == "done":
             self._finish_stream()
+
+    def _request_confirmation(self, data):
+        description = data.get("description", "Cette action")
+        confirmed = messagebox.askyesno("Confirmation requise", f"Autoriser Jarvis à {description} ?")
+        thread = threading.Thread(
+            target=self._send_confirmation,
+            args=(data.get("action_id", ""), confirmed),
+            daemon=True,
+        )
+        thread.start()
+
+    def _send_confirmation(self, action_id, confirmed):
+        try:
+            response = requests.post(
+                f"{self.api_base}/jarvis/confirm",
+                json={"session_id": self.session_id, "action_id": action_id, "confirmed": confirmed},
+                timeout=10,
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            self.root.after(0, self._add_error, f"Confirmation non transmise. {exc}")
 
     def _finish_stream(self):
         self.typing_label.configure(text="")

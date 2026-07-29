@@ -1,0 +1,2 @@
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "cmd /c cd /d C:\Users\Carl\Jarvis && ""C:\Program Files\Python312\python.exe"" -m uvicorn api.server:app --host 0.0.0.0 --port 8000 >> service\uvicorn.log 2>&1", 0, False

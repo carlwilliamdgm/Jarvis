@@ -24,24 +24,26 @@ Le contrat actuel de Core Intellect est :
 ## Flux d'execution normal
 
 ```text
-1. Message utilisateur
+1. Message utilisateur (console, API, Tkinter ou web)
         |
-2. jarvis.py intercepte les commandes locales (!a, !S, mode action)
+2. executer_interaction_utilisateur() prépare le message et journalise l'échange
         |
-3. core.intellect.interpreter_objectif()
+3. jarvis.py intercepte les commandes (!a, !S, mode action)
         |
-4. Appel modele cloud disponible, sinon modele local
+4. core.intellect.interpreter_objectif()
         |
-5. Parsing JSON de decision et filtrage des outils inconnus
+5. Appel modele cloud disponible, sinon modele local
         |
-6. jarvis.py execute les actions via tools.OUTILS
+6. Parsing JSON de decision et filtrage des outils inconnus
         |
-7. Reponse naturelle + resultats d'outils
+7. jarvis.py execute les actions via tools.OUTILS
         |
-8. Journalisation dans memory.json
+8. Reponse naturelle + resultats d'outils
+        |
+9. Journalisation dans memory.json
 ```
 
-En streaming SSE (`GET /jarvis/stream?message=...`), les interfaces recoivent aussi les evenements intermediaires emis pendant ce flux : reflexion, provider, activation Stark, actions Stark, rapport Stark, reponse finale et erreurs.
+En streaming SSE (`GET /jarvis/stream?message=...`), les interfaces recoivent aussi les evenements intermediaires emis pendant ce flux : reflexion, provider, cycle de vie des outils, demandes de confirmation, activation Stark, actions Stark, rapport Stark, reponse finale et erreurs.
 
 ## Transport API et interfaces
 
@@ -49,7 +51,7 @@ Le transport HTTP vit dans `api/server.py`.
 
 ### Endpoint final
 
-`POST /jarvis/ask` garde la compatibilite avec les clients simples. Il appelle `executer_agent()` puis retourne :
+`POST /jarvis/ask` garde la compatibilite avec les clients simples. Comme `GET /jarvis/stream`, il appelle `executer_interaction_utilisateur()` puis retourne :
 
 ```json
 {
@@ -67,6 +69,10 @@ Evenements emis :
 
 - `thinking` : Jarvis commence a reflechir.
 - `provider` : un provider LLM repond.
+- `tool_started` : une action normale ou Stark commence.
+- `tool_completed` : une action se termine.
+- `tool_failed` : une action echoue ou est refusee.
+- `confirmation_required` : une action attend la decision de l'interface; elle contient `action_id`, `description` et `expires_at`.
 - `stark_activated` : le Mode Stark s'active.
 - `stark_action` : une action Stark est executee.
 - `stark_terminated` : le Mode Stark termine ou s'interrompt.
@@ -123,6 +129,8 @@ Les appels LLM ont deux tentatives. Les outils fonctionnent avec n'importe quel 
 - `outil` doit exister dans `tools.OUTILS`;
 - les outils inconnus sont retires avant execution;
 - les erreurs d'arguments sont capturees au moment de l'appel Python.
+
+Une décision de type `action` ou `mixte` sans outil exécutable déclenche une passe de réparation à température zéro. Si elle ne produit toujours aucun outil valide, Jarvis indique explicitement qu'aucune action n'a été exécutée ; il ne présente pas une action comme accomplie.
 
 `jarvis.py` conserve aussi des helpers d'extraction d'objets JSON pour compatibilite avec certains flux et tests.
 

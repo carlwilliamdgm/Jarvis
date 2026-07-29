@@ -649,6 +649,19 @@
     </div>
   </div>
 
+  <div id="confirmationModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmationTitle">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="confirmationTitle" class="modal-title">Confirmation requise</h2>
+      </div>
+      <p id="confirmationDescription" style="margin: 0 0 18px; line-height: 1.5;"></p>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button id="confirmationCancel" class="btn btn-secondary" type="button">Annuler</button>
+        <button id="confirmationApprove" class="btn btn-primary" type="button">Confirmer</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const conversation = document.getElementById("conversation");
     const input = document.getElementById("messageInput");
@@ -669,6 +682,10 @@
     const instanceList = document.getElementById("instanceList");
     const discoveryButton = document.getElementById("discoveryButton");
     const discoveryResults = document.getElementById("discoveryResults");
+    const confirmationModal = document.getElementById("confirmationModal");
+    const confirmationDescription = document.getElementById("confirmationDescription");
+    const confirmationCancel = document.getElementById("confirmationCancel");
+    const confirmationApprove = document.getElementById("confirmationApprove");
     let discoveryActive = false;
     
     let source = null;
@@ -678,6 +695,11 @@
     const localInstance = { id: localInstanceId, nom: "Local", url: window.location.origin };
     let activeInstanceId = localInstanceId;
     let editingInstanceId = null;
+    let pendingConfirmation = null;
+    const sessionStorageKey = "jarvis-session-id";
+    const sessionId = sessionStorage.getItem(sessionStorageKey)
+      || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
+    sessionStorage.setItem(sessionStorageKey, sessionId);
 
     function scrollBottom() {
       conversation.scrollTop = conversation.scrollHeight;
@@ -733,6 +755,14 @@
         addEvent("status-line", data.message || "Jarvis réfléchit...");
       } else if (type === "provider") {
         addEvent("provider", `✓ ${data.provider || "?"} — ${data.model || "?"}`);
+      } else if (type === "tool_started" && data.mode !== "stark") {
+        addEvent("status-line", `⚙ ${data.outil || "?"} en cours…`);
+      } else if (type === "tool_completed" && data.mode !== "stark") {
+        addEvent("status-line", `✓ ${data.outil || "?"} — ${String(data.resultat || "").slice(0, 120)}`);
+      } else if (type === "tool_failed" && data.mode !== "stark") {
+        addEvent("error", `✕ ${data.outil || "?"} — ${String(data.resultat || "").slice(0, 120)}`);
+      } else if (type === "confirmation_required") {
+        openConfirmation(data);
       } else if (type === "stark_activated") {
         addEvent("stark-start", `⚡ Mode Stark activé — ${data.objectif || ""}`);
       } else if (type === "stark_action") {
@@ -761,6 +791,39 @@
       setStreaming(false);
     }
 
+    function openConfirmation(data) {
+      pendingConfirmation = data;
+      confirmationDescription.textContent = `Autoriser Jarvis à ${data.description || "effectuer cette action"} ?`;
+      confirmationModal.classList.add("active");
+      confirmationApprove.focus();
+    }
+
+    async function resolveConfirmation(confirmed) {
+      if (!pendingConfirmation) {
+        return;
+      }
+      const actionId = pendingConfirmation.action_id;
+      confirmationApprove.disabled = true;
+      confirmationCancel.disabled = true;
+      try {
+        const response = await fetch(`${apiBase}/jarvis/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, action_id: actionId, confirmed }),
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        confirmationModal.classList.remove("active");
+        pendingConfirmation = null;
+      } catch (error) {
+        addEvent("error", `Confirmation non transmise : ${error.message}`);
+      } finally {
+        confirmationApprove.disabled = false;
+        confirmationCancel.disabled = false;
+      }
+    }
+
     function sendMessage() {
       const message = input.value.trim();
       if (!message || source) {
@@ -772,7 +835,7 @@
       addBubble("user", "Vous", message);
       setStreaming(true);
 
-      source = new EventSource(`${apiBase}/jarvis/stream?message=${encodeURIComponent(message)}`);
+      source = new EventSource(`${apiBase}/jarvis/stream?message=${encodeURIComponent(message)}&session_id=${encodeURIComponent(sessionId)}`);
       source.onmessage = (rawEvent) => {
         try {
           handleEvent(JSON.parse(rawEvent.data));
@@ -785,6 +848,9 @@
         closeStream(false);
       };
     }
+
+    confirmationApprove.addEventListener("click", () => resolveConfirmation(true));
+    confirmationCancel.addEventListener("click", () => resolveConfirmation(false));
 
     function applyTheme(theme) {
       document.body.classList.toggle("light", theme === "light");

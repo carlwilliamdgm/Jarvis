@@ -16,6 +16,7 @@ import platform
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
+from typing import Callable
 
 from groq import Groq as GroqClient
 
@@ -38,6 +39,8 @@ def interpreter_objectif(
     memoire: dict,
     temperature: float = 0.7,
     mode_stark: bool = False,
+    forcer_action: bool = False,
+    on_event: Callable[[str, dict], None] | None = None,
 ) -> dict:
     """
     Interprète l'objectif réel de l'utilisateur en une seule passe LLM.
@@ -70,7 +73,7 @@ def interpreter_objectif(
         messages.append({"role": "user", "content": message})
 
         # Appel LLM avec retry
-        reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature)
+        reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature, on_event=on_event)
 
         if reponse is None:
             return {
@@ -82,11 +85,26 @@ def interpreter_objectif(
 
         contenu = reponse["message"]["content"]
 
-        # Parser la réponse JSON
-        resultat = _parser_reponse_intellect(contenu, message)
+        resultat = _normaliser_decision(contenu, message)
 
-        # Filtrer les outils inconnus
-        resultat["actions"] = _filtrer_outils_inconnus(resultat["actions"])
+        # Une action sans outil exécutable est une réponse incomplète, pas une
+        # conversation. Une seconde passe ciblée évite que Jarvis annonce une
+        # action qu'il n'a jamais appelée.
+        if _decision_requiert_reparation(resultat, message, forcer_action):
+            reponse_reparation = _reparer_decision_action(messages, message, memoire, on_event)
+            if reponse_reparation is not None:
+                resultat = _normaliser_decision(reponse_reparation["message"]["content"], message)
+
+        if _decision_requiert_reparation(resultat, message, forcer_action):
+            return {
+                "objectif": message[:100],
+                "type": "diagnostic",
+                "actions": [],
+                "reponse": (
+                    "Je n'ai exécuté aucune action, Sir : je n'ai pas obtenu "
+                    "de décision exploitable pour cette demande."
+                ),
+            }
 
         # Gérer les réponses vides
         if not resultat["reponse"] or not resultat["reponse"].strip():
@@ -102,6 +120,53 @@ def interpreter_objectif(
             "actions": [],
             "reponse": f"Je ne peux pas traiter ça correctement, Sir. Erreur: {e}"
         }
+
+
+def _normaliser_decision(contenu: str, message_original: str) -> dict:
+    resultat = _parser_reponse_intellect(contenu, message_original)
+    resultat["actions"] = _filtrer_outils_inconnus(resultat["actions"])
+    return resultat
+
+
+def _decision_requiert_reparation(resultat: dict, message: str, forcer_action: bool) -> bool:
+    if resultat.get("actions"):
+        return False
+    if resultat.get("type") in {"action", "mixte"}:
+        return True
+    return forcer_action or _message_ressemble_a_une_action(message)
+
+
+def _message_ressemble_a_une_action(message: str) -> bool:
+    mots_action = (
+        "fais", "fait", "crée", "creer", "supprime", "liste", "lis ",
+        "ouvre", "exécute", "execute", "lance", "note", "ajoute",
+        "ajouter", "rappelle", "organise", "nettoie", "vide", "surveille",
+        "mémorise", "memorise", "oublie", "commande", "powershell",
+    )
+    texte = f" {message.casefold().strip()} "
+    return any(mot in texte for mot in mots_action)
+
+
+def _reparer_decision_action(
+    messages: list,
+    message: str,
+    memoire: dict,
+    on_event: Callable[[str, dict], None] | None = None,
+) -> dict | None:
+    instruction = (
+        "[RÉPARATION DE DÉCISION] La demande suivante exige une action réelle, "
+        "mais ta réponse ne contient aucun outil exécutable. Réponds UNIQUEMENT "
+        "avec le JSON contractuel. Si un outil de l'inventaire permet l'action, "
+        "place-le dans actions. Sinon, réponds type diagnostic, actions [], et "
+        "explique explicitement dans reponse qu'aucune action n'a été exécutée.\n\n"
+        f"Demande originale : {message}"
+    )
+    return _appeler_llm_avec_retry(
+        messages + [{"role": "user", "content": instruction}],
+        memoire,
+        temperature=0.0,
+        on_event=on_event,
+    )
 
 
 def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False) -> str:
@@ -258,7 +323,12 @@ def _filtrer_outils_inconnus(actions: list) -> list:
     ]
 
 
-def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 0.7) -> dict | None:
+def _appeler_llm_avec_retry(
+    messages: list,
+    memoire: dict,
+    temperature: float = 0.7,
+    on_event: Callable[[str, dict], None] | None = None,
+) -> dict | None:
     """
     Appelle le LLM avec retry sur cloud puis fallback local.
     """
@@ -281,6 +351,8 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 
                 try:
                     reponse = provider["fonction"](modele, messages, temperature=temperature)
                     console.print(f"[dim green]✓ {nom} reussi : {modele}[/dim green]")
+                    if on_event is not None:
+                        on_event("provider", {"provider": nom, "model": modele})
                     return reponse
                 except Exception as e:
                     console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
@@ -290,7 +362,14 @@ def _appeler_llm_avec_retry(messages: list, memoire: dict, temperature: float = 
         if tentative == 0:
             console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
         try:
-            return ollama.chat(model=MODELE_LOCAL, messages=messages, options={"think": False, "temperature": temperature})
+            reponse = ollama.chat(
+                model=MODELE_LOCAL,
+                messages=messages,
+                options={"think": False, "temperature": temperature},
+            )
+            if on_event is not None:
+                on_event("provider", {"provider": "Ollama", "model": MODELE_LOCAL})
+            return reponse
         except Exception as e:
             console.print(f"[red]✗ Erreur modèle local : {e}[/red]")
             continue

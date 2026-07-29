@@ -356,6 +356,10 @@ data: {"type":"done"}
 | --- | --- | --- |
 | `thinking` | `{"message": "Jarvis réfléchit..."}` | Statut de réflexion |
 | `provider` | `{"provider": "Groq", "model": "llama-3.3-70b-versatile"}` | Provider LLM utilisé |
+| `tool_started` | `{"outil": "...", "args": {}, "mode": "normal|stark"}` | Début d'une action réelle |
+| `tool_completed` | `{"outil": "...", "resultat": "...", "mode": "normal|stark"}` | Action terminée |
+| `tool_failed` | `{"outil": "...", "resultat": "...", "mode": "normal|stark"}` | Action en erreur ou refusée |
+| `confirmation_required` | `{"action_id": "...", "description": "...", "expires_at": "..."}` | Décision utilisateur attendue |
 | `stark_activated` | `{"objectif": "..."}` | Début du Mode Stark |
 | `stark_action` | `{"outil": "...", "args": {}, "resultat": "...", "erreur": false}` | Action Stark exécutée |
 | `stark_terminated` | `{"statut": "terminé|interrompu", "rapport": "..."}` | Rapport Stark final |
@@ -367,7 +371,7 @@ Implémentation technique :
 
 - `api/server.py` crée une queue SSE par connexion.
 - `jarvis.event_bus` lie la queue au thread de travail.
-- `executer_agent()` émet les événements.
+- `executer_interaction_utilisateur()` est le pipeline commun console/API : préparation, exécution et journalisation; `executer_agent()` émet les événements.
 - Le générateur SSE sérialise chaque événement avec `json.dumps(..., ensure_ascii=False)`.
 
 ### `GET /jarvis/status`
@@ -439,10 +443,13 @@ Retourne une erreur 503 si Tailscale n'est pas disponible sur l'instance.
 
 ### `POST /jarvis/confirm`
 
-Endpoint de confirmation prévu pour extension. Actuellement il accuse réception.
+Résout une confirmation demandée pendant un flux SSE. L'interface conserve son
+`session_id`, reçu/choisi lors de l'ouverture du flux, puis répond avec l'identifiant
+de l'action fournie par l'événement `confirmation_required`.
 
 ```json
 {
+  "session_id": "session-interface",
   "action_id": "abc",
   "confirmed": true
 }

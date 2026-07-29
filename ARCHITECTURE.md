@@ -14,12 +14,12 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 
 ## Flux principal
 
-1. La boucle console reçoit le message utilisateur dans `jarvis.py`.
-2. `detecter_commande_mode()` intercepte les commandes locales (`!a`, `!S <objectif>`, activation/desactivation du mode action).
-3. Hors commande spéciale, `parler()` appelle `core.intellect.interpreter_objectif()`.
-4. Core Intellect renvoie une structure normalisee : objectif, type, actions et reponse naturelle.
-5. `jarvis.py` execute les actions listées via `tools.OUTILS`, puis assemble la reponse finale.
-6. L'echange est journalisé dans la memoire persistante.
+1. La console appelle directement `executer_interaction_utilisateur()`; Tkinter et le web l'appellent via l'API.
+2. Cette fonction applique la même préparation de message, appelle `executer_agent()` et journalise l'échange.
+3. `detecter_commande_mode()` intercepte les commandes (`!a`, `!S <objectif>`, activation/desactivation du mode action).
+4. Hors commande spéciale, `parler()` appelle `core.intellect.interpreter_objectif()`.
+5. Core Intellect renvoie une structure normalisee : objectif, type, actions et reponse naturelle.
+6. `jarvis.py` execute les actions listées via `tools.OUTILS`, puis assemble la reponse finale.
 
 Le modèle ne doit pas être appelé directement depuis les capabilities. Si une fonctionnalité doit "penser", elle remonte au Core Intellect ou reste une execution deterministe.
 
@@ -91,9 +91,9 @@ Consequence pratique : ajouter une capability ne suffit toujours pas. Il faut l'
 L'API FastAPI expose deux flux conversationnels :
 
 - `POST /jarvis/ask` : endpoint compatible, retourne seulement la reponse finale.
-- `GET /jarvis/stream?message=...` : endpoint SSE qui transmet les evenements intermediaires (`thinking`, `provider`, `stark_activated`, `stark_action`, `stark_terminated`, `response`, `error`, `done`).
+- `GET /jarvis/stream?message=...` : endpoint SSE qui transmet les evenements intermediaires (`thinking`, `provider`, `tool_started`, `tool_completed`, `tool_failed`, `confirmation_required`, `stark_activated`, `stark_action`, `stark_terminated`, `response`, `error`, `done`).
 
-Les interfaces `gui/app.py` et `gui/web/index.html` consomment ce flux pour afficher les etapes que le terminal Rich montre deja.
+Les interfaces `gui/app.py` et `gui/web/index.html` consomment ce flux pour afficher les etapes que le terminal Rich montre deja. Elles ne disposent d'aucun chemin de décision ou d'exécution distinct : API et console passent par `executer_interaction_utilisateur()`.
 
 ### Serveur FastAPI
 
@@ -114,11 +114,11 @@ Routes principales :
 Au demarrage, le serveur :
 
 1. appelle `initialiser()` pour charger/normaliser `memory.json`;
-2. instancie `AutonomousAgent`;
+2. démarre `AutonomousAgent.run()` dans un thread daemon, comme la console;
 3. construit l'historique systeme avec `construire_prompt_action(memoire)`;
 4. garde `memoire` et `historique` comme etat global du processus API.
 
-Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette queue a `event_bus`, appelle `executer_agent()`, puis pousse `{"type": "done"}` a la fin.
+Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette queue a `event_bus`, appelle `executer_interaction_utilisateur()`, puis pousse `{"type": "done"}` a la fin. Une action qui requiert une confirmation emet `confirmation_required`; l'interface repond via `POST /jarvis/confirm` avec son `session_id` et l'identifiant de l'action.
 
 ### Interfaces
 
