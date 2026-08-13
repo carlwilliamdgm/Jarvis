@@ -9,7 +9,8 @@ def executer_commande_direct(commande: str) -> str:
 
     try:
         resultat = subprocess.run(
-            ["cmd", "/c", commande],
+            commande,
+            shell=True,
             capture_output=True,
             text=True,
             timeout=60,
