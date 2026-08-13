@@ -131,7 +131,7 @@ def _soumettre_au_pipeline(text: str) -> bool:
         import jarvis
         _set_voice_state(VoiceState.THINKING)
         result = jarvis.executer_interaction_utilisateur(
-            text, historique, memoire, ignorer_si_occupe=True
+            text, historique, memoire, ignorer_si_occupe=True, origine_vocale=True
         )
         if result is None:
             LOGGER.info("Entrée vocale ignorée : pipeline déjà occupé")

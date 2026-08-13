@@ -1253,7 +1253,12 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     return reponse_finale, intention_action
 
 
-def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[str, bool]:
+def executer_agent(
+    user_input: str,
+    historique: list,
+    memoire: dict,
+    origine_vocale: bool = False,
+) -> tuple[str, bool]:
     """
     Exécute une requête utilisateur. Core Intellect gère la compréhension
     et l'exécution en une seule passe (mode normal/action), ou via la
@@ -1272,6 +1277,10 @@ def executer_agent(user_input: str, historique: list, memoire: dict) -> tuple[st
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
             },
         )
+        if origine_vocale:
+            from capabilities.voice_output import parler_a_voix_haute
+
+            parler_a_voix_haute(texte)
         return reponse, intention_action
     except Exception as e:
         event_bus.emit("error", {"message": str(e)})
@@ -1291,14 +1300,21 @@ def executer_interaction_utilisateur(
     historique: list,
     memoire: dict,
     ignorer_si_occupe: bool = False,
+    origine_vocale: bool = False,
 ) -> tuple[str, bool] | None:
-    """Exécute et journalise une interaction utilisateur, quelle que soit sa surface."""
+    """Exécute et journalise une interaction, avec TTS réservé aux sources vocales.
+
+    Le verrou reste volontairement acquis jusqu'à la fin du TTS vocal afin
+    qu'un nouveau wake word ou double-clap ne puisse chevaucher la lecture.
+    """
     acquired = INTERACTION_LOCK.acquire(blocking=not ignorer_si_occupe)
     if not acquired:
         return None
     try:
         message_prepare = preparer_message_utilisateur(message)
-        reponse, intention_action = executer_agent(message_prepare, historique, memoire)
+        reponse, intention_action = executer_agent(
+            message_prepare, historique, memoire, origine_vocale=origine_vocale
+        )
         texte = reponse if isinstance(reponse, str) else str(reponse)
         OUTILS["enregistrer_echange"](message_prepare, texte)
         return texte, intention_action

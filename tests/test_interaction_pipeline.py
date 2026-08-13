@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 
 import jarvis
+from core.voice_state import VoiceState, _set_voice_state
 
 
 class InteractionPipelineTests(unittest.TestCase):
@@ -9,7 +11,7 @@ class InteractionPipelineTests(unittest.TestCase):
         self.original_journal = jarvis.OUTILS["enregistrer_echange"]
         self.calls = []
 
-        def fake_executer_agent(message, historique, memoire):
+        def fake_executer_agent(message, historique, memoire, origine_vocale=False):
             self.calls.append(("execute", message, historique, memoire))
             return "Réponse exécutée", True
 
@@ -55,6 +57,33 @@ class InteractionPipelineTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertEqual([], self.calls)
+
+    def test_non_voice_interaction_never_invokes_tts(self):
+        with patch("capabilities.voice_output.parler_a_voix_haute") as speak:
+            jarvis.executer_interaction_utilisateur("bonjour", [], {})
+
+        speak.assert_not_called()
+
+    def test_voice_interaction_keeps_lock_until_tts_returns(self):
+        voice_started = []
+        _set_voice_state(VoiceState.THINKING)
+        jarvis.executer_agent = self.original_executer_agent
+
+        def fake_voice_output(_text):
+            _set_voice_state(VoiceState.SPEAKING)
+            voice_started.append(jarvis.INTERACTION_LOCK.locked())
+            self.assertIsNone(
+                jarvis.executer_interaction_utilisateur(
+                    "seconde demande", [], {}, ignorer_si_occupe=True, origine_vocale=True
+                )
+            )
+
+        with patch.object(jarvis, "parler", return_value=("Réponse exécutée", True)), \
+             patch("capabilities.voice_output.parler_a_voix_haute", side_effect=fake_voice_output):
+            jarvis.executer_interaction_utilisateur("bonjour", [], {}, origine_vocale=True)
+
+        self.assertEqual([True], voice_started)
+        _set_voice_state(VoiceState.IDLE)
 
 
 if __name__ == "__main__":
