@@ -1,13 +1,17 @@
-"""Wake word Porcupine et transcription Vosk pour Jarvis.
+"""Wake word openWakeWord et transcription Vosk pour Jarvis.
 
 Les modèles Vosk ne sont pas versionnés. Téléchargez-les depuis
 https://alphacephei.com/vosk/models puis placez-les dans ``models/`` à la
 racine du projet (ou définissez ``JARVIS_VOSK_MODELS_DIR``).
+
+Le modèle pré-entraîné ``hey_jarvis`` est fourni par openWakeWord, mais ses
+ressources ONNX doivent être téléchargées une fois pendant le déploiement via
+``openwakeword.utils.download_models(["hey_jarvis"])``. La détection ne fait
+aucun appel réseau au runtime.
 """
 
 from __future__ import annotations
 
-from array import array
 import json
 import logging
 import os
@@ -16,11 +20,16 @@ import threading
 import time
 from typing import Any
 
+import numpy as np
+
 from core.voice_state import VoiceState, _set_voice_state
 
 
 LOGGER = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
+WAKE_WORD_FRAME_LENGTH = 1_280
+# Score openWakeWord minimal pour accepter « hey Jarvis » ; à calibrer au micro réel.
+WAKE_WORD_DETECTION_THRESHOLD = 0.5
 TRANSCRIPTION_TIMEOUT_SECONDS = 8.0
 SILENCE_TIMEOUT_SECONDS = 1.2
 _MODEL_NAMES = {
@@ -147,29 +156,30 @@ def transcrire_et_soumettre(audio_stream: Any) -> str | None:
     return text
 
 
+def _new_wake_word_model() -> Any:
+    """Construit le détecteur local ``hey_jarvis`` avec le runtime ONNX Windows."""
+    from openwakeword.model import Model
+
+    return Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
+
+
 def écouter_et_transcrire() -> str | None:
     """Attend un wake word puis transcrit et transmet une seule requête."""
-    key = os.environ.get("JARVIS_PORCUPINE_KEY")
-    if not key:
-        LOGGER.warning("Écoute vocale indisponible : JARVIS_PORCUPINE_KEY est absente")
-        return None
     try:
-        import pvporcupine
         import sounddevice as sd
+        model = _new_wake_word_model()
     except ImportError:
         LOGGER.exception("Dépendances de l'écoute vocale indisponibles")
         return None
 
-    porcupine = None
     try:
-        porcupine = pvporcupine.create(access_key=key, keywords=["jarvis"])
-        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=porcupine.frame_length,
+        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=WAKE_WORD_FRAME_LENGTH,
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
-                pcm, _overflowed = stream.read(porcupine.frame_length)
-                samples = array("h")
-                samples.frombytes(bytes(pcm))
-                if porcupine.process(samples) >= 0:
+                pcm, _overflowed = stream.read(WAKE_WORD_FRAME_LENGTH)
+                samples = np.frombuffer(bytes(pcm), dtype=np.int16)
+                scores = model.predict(samples)
+                if scores.get("hey_jarvis", 0.0) >= WAKE_WORD_DETECTION_THRESHOLD:
                     if not _set_voice_state(VoiceState.LISTENING):
                         continue
                     return transcrire_et_soumettre(stream)
@@ -177,9 +187,6 @@ def écouter_et_transcrire() -> str | None:
         LOGGER.exception("Échec de l'écoute wake word")
         _set_voice_state(VoiceState.ERROR)
         _set_voice_state(VoiceState.IDLE)
-    finally:
-        if porcupine is not None:
-            porcupine.delete()
     return None
 
 

@@ -1,4 +1,6 @@
 import unittest
+import sys
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import jarvis
@@ -27,6 +29,32 @@ class FakeRecognizer:
 class FakeStream:
     def read(self, _size):
         return b"audio", False
+
+
+class FakeWakeWordStream:
+    def __init__(self):
+        self.reads = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _size):
+        self.reads += 1
+        return b"\x00\x00" * _size, False
+
+
+class FakeWakeWordModel:
+    def __init__(self, score, stop_event=None):
+        self.score = score
+        self.stop_event = stop_event
+
+    def predict(self, _samples):
+        if self.stop_event:
+            self.stop_event.set()
+        return {"hey_jarvis": self.score}
 
 
 class VoiceInputTests(unittest.TestCase):
@@ -61,3 +89,29 @@ class VoiceInputTests(unittest.TestCase):
             jarvis.INTERACTION_LOCK.release()
 
         self.assertEqual(VoiceState.IDLE, get_voice_state())
+
+    def test_openwakeword_detection_starts_shared_transcription_path(self):
+        stream = FakeWakeWordStream()
+        fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
+        with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
+             patch.object(voice_input, "_new_wake_word_model", return_value=FakeWakeWordModel(0.8)), \
+             patch.object(voice_input, "transcrire_et_soumettre", return_value="bonjour") as transcribe:
+            text = voice_input.écouter_et_transcrire()
+
+        self.assertEqual("bonjour", text)
+        transcribe.assert_called_once_with(stream)
+
+    def test_openwakeword_below_threshold_does_not_transcribe(self):
+        stream = FakeWakeWordStream()
+        fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
+        with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
+             patch.object(
+                 voice_input,
+                 "_new_wake_word_model",
+                 return_value=FakeWakeWordModel(0.1, voice_input._STOP_EVENT),
+             ), \
+             patch.object(voice_input, "transcrire_et_soumettre") as transcribe:
+            self.assertIsNone(voice_input.écouter_et_transcrire())
+
+        voice_input._STOP_EVENT.clear()
+        transcribe.assert_not_called()

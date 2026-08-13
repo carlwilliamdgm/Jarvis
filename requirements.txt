@@ -8,6 +8,6 @@ psutil
 rich
 groq
 together
-pvporcupine
+openwakeword
 vosk
 sounddevice
