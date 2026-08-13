@@ -8,3 +8,6 @@ psutil
 rich
 groq
 together
+pvporcupine
+vosk
+sounddevice

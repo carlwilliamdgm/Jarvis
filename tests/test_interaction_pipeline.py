@@ -44,6 +44,18 @@ class InteractionPipelineTests(unittest.TestCase):
         self.assertTrue(prepared_message.startswith("optimise le PC"))
         self.assertIn(jarvis.PLAN_OPTIMISATION, prepared_message)
 
+    def test_voice_can_skip_when_another_surface_owns_pipeline_lock(self):
+        self.assertTrue(jarvis.INTERACTION_LOCK.acquire(blocking=False))
+        try:
+            result = jarvis.executer_interaction_utilisateur(
+                "bonjour", [], {}, ignorer_si_occupe=True
+            )
+        finally:
+            jarvis.INTERACTION_LOCK.release()
+
+        self.assertIsNone(result)
+        self.assertEqual([], self.calls)
+
 
 if __name__ == "__main__":
     unittest.main()

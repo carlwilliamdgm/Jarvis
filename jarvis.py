@@ -83,6 +83,10 @@ class EventBus:
 
 event_bus = EventBus()
 
+# Une interaction modifie l'historique et peut appeler le LLM. Toutes les
+# surfaces (CLI, API et voix) passent donc par ce verrou process-level.
+INTERACTION_LOCK = threading.Lock()
+
 OS = platform.system()
 HOME = Path.home()
 
@@ -1286,13 +1290,20 @@ def executer_interaction_utilisateur(
     message: str,
     historique: list,
     memoire: dict,
-) -> tuple[str, bool]:
+    ignorer_si_occupe: bool = False,
+) -> tuple[str, bool] | None:
     """Exécute et journalise une interaction utilisateur, quelle que soit sa surface."""
-    message_prepare = preparer_message_utilisateur(message)
-    reponse, intention_action = executer_agent(message_prepare, historique, memoire)
-    texte = reponse if isinstance(reponse, str) else str(reponse)
-    OUTILS["enregistrer_echange"](message_prepare, texte)
-    return texte, intention_action
+    acquired = INTERACTION_LOCK.acquire(blocking=not ignorer_si_occupe)
+    if not acquired:
+        return None
+    try:
+        message_prepare = preparer_message_utilisateur(message)
+        reponse, intention_action = executer_agent(message_prepare, historique, memoire)
+        texte = reponse if isinstance(reponse, str) else str(reponse)
+        OUTILS["enregistrer_echange"](message_prepare, texte)
+        return texte, intention_action
+    finally:
+        INTERACTION_LOCK.release()
 
 
 class AutonomousAgent:
