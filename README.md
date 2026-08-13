@@ -4,6 +4,8 @@ Jarvis est un assistant IA local-first en Python, développé par Carl-William D
 
 Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
 
+> **État vérifié le 13 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 48 tests passants. Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
+
 ## Vue d'ensemble
 
 ### Premier lancement ?
@@ -70,6 +72,13 @@ Avec un chemin Python explicite (si nécessaire) :
 ```powershell
 & "C:\Program Files\Python312\python.exe" -m pip install -r requirements.txt
 & "C:\Program Files\Python312\python.exe" -m pip install fastapi uvicorn requests pywin32
+```
+
+Pour exécuter la suite de tests, installer également `pytest` dans **le même environnement Python que Jarvis**. Le projet peut être utilisé avec un environnement virtuel `.venv` :
+
+```powershell
+cd %USERPROFILE%\Jarvis
+.\.venv\Scripts\python.exe -m pip install pytest
 ```
 
 ### Providers LLM
@@ -747,6 +756,15 @@ Les chemins passent par `core.safety.chemin_autorise()` lorsque l'outil manipule
 
 ## Tests et validation
 
+La commande de référence utilise l'environnement virtuel du projet lorsqu'il existe :
+
+```powershell
+cd %USERPROFILE%\Jarvis
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Résultat de la dernière vérification : `48 passed`.
+
 Compilation rapide :
 
 ```powershell
@@ -809,6 +827,21 @@ Vérifier :
 - le serveur FastAPI tourne sur `localhost:8000`;
 - `/jarvis/stream?message=bonjour` répond avec `curl.exe -N`;
 - aucun firewall local ne bloque la connexion.
+
+### Ollama est indisponible
+
+Les fonctions qui utilisent le fallback local ne peuvent pas générer de réponse tant qu'Ollama n'est pas démarré. L'API et l'interface web peuvent néanmoins rester accessibles.
+
+```powershell
+ollama serve
+ollama pull qwen2.5:7b
+```
+
+Si un provider distant est configuré, vérifier la présence de la variable correspondante (`GROQ_API_KEY` ou `OPENROUTER_API_KEY`) dans l'environnement du processus qui lance Jarvis.
+
+### La machine manque de ressources
+
+Consulter `GET /jarvis/status` pour la charge CPU, l'usage mémoire et l'état de l'API. Maintenir une marge d'espace disque et de mémoire avant d'exécuter des tâches autonomes ou intensives.
 
 ### Le service Windows refuse de démarrer
 
