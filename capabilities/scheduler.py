@@ -228,3 +228,74 @@ def executer_automatisations_dues() -> str:
     data["automatisations"] = automatisations
     sauvegarder_memoire(data)
     return "\n\n".join(resultats) if resultats else "Aucune automatisation due."
+
+
+def proposer_automatisation_auto(outil: str, frequence: int, recurrence: str = "quotidien", heure: str = "09:00") -> str:
+    """
+    Propose une automatisation basée sur un pattern détecté.
+    
+    Args:
+        outil: L'outil à automatiser
+        frequence: La fréquence de détection
+        recurrence: La récurrence suggérée (quotidien/hebdomadaire)
+        heure: L'heure suggérée
+        
+    Returns:
+        Description de l'automatisation proposée
+    """
+    from tools import OUTILS
+    
+    if outil not in OUTILS:
+        return f"Outil inconnu : {outil}"
+    if outil in OUTILS_AUTOMATISATION_INTERDITS:
+        return f"Outil non automatisable : {outil}"
+    
+    nom_suggere = f"Auto_{outil}_{frequence}x"
+    
+    lignes = [
+        f"=== AUTOMATISATION SUGGÉRÉE ===",
+        f"Nom : {nom_suggere}",
+        f"Outil : {outil}",
+        f"Fréquence détectée : {frequence} fois",
+        f"Récurrence suggérée : {recurrence}",
+        f"Heure suggérée : {heure}",
+        "",
+        "Pour créer cette automatisation, utilisez :",
+        f"ajouter_automatisation(nom=\"{nom_suggere}\", outil=\"{outil}\", recurrence=\"{recurrence}\", heure=\"{heure}\")"
+    ]
+    
+    return "\n".join(lignes)
+
+
+def creer_automatisation_auto(outil: str, frequence: int, recurrence: str = "quotidien", heure: str = "09:00") -> str:
+    """
+    Crée automatiquement une automatisation basée sur un pattern détecté.
+    
+    Args:
+        outil: L'outil à automatiser
+        frequence: La fréquence de détection
+        recurrence: La récurrence suggérée (quotidien/hebdomadaire)
+        heure: L'heure suggérée
+        
+    Returns:
+        Résultat de la création de l'automatisation
+    """
+    from tools import OUTILS
+    
+    if outil not in OUTILS:
+        return f"Outil inconnu : {outil}"
+    if outil in OUTILS_AUTOMATISATION_INTERDITS:
+        return f"Outil non automatisable : {outil}"
+    
+    nom_auto = f"Auto_{outil}_{frequence}x"
+    
+    # Vérifier si cette automatisation existe déjà
+    data = normaliser_memoire(charger_memoire())
+    automatisations = data.get("automatisations", [])
+    
+    for auto in automatisations:
+        if auto.get("outil") == outil and auto.get("statut") == "active":
+            return f"Automatisation déjà existante pour {outil} : #{auto['id']} {auto['nom']}"
+    
+    # Créer l'automatisation
+    return ajouter_automatisation(nom=nom_auto, outil=outil, recurrence=recurrence, heure=heure)

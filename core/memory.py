@@ -85,6 +85,8 @@ def normaliser_memoire(data: dict) -> dict:
     data.setdefault("taches", [])
     data.setdefault("session_precedente", [])
     data.setdefault("signaux_erreurs_autre_notifies", [])
+    data.setdefault("patterns_comportementaux", {})
+    data.setdefault("feedback_suggestions", [])
     contexte = data.setdefault("contexte", schema_contexte())
     for categorie in CATEGORIES_CONTEXTE:
         contexte.setdefault(categorie, {})

@@ -54,6 +54,8 @@ from core.memory import (
     normaliser_memoire,
     sauvegarder_memoire,
 )
+from core.pattern_analyzer import obtenir_patterns_actuels, detecter_automatisations_potentielles
+from core.contextual_suggestions import generer_suggestions_contextuelles, formater_suggestions
 from core.error_classification import resultat_erreur
 from core.confirmations import request_streaming_confirmation
 from core.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
@@ -295,6 +297,55 @@ def modifier_traducteur(cle: str, patterns_fr: str, patterns_en: str, outil: str
     return "Modification du traducteur en attente d'implémentation de persistance sécurisée."
 
 
+def suggerer_actions() -> str:
+    """
+    Génère et affiche des suggestions contextuelles intelligentes.
+    
+    Cette fonction analyse le contexte actuel, les patterns comportementaux
+    et l'état système pour proposer des actions pertinentes à l'utilisateur.
+    """
+    suggestions = generer_suggestions_contextuelles()
+    return formater_suggestions(suggestions)
+
+
+def analyser_patterns() -> str:
+    """
+    Analyse et affiche les patterns comportementaux détectés.
+    
+    Cette fonction examine l'historique d'actions et de conversations
+    pour identifier les habitudes et patterns d'utilisation.
+    """
+    return obtenir_patterns_actuels()
+
+
+def detecter_automatisations() -> str:
+    """
+    Détecte et suggère des automatisations potentielles.
+    
+    Cette fonction analyse les patterns comportementaux pour identifier
+    des actions répétitives qui pourraient être automatisées.
+    """
+    automatisations = detecter_automatisations_potentielles()
+    
+    if not automatisations:
+        return "Aucune automatisation potentielle détectée pour le moment."
+    
+    lignes = ["=== AUTOMATISATIONS POTENTIELLES ==="]
+    for i, auto in enumerate(automatisations, 1):
+        pertinence_emoji = {
+            "haute": "🔴",
+            "moyenne": "🟡",
+            "basse": "🟢"
+        }.get(auto.get("pertinence", "moyenne"), "🟡")
+        
+        lignes.append(f"\n{i}. {pertinence_emoji} {auto.get('suggestion', 'Automatisation')}")
+        lignes.append(f"   Fréquence : {auto.get('frequence', 'inconnue')}")
+        lignes.append(f"   Pertinence : {auto.get('pertinence', 'moyenne')}")
+    
+    lignes.append("\nPour créer une automatisation, utilisez l'outil 'ajouter_automatisation'.")
+    return "\n".join(lignes)
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -340,4 +391,7 @@ OUTILS = {
     "lire_capacites": lire_capacites,
     "lire_traducteur": lire_traducteur_tool,
     "modifier_traducteur": modifier_traducteur,
+    "suggerer_actions": suggerer_actions,
+    "analyser_patterns": analyser_patterns,
+    "detecter_automatisations": detecter_automatisations,
 }
