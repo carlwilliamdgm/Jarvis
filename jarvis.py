@@ -1257,7 +1257,6 @@ def executer_agent(
     user_input: str,
     historique: list,
     memoire: dict,
-    origine_vocale: bool = False,
 ) -> tuple[str, bool]:
     """
     Exécute une requête utilisateur. Core Intellect gère la compréhension
@@ -1277,10 +1276,6 @@ def executer_agent(
                 "timestamp": datetime.now().strftime("%H:%M:%S"),
             },
         )
-        if origine_vocale:
-            from capabilities.voice_output import parler_a_voix_haute
-
-            parler_a_voix_haute(texte)
         return reponse, intention_action
     except Exception as e:
         event_bus.emit("error", {"message": str(e)})
@@ -1302,24 +1297,24 @@ def executer_interaction_utilisateur(
     ignorer_si_occupe: bool = False,
     origine_vocale: bool = False,
 ) -> tuple[str, bool] | None:
-    """Exécute et journalise une interaction, avec TTS réservé aux sources vocales.
-
-    Le verrou reste volontairement acquis jusqu'à la fin du TTS vocal afin
-    qu'un nouveau wake word ou double-clap ne puisse chevaucher la lecture.
-    """
+    """Exécute et journalise une interaction, avec TTS réservé aux sources vocales."""
     acquired = INTERACTION_LOCK.acquire(blocking=not ignorer_si_occupe)
     if not acquired:
         return None
+    result: tuple[str, bool]
     try:
         message_prepare = preparer_message_utilisateur(message)
-        reponse, intention_action = executer_agent(
-            message_prepare, historique, memoire, origine_vocale=origine_vocale
-        )
+        reponse, intention_action = executer_agent(message_prepare, historique, memoire)
         texte = reponse if isinstance(reponse, str) else str(reponse)
         OUTILS["enregistrer_echange"](message_prepare, texte)
-        return texte, intention_action
+        result = texte, intention_action
     finally:
         INTERACTION_LOCK.release()
+    if origine_vocale:
+        from capabilities.voice_output import parler_a_voix_haute
+
+        parler_a_voix_haute(result[0])
+    return result
 
 
 class AutonomousAgent:

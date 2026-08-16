@@ -105,6 +105,26 @@ ollama pull qwen2.5:7b
 
 Ollama sera utilisé automatiquement en fallback si Groq et OpenRouter ne sont pas configurés.
 
+## Modèles vocaux locaux (optionnel)
+
+Le mode vocal ne télécharge aucun modèle automatiquement. Téléchargez les fichiers suivants,
+puis placez-les dans les dossiers indiqués (le dossier `models/` est ignoré par Git) :
+
+- Vosk français : `models/vosk-model-small-fr-0.22/`
+- Vosk anglais : `models/vosk-model-small-en-us-0.15/`
+- Piper français : `models/piper/fr_FR-siwis-low.onnx` et
+  `models/piper/fr_FR-siwis-low.onnx.json`
+  ([téléchargement officiel](https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/siwis/low))
+- Piper anglais : `models/piper/en_US-lessac-low.onnx` et
+  `models/piper/en_US-lessac-low.onnx.json`
+  ([téléchargement officiel](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/low))
+
+Pour un essai matériel des écouteurs, lancez :
+
+```powershell
+python scripts/manuel_voix.py
+```
+
 ## Étape 4 - Premier lancement via script
 
 ### Lancement console (interface terminal)

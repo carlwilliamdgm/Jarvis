@@ -28,8 +28,9 @@ from core.voice_state import VoiceState, _set_voice_state
 LOGGER = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
 WAKE_WORD_FRAME_LENGTH = 1_280
-# Score openWakeWord minimal pour accepter « hey Jarvis » ; à calibrer au micro réel.
-WAKE_WORD_DETECTION_THRESHOLD = 0.5
+# Seuil conservateur utilisé sans calibration locale ; configurable au démarrage.
+DEFAULT_WAKE_WORD_DETECTION_THRESHOLD = 0.5
+WAKE_WORD_DETECTION_THRESHOLD = DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
 TRANSCRIPTION_TIMEOUT_SECONDS = 8.0
 SILENCE_TIMEOUT_SECONDS = 1.2
 _MODEL_NAMES = {
@@ -45,6 +46,23 @@ _LISTENER_THREAD: threading.Thread | None = None
 
 def _language() -> str:
     return "en" if os.environ.get("JARVIS_VOICE_LANG", "fr").lower() == "en" else "fr"
+
+
+def _load_wakeword_threshold() -> float:
+    """Lit le seuil de détection au démarrage du listener vocal uniquement."""
+    configured = os.environ.get("JARVIS_WAKEWORD_THRESHOLD")
+    if configured is None:
+        return DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
+    try:
+        threshold = float(configured)
+    except ValueError:
+        LOGGER.warning("JARVIS_WAKEWORD_THRESHOLD invalide ; seuil 0.5 utilisé")
+        return DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
+    # openWakeWord renvoie un score entre 0.0 et 1.0 ; toute autre valeur est invalide.
+    if not 0.0 <= threshold <= 1.0:
+        LOGGER.warning("JARVIS_WAKEWORD_THRESHOLD hors plage ; seuil 0.5 utilisé")
+        return DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
+    return threshold
 
 
 def _model_path(language: str) -> Path:
@@ -198,9 +216,10 @@ def _listener_loop() -> None:
 
 def demarrer_ecoute_vocale() -> None:
     """Démarre le listener wake word dans un thread démon, si nécessaire."""
-    global _LISTENER_THREAD
+    global _LISTENER_THREAD, WAKE_WORD_DETECTION_THRESHOLD
     if _LISTENER_THREAD and _LISTENER_THREAD.is_alive():
         return
+    WAKE_WORD_DETECTION_THRESHOLD = _load_wakeword_threshold()
     _STOP_EVENT.clear()
     _LISTENER_THREAD = threading.Thread(target=_listener_loop, name="jarvis-wake-word", daemon=True)
     _LISTENER_THREAD.start()

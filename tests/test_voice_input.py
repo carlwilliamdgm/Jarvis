@@ -115,3 +115,29 @@ class VoiceInputTests(unittest.TestCase):
 
         voice_input._STOP_EVENT.clear()
         transcribe.assert_not_called()
+
+    def test_wakeword_threshold_is_loaded_once_when_listener_starts(self):
+        class FakeThread:
+            def __init__(self, **_kwargs):
+                self.started = False
+
+            def is_alive(self):
+                return False
+
+            def start(self):
+                self.started = True
+
+        original_thread = voice_input._LISTENER_THREAD
+        original_threshold = voice_input.WAKE_WORD_DETECTION_THRESHOLD
+        loaded_threshold = None
+        try:
+            with patch.dict("os.environ", {"JARVIS_WAKEWORD_THRESHOLD": "0.72"}), \
+                 patch.object(voice_input.threading, "Thread", FakeThread):
+                voice_input._LISTENER_THREAD = None
+                voice_input.demarrer_ecoute_vocale()
+                loaded_threshold = voice_input.WAKE_WORD_DETECTION_THRESHOLD
+        finally:
+            voice_input._LISTENER_THREAD = original_thread
+            voice_input.WAKE_WORD_DETECTION_THRESHOLD = original_threshold
+
+        self.assertEqual(0.72, loaded_threshold)

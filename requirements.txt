@@ -11,4 +11,4 @@ together
 openwakeword
 vosk
 sounddevice
-pyttsx3
+piper-tts
