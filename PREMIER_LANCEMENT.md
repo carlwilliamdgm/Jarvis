@@ -232,91 +232,23 @@ http://localhost:8000/web
 
 Testez l'envoi d'un message et vérifiez que la réponse s'affiche correctement.
 
-## Étape 7 - Configuration du service Windows (optionnel)
+## Étape 7 - Tâche planifiée `JarvisAgent` (optionnel)
 
-Pour un démarrage automatique de Jarvis au démarrage de Windows :
-
-### Installation du service
+Pour démarrer automatiquement Jarvis à l'ouverture de votre session Windows, utilisez `JarvisAgent`. Elle lance :
 
 ```powershell
-cd %USERPROFILE%\Jarvis
-python service\windows_service.py install
+python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-### Démarrage du service
+Elle s'exécute sous le compte de la session Windows, ce qui garantit les mêmes permissions pour CLI, Web et Tkinter. Le service historique `JarvisService` est désactivé par l'installation s'il existe.
+
+### Démarrage, arrêt et vérification
 
 ```powershell
-net start JarvisService
+Start-ScheduledTask -TaskName JarvisAgent
+Get-ScheduledTask -TaskName JarvisAgent | Select-Object TaskName, State
+Stop-ScheduledTask -TaskName JarvisAgent
 ```
-
-### Vérification
-
-Le service lance automatiquement :
-
-```powershell
-uvicorn api.server:app --host 0.0.0.0 --port 8000
-```
-
-Vous pouvez alors accéder à l'interface web sans lancer manuellement le serveur.
-
-### Arrêt du service
-
-```powershell
-net stop JarvisService
-```
-
-### Suppression du service
-
-```powershell
-cd %USERPROFILE%\Jarvis
-python service\windows_service.py remove
-```
-
-### Configuration du démarrage automatique
-
-Par défaut, le service est configuré en démarrage manuel. Pour le démarrer automatiquement au démarrage de Windows :
-
-```powershell
-sc config JarvisService start= auto
-```
-
-Options de démarrage disponibles :
-- `auto` : Démarrage automatique au démarrage de Windows
-- `demand` : Démarrage manuel (par défaut)
-- `delayed-auto` : Démarrage automatique différé (recommandé pour éviter de surcharger le démarrage)
-
-### Vérification de l'état du service
-
-Vérifier si le service est en cours d'exécution :
-
-```powershell
-sc query JarvisService
-```
-
-Attendu :
-```
-STATE              : 4 RUNNING
-```
-
-Vérifier les logs du service :
-
-```powershell
-type service\jarvis_service.log
-```
-
-Vérifier les logs uvicorn :
-
-```powershell
-type service\uvicorn.log
-```
-
-Tester l'API :
-
-```powershell
-curl.exe "http://localhost:8000/jarvis/status"
-```
-
-Attendu : JSON avec CPU, RAM et active status.
 
 ## Étape 8 - Configuration multi-instance (optionnel)
 
@@ -382,13 +314,13 @@ python -m uvicorn api.server:app --host 0.0.0.0 --port 8001
 3. Le firewall bloque-t-il la connexion ?
 4. Testez avec Ollama en local si les providers cloud échouent
 
-### Le service Windows refuse de démarrer
+### La tâche `JarvisAgent` refuse de démarrer
 
 **Vérifications** :
-1. Consultez les logs : `service/jarvis_service.log` et `service/uvicorn.log`
+1. Consultez l'action et l'historique dans le Planificateur de tâches Windows
 2. Vérifiez que Python est installé et détecté par le script d'installation
 3. Vérifiez que les dépendances sont installées pour ce Python
-4. Lancez les commandes en tant qu'administrateur
+4. Vérifiez que le port `8000` n'est pas déjà occupé
 
 ## Prochaines étapes
 
@@ -405,7 +337,7 @@ Une fois Jarvis opérationnel :
 En cas de problème persistant :
 
 1. Consultez le fichier `README.md` pour la documentation complète
-2. Vérifiez les logs dans `service/` si le service Windows est utilisé
+2. Vérifiez l'historique de `JarvisAgent` dans le Planificateur de tâches si la tâche est utilisée
 3. Testez chaque composant isolément (console, API, web, Tkinter)
 4. Vérifiez les variables d'environnement avec :
 
@@ -421,6 +353,6 @@ Get-ChildItem Env:
 4. Configurer un provider LLM (Groq recommandé)
 5. Lancer : `python jarvis.py` ou `python -m uvicorn api.server:app`
 6. Tester l'interface web : http://localhost:8000/web
-7. (Optionnel) Installer le service Windows pour démarrage automatique
+7. (Optionnel) Configurer la tâche `JarvisAgent` pour démarrage automatique
 
 Bienvenue dans Jarvis, votre assistant IA local !

@@ -2,7 +2,7 @@ $JarvisDir = [System.Environment]::GetEnvironmentVariable("JARVIS_INSTALL_DIR", 
 if (-not $JarvisDir) {
     $JarvisDir = Join-Path $env:USERPROFILE "Jarvis"
 }
-$ServiceName = "JarvisService"
+$AgentTaskName = "JarvisAgent"
 $LogPath = Join-Path $JarvisDir "bootstrap\update.log"
 
 function Write-Log {
@@ -39,17 +39,17 @@ try {
         if ($currentHash -eq $newHash) {
             Write-Log "OK — no changes detected"
         } else {
-            Write-Log "Changes detected — restarting $ServiceName"
-            
-            # Stop and restart service
-            Stop-Service -Name $ServiceName -Force
-            Start-Sleep -Seconds 5
-            Start-Service -Name $ServiceName
-            
-            Write-Log "Update applied — commit $currentHash → $newHash, service restarted"
+            Write-Log "Changes detected — restarting $AgentTaskName"
+            $agentTask = Get-ScheduledTask -TaskName $AgentTaskName -ErrorAction Stop
+            if ($agentTask.State -eq "Running") {
+                Stop-ScheduledTask -TaskName $AgentTaskName
+                Start-Sleep -Seconds 2
+            }
+            Start-ScheduledTask -TaskName $AgentTaskName
+            Write-Log "Update applied — commit $currentHash → $newHash, task restarted"
         }
     } else {
-        Write-Log "Git pull failed — service unchanged, reason: git error" "ERROR"
+        Write-Log "Git pull failed — task unchanged, reason: git error" "ERROR"
     }
     
     Pop-Location

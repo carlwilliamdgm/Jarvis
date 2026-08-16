@@ -23,7 +23,7 @@ Pour une installation et configuration pas à pas, consultez le guide [PREMIER_L
 - Streaming SSE pour afficher les événements intermédiaires en direct.
 - Interface Tkinter locale dans `gui/app.py`.
 - Interface web multi-device servie par FastAPI dans `gui/web/index.html`.
-- Service Windows pywin32 capable de lancer automatiquement `uvicorn api.server:app`.
+- Tâche planifiée `JarvisAgent` capable de lancer automatiquement `uvicorn api.server:app` dans la session utilisateur.
 - Mémoire, rappels, automatisations, surveillance de dossiers, stockage, commandes shell/PowerShell et commandes personnalisées.
 
 ### Surfaces utilisateur
@@ -34,7 +34,7 @@ Pour une installation et configuration pas à pas, consultez le guide [PREMIER_L
 | API FastAPI | `api/server.py` | Intégration locale, web, multi-device |
 | Interface Tkinter | `gui/app.py` | Client desktop local consommant le SSE |
 | Interface web | `gui/web/index.html` | Client navigateur servi sur `/web` |
-| Service Windows | `service/windows_service.py` | Démarrage automatique de l'API |
+| Tâche planifiée Windows | `JarvisAgent` | Démarrage automatique de l'API dans la session utilisateur |
 
 ## Prérequis
 
@@ -52,7 +52,7 @@ Le fichier `requirements.txt` contient les dépendances historiques du projet. S
 - `fastapi`
 - `uvicorn`
 - `requests`
-- `pywin32` pour le service Windows
+- `pywin32` pour le service Windows historique (désactivé par l'installation)
 - `psutil`
 - `rich`
 - `ollama`
@@ -190,92 +190,62 @@ http://192.168.x.x:8000/web
 
 Le navigateur utilise `EventSource` natif, sans framework ni dépendance externe.
 
-### 5. Service Windows
+### 5. Tâche planifiée Windows `JarvisAgent`
 
-Le service Windows lance automatiquement :
+La tâche `JarvisAgent` lance automatiquement :
 
 ```text
 uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-Fichier :
-
-```text
-service/windows_service.py
-```
-
 Caractéristiques :
 
-- Utilise le chemin Python détecté lors de l'installation (variable d'environnement `JARVIS_PYTHON_EXE`).
-- Ajoute les packages utilisateur détectés au path (variable d'environnement `JARVIS_USER_SITE_PACKAGES`).
-- Lance uniquement `uvicorn api.server:app`.
-- Ne charge pas `jarvis.py` comme agent console.
-- Écrit les logs dans :
-  - `service/jarvis_service.log`
-  - `service/uvicorn.log`
+- Elle s'exécute dans la session de l'utilisateur Windows connecté, avec les mêmes permissions que le CLI, l'interface web et Tkinter.
+- Elle lance uniquement `uvicorn api.server:app` ; `jarvis.cmd` reste le lancement direct du CLI.
+- Le service historique `JarvisService`, exécuté sous `LocalSystem`, est désactivé par `bootstrap/install.ps1` s'il existe déjà.
 
 Installation :
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python service\windows_service.py install
+PowerShell -ExecutionPolicy Bypass -File bootstrap\install.ps1 -GitHubPAT <votre_pat>
 ```
 
 Démarrage :
 
 ```powershell
-net start JarvisService
+Start-ScheduledTask -TaskName JarvisAgent
 ```
 
 Arrêt :
 
 ```powershell
-net stop JarvisService
+Stop-ScheduledTask -TaskName JarvisAgent
 ```
 
 Suppression :
 
 ```powershell
-cd %USERPROFILE%\Jarvis
-python service\windows_service.py remove
+Unregister-ScheduledTask -TaskName JarvisAgent -Confirm:$false
 ```
 
 ### Configuration du démarrage automatique
 
-Par défaut, le service est configuré en démarrage manuel. Pour le démarrer automatiquement au démarrage de Windows :
+`bootstrap/install.ps1` configure `JarvisAgent` pour démarrer à l'ouverture de session de l'utilisateur installé. Aucune élévation ni exécution sous `LocalSystem` n'est utilisée au lancement.
+
+### Vérification de l'état de la tâche
+
+Vérifier la tâche :
 
 ```powershell
-sc config JarvisService start= auto
-```
-
-Options de démarrage disponibles :
-- `auto` : Démarrage automatique au démarrage de Windows
-- `demand` : Démarrage manuel (par défaut)
-- `delayed-auto` : Démarrage automatique différé (recommandé pour éviter de surcharger le démarrage)
-
-### Vérification de l'état du service
-
-Vérifier si le service est en cours d'exécution :
-
-```powershell
-sc query JarvisService
+Get-ScheduledTask -TaskName JarvisAgent | Select-Object TaskName, State
 ```
 
 Attendu :
 ```
-STATE              : 4 RUNNING
-```
-
-Vérifier les logs du service :
-
-```powershell
-type service\jarvis_service.log
-```
-
-Vérifier les logs uvicorn :
-
-```powershell
-type service\uvicorn.log
+TaskName    State
+--------    -----
+JarvisAgent Running
 ```
 
 Tester l'API :
@@ -289,11 +259,10 @@ Attendu : JSON avec CPU, RAM et active status.
 Redémarrage :
 
 ```powershell
-net stop JarvisService
-net start JarvisService
+Stop-ScheduledTask -TaskName JarvisAgent
+Start-ScheduledTask -TaskName JarvisAgent
 ```
 
-Ces commandes nécessitent généralement un PowerShell administrateur.
 
 ## API FastAPI
 
@@ -364,7 +333,7 @@ data: {"type":"done"}
 | Type | Données | Usage |
 | --- | --- | --- |
 | `thinking` | `{"message": "Jarvis réfléchit..."}` | Statut de réflexion |
-| `provider` | `{"provider": "Groq", "model": "llama-3.3-70b-versatile"}` | Provider LLM utilisé |
+| `provider` | `{"provider": "Groq", "model": "openai/gpt-oss-120b"}` | Provider LLM utilisé |
 | `tool_started` | `{"outil": "...", "args": {}, "mode": "normal|stark"}` | Début d'une action réelle |
 | `tool_completed` | `{"outil": "...", "resultat": "...", "mode": "normal|stark"}` | Action terminée |
 | `tool_failed` | `{"outil": "...", "resultat": "...", "mode": "normal|stark"}` | Action en erreur ou refusée |
@@ -483,8 +452,8 @@ Réponse immédiate :
 
 La destruction s'effectue en arrière-plan avec un délai de 2 secondes après la réponse HTTP. La séquence d'effacement est :
 
-1. Arrêt et suppression du service Windows JarvisService (sc.exe)
-2. Suppression de la tâche planifiée JarvisAutoUpdate (PowerShell)
+1. Arrêt et suppression du service Windows historique JarvisService, s'il existe (sc.exe)
+2. Suppression des tâches planifiées JarvisAgent et JarvisAutoUpdate (PowerShell)
 3. Suppression des variables d'environnement Machine-level :
    - GIT_PAT_JARVIS
    - JARVIS_INSTALL_DIR
@@ -690,7 +659,7 @@ capabilities/
 - `capabilities/` : exécution déterministe.
 - `api/server.py` : transport HTTP/SSE et fichiers statiques.
 - `gui/app.py` et `gui/web/index.html` : présentation.
-- `service/windows_service.py` : intégration Windows.
+- `JarvisAgent` : tâche planifiée Windows exécutée dans la session utilisateur.
 
 ## Outils principaux
 
@@ -735,12 +704,7 @@ Stocke les instances Stark actives pour éviter les collisions et détecter les 
 
 ### Logs
 
-Service Windows :
-
-```text
-service/jarvis_service.log
-service/uvicorn.log
-```
+Pour le démarrage automatique, consulter l'historique de la tâche `JarvisAgent` dans le Planificateur de tâches Windows. Le service Windows historique ne produit des logs dans `service/` que s'il a été activé manuellement.
 
 ## Sécurité
 
@@ -800,13 +764,13 @@ python -c "import tools; print(tools.OUTILS['lire_capacites']())"
 
 ### `/jarvis/stream` retourne `404 Not Found`
 
-Cause probable : le service Windows ou le serveur manuel tourne encore avec une ancienne version du code.
+Cause probable : la tâche `JarvisAgent` ou le serveur manuel tourne encore avec une ancienne version du code.
 
 Solution :
 
 ```powershell
-net stop JarvisService
-net start JarvisService
+Stop-ScheduledTask -TaskName JarvisAgent
+Start-ScheduledTask -TaskName JarvisAgent
 ```
 
 Ou arrêter puis relancer le serveur manuel `uvicorn`.
@@ -843,21 +807,14 @@ Si un provider distant est configuré, vérifier la présence de la variable cor
 
 Consulter `GET /jarvis/status` pour la charge CPU, l'usage mémoire et l'état de l'API. Maintenir une marge d'espace disque et de mémoire avant d'exécuter des tâches autonomes ou intensives.
 
-### Le service Windows refuse de démarrer
-
-Consulter :
-
-```text
-service/jarvis_service.log
-service/uvicorn.log
-```
+### La tâche `JarvisAgent` refuse de démarrer
 
 Vérifier :
 
-- Python est installé et détecté par le script d'installation;
-- `pywin32`, `fastapi`, `uvicorn` sont installés pour ce Python;
-- le port `8000` n'est pas déjà occupé;
-- les commandes sont lancées en administrateur.
+- l'action avec `Get-ScheduledTask -TaskName JarvisAgent | Select-Object -ExpandProperty Actions`;
+- que Python, `fastapi` et `uvicorn` sont installés pour le Python configuré;
+- que le port `8000` n'est pas déjà occupé;
+- l'historique de la tâche dans le Planificateur de tâches Windows.
 
 ### Jarvis ne sait pas faire une action
 

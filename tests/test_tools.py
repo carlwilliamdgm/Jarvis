@@ -227,7 +227,7 @@ class ToolSmokeTests(unittest.TestCase):
         providers = [
             {"nom": "OpenRouter", "modeles": ["openrouter/free"], "fonction": object(), "niveau": "simple"},
             {"nom": "Together", "modeles": ["meta-llama/Llama-3.1-8B-Instruct-Turbo"], "fonction": object(), "niveau": "simple"},
-            {"nom": "Groq", "modeles": ["llama-3.3-70b-versatile"], "fonction": object(), "niveau": "complexe"},
+            {"nom": "Groq", "modeles": ["openai/gpt-oss-120b"], "fonction": object(), "niveau": "complexe"},
         ]
 
         ordre = jarvis.ordonner_providers_cloud(
@@ -247,7 +247,7 @@ class ToolSmokeTests(unittest.TestCase):
     def test_cloud_provider_router_prefers_capable_provider_for_complex_tasks(self):
         providers = [
             {"nom": "OpenRouter", "modeles": ["openrouter/free"], "fonction": object(), "niveau": "simple"},
-            {"nom": "Groq", "modeles": ["llama-3.3-70b-versatile"], "fonction": object(), "niveau": "complexe"},
+            {"nom": "Groq", "modeles": ["openai/gpt-oss-120b"], "fonction": object(), "niveau": "complexe"},
             {"nom": "Together", "modeles": ["meta-llama/Llama-3.1-8B-Instruct-Turbo"], "fonction": object(), "niveau": "simple"},
         ]
 

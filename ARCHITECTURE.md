@@ -10,7 +10,7 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 - `api/server.py` : point d'entree serveur FastAPI local, API REST, SSE et fichiers web statiques.
 - `gui/app.py` : interface graphique Tkinter, cliente du flux SSE.
 - `gui/web/index.html` : interface web autonome servie par `/web`.
-- `service/windows_service.py` : integration service Windows qui lance `uvicorn api.server:app`.
+- `JarvisAgent` : tâche planifiée Windows qui lance `uvicorn api.server:app` dans la session utilisateur.
 
 ## Flux principal
 
@@ -140,9 +140,9 @@ Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette q
 - gestion multi-instance avec localStorage et sélecteur dans le header;
 - découverte réseau Tailscale intégrée via `/jarvis/discover`.
 
-### Service Windows
+### Démarrage Windows
 
-`service/windows_service.py` declare `JarvisService`.
+La tâche planifiée `JarvisAgent` est le mécanisme de démarrage de référence.
 
 Il lance :
 
@@ -150,17 +150,7 @@ Il lance :
 python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 ```
 
-Le service utilise les chemins détectés lors de l'installation :
-
-- Chemin Python : variable d'environnement `JARVIS_PYTHON_EXE`
-- Packages utilisateur : variable d'environnement `JARVIS_USER_SITE_PACKAGES`
-
-Ces variables sont définies automatiquement par le script d'installation `bootstrap/install.ps1`.
-
-Logs :
-
-- `service/jarvis_service.log` pour le cycle de vie du service;
-- `service/uvicorn.log` pour stdout/stderr du serveur.
+Elle s'exécute sous le compte Windows connecté : CLI, web et Tkinter disposent donc du même profil et des mêmes permissions. `bootstrap/install.ps1` crée ou met à jour cette tâche et désactive le service historique `JarvisService` lorsqu'il existe.
 
 ## Securite et permissions
 

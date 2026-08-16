@@ -21,7 +21,7 @@ LOGGER = logging.getLogger("jarvis.autodestruct")
 
 JARVIS_DIR = Path(os.environ.get("JARVIS_INSTALL_DIR", Path(__file__).resolve().parent.parent))
 SERVICE_NAME = "JarvisService"
-SCHEDULED_TASK_NAME = "JarvisAutoUpdate"
+SCHEDULED_TASK_NAMES = ("JarvisAgent", "JarvisAutoUpdate")
 OLLAMA_MODEL = "qwen2.5:7b"
 
 MACHINE_ENV_VARS_TO_DELETE = [
@@ -55,7 +55,7 @@ def perform_autodestruction() -> None:
     """Perform local Jarvis teardown, logging each step and never short-circuiting."""
     steps = [
         ("uninstall_windows_service", _uninstall_windows_service),
-        ("delete_scheduled_task", _delete_scheduled_task),
+        ("delete_scheduled_tasks", _delete_scheduled_tasks),
         ("delete_machine_environment", _delete_machine_environment),
         ("remove_ollama_model_if_unused", _remove_ollama_model_if_unused),
         ("delete_jarvis_folder", _delete_jarvis_folder),
@@ -92,8 +92,9 @@ def _uninstall_windows_service() -> None:
     _run_command(["sc", "delete", SERVICE_NAME])
 
 
-def _delete_scheduled_task() -> None:
-    _run_command(["schtasks", "/Delete", "/TN", SCHEDULED_TASK_NAME, "/F"])
+def _delete_scheduled_tasks() -> None:
+    for task_name in SCHEDULED_TASK_NAMES:
+        _run_command(["schtasks", "/Delete", "/TN", task_name, "/F"])
 
 
 def _delete_machine_environment() -> None:

@@ -90,7 +90,7 @@ INTERACTION_LOCK = threading.Lock()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_GROQ = ["llama-3.3-70b-versatile"]
+MODELES_GROQ = ["openai/gpt-oss-120b"]
 MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20

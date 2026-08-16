@@ -20,7 +20,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 $LogPath = Join-Path $PSScriptRoot "bootstrap_install.log"
 $JarvisDir = if ([string]::IsNullOrWhiteSpace($InstallDir)) { Join-Path $env:USERPROFILE "Jarvis" } else { $InstallDir }
 $serviceName = "JarvisService"
-$taskName = "JarvisAutoUpdate"
+$agentTaskName = "JarvisAgent"
 
 function Write-Log {
     param([string]$Message, [string]$Level = "INFO")
@@ -394,82 +394,51 @@ if ($ollamaInstalled) {
     }
 }
 
-# Step 6: Register Windows service
-Write-Log "=== Step 6: Register Windows Service ==="
-$serviceScript = Join-Path $JarvisDir "service\windows_service.py"
+# Step 6: Register the interactive scheduled task
+Write-Log "=== Step 6: Register JarvisAgent Scheduled Task ==="
 
-# $pythonPath is now always a resolved .exe path (see Step 1), so no
-# separate args string is needed to work around a multi-token invocation.
-$pythonExeForService = $pythonPath
-$pythonArgsForService = ""
-$userSitePackages = ""
-try {
-    $userSitePackages = (& $pythonPath -m site --user-site 2>&1).Trim()
-} catch {
-    Write-Log "Could not detect Python user site-packages: $_" "WARN"
-}
-
+# The update script also needs the installation directory when a custom
+# destination was selected.
 Set-MachineEnvironmentVariableChecked -Name "JARVIS_INSTALL_DIR" -Value $JarvisDir
-Set-MachineEnvironmentVariableChecked -Name "JARVIS_PYTHON_EXE" -Value $pythonExeForService
-Set-MachineEnvironmentVariableChecked -Name "JARVIS_PYTHON_ARGS" -Value $pythonArgsForService
-if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
-    Set-MachineEnvironmentVariableChecked -Name "JARVIS_USER_SITE_PACKAGES" -Value $userSitePackages
-}
 $env:JARVIS_INSTALL_DIR = $JarvisDir
-$env:JARVIS_PYTHON_EXE = $pythonExeForService
-$env:JARVIS_PYTHON_ARGS = $pythonArgsForService
-if (-not [string]::IsNullOrWhiteSpace($userSitePackages)) {
-    $env:JARVIS_USER_SITE_PACKAGES = $userSitePackages
+
+# Jarvis must run in the interactive user's session: CLI, Web and Tkinter then
+# share the same permissions, profile and hardware access. The legacy service
+# runs as LocalSystem and is intentionally disabled when present.
+$legacyService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+if ($legacyService) {
+    if ($legacyService.Status -eq "Running") {
+        Stop-Service -Name $serviceName -Force
+        Write-Log "Stopped legacy service $serviceName"
+    }
+    Set-Service -Name $serviceName -StartupType Disabled
+    Write-Log "Disabled legacy service $serviceName"
 }
 
-if (Test-Path $serviceScript) {
-    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+$taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$taskAction = New-ScheduledTaskAction `
+    -Execute $pythonPath `
+    -Argument "-m uvicorn api.server:app --host 0.0.0.0 --port 8000" `
+    -WorkingDirectory $JarvisDir
+$taskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser
+$taskPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
+$taskSettings = New-ScheduledTaskSettingsSet `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable `
+    -MultipleInstances IgnoreNew `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
 
-    if ($service) {
-        Write-Log "Service $serviceName already exists"
-        if ($service.Status -eq "Running") {
-            Write-Log "Service is running"
-        } else {
-            Write-Log "Starting service..."
-            Start-Service -Name $serviceName
-            Write-Log "Service started"
-        }
-    } else {
-        Write-Log "Registering service $serviceName"
-        try {
-            Push-Location $JarvisDir
-            & $pythonPath $serviceScript install
-            if ($LASTEXITCODE -eq 0) {
-                Write-Log "Service registered successfully"
-
-                & sc.exe config $serviceName start= auto
-                Write-Log "Service configured for automatic startup"
-
-                Write-Log "Starting service..."
-                Start-Service -Name $serviceName
-                Write-Log "Service started"
-            } else {
-                Write-Log "Service registration failed with exit code $LASTEXITCODE" "ERROR"
-                throw "Failed to register service"
-            }
-            Pop-Location
-        } catch {
-            Write-Log "Failed to register service: $_" "ERROR"
-            Pop-Location
-            throw
-        }
-    }
-
-    $service = Get-Service -Name $serviceName
-    if ($service.Status -eq "Running") {
-        Write-Log "Service $serviceName is running"
-    } else {
-        Write-Log "Service $serviceName is not running (status: $($service.Status))" "WARN"
-    }
-} else {
-    Write-Log "Service script not found at $serviceScript" "ERROR"
-    throw "Service script not found"
-}
+Register-ScheduledTask `
+    -TaskName $agentTaskName `
+    -Action $taskAction `
+    -Trigger $taskTrigger `
+    -Principal $taskPrincipal `
+    -Settings $taskSettings `
+    -Description "Lance l'API Jarvis dans la session Windows de l'utilisateur." `
+    -Force | Out-Null
+Start-ScheduledTask -TaskName $agentTaskName
+Write-Log "Scheduled task $agentTaskName registered and started for $taskUser"
 
 # Step 7: Store PAT for future updates
 # No cmdkey / Credential Manager: the PAT lives only in the Machine-level
@@ -483,7 +452,7 @@ Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (Machine-level)"
 # Step 8: Display summary
 Write-Log "=== Installation Summary ==="
 
-$serviceRunning = ((Get-Service -Name $serviceName -ErrorAction SilentlyContinue) -ne $null)
+$agentTaskRegistered = ((Get-ScheduledTask -TaskName $agentTaskName -ErrorAction SilentlyContinue) -ne $null)
 
 $status = [ordered]@{
     "Python 3.12"       = $pythonInstalled
@@ -491,7 +460,7 @@ $status = [ordered]@{
     "Dependencies"      = $true
     "API Keys"          = ($groqKeys.Count -gt 0)
     "Ollama"            = $ollamaInstalled
-    "Windows Service"   = $serviceRunning
+    "Tâche JarvisAgent" = $agentTaskRegistered
     "PAT Storage"       = $true
 }
 
