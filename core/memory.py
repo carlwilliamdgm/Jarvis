@@ -95,6 +95,9 @@ def normaliser_memoire(data: dict) -> dict:
     data.setdefault("derniere_sync_emails", "")
     data.setdefault("apprentissage_succes", [])
     data.setdefault("apprentissages", [])
+    data.setdefault("personnalite", {})
+    data.setdefault("ajustements_personnalite", [])
+    data.setdefault("preferences_communication", {})
     contexte = data.setdefault("contexte", schema_contexte())
     for categorie in CATEGORIES_CONTEXTE:
         contexte.setdefault(categorie, {})

@@ -24,6 +24,7 @@ from core.memory import charger_memoire, normaliser_memoire
 from core.prompt import construire_prompt_action
 from core.tool_signatures import documenter_signatures_outils
 from core.decision_analyzer import memoriser_succes, enregistrer_apprentissage
+from core.personality import adapter_ton_contextuel, generer_prompt_personnalite
 from tools import OUTILS
 
 OS = platform.system()
@@ -60,7 +61,7 @@ def interpreter_objectif(
     """
     try:
         # Construire le prompt système pour l'interprétation
-        prompt_system = _construire_prompt_interpretation(memoire, mode_stark=mode_stark)
+        prompt_system = _construire_prompt_interpretation(memoire, mode_stark=mode_stark, message_actuel=message)
 
         # Préparer les messages pour le LLM
         messages = [{"role": "system", "content": prompt_system}]
@@ -188,7 +189,7 @@ def _reparer_decision_action(
     )
 
 
-def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False) -> str:
+def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False, message_actuel: str = "") -> str:
     """Construit le prompt système pour l'interprétation d'objectif."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
@@ -220,13 +221,23 @@ Règles spécifiques au Mode Stark :
 - Si l'action précédente a déjà répondu au micro-objectif, appelle terminer_tache directement ; ne la réexécute pas pour vérification.
 """
 
+    # Adapter le ton en fonction du contexte
+    ton_contextuel = adapter_ton_contextuel(message_actuel) if message_actuel else "ton naturel et équilibré"
+    
+    # Obtenir les instructions de personnalité
+    instructions_personnalite = generer_prompt_personnalite()
+
     return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
 Tu es un assistant local déployé pour l'utilisateur courant.
 Tu n'es PAS dans une simulation. Tu es un agent réel qui agit sur une vraie machine. Chaque outil que tu invoques produit un effet réel et immédiat.
 
-Personnalité : intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié. Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.
+Personnalité de base : intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié. Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.
 Ta règle numéro un est d'être totalement franc et honnête peu importe la situation. Tu es honnête sur tes limites, mais toujours prêt à aider — si tu ne sais pas faire quelque chose ou si aucun outil ne correspond, dis-le clairement dans le champ "reponse" au lieu de tenter une réponse vague.
 Ton inventaire de capacités est généré en temps réel depuis le registre d'outils actif. Si l'utilisateur demande ce que tu peux faire maintenant, appelle lire_capacites puis résume honnêtement les capacités disponibles.
+
+{instructions_personnalite}
+
+Adaptation contextuelle pour cette interaction : {ton_contextuel}
 
 Contexte système :
 - OS : {os_detecte}
