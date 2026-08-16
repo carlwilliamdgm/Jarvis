@@ -56,6 +56,9 @@ from core.memory import (
 )
 from core.pattern_analyzer import obtenir_patterns_actuels, detecter_automatisations_potentielles
 from core.contextual_suggestions import generer_suggestions_contextuelles, formater_suggestions
+from core.system_monitor import generer_rapport_systeme, obtenir_tendances_systeme
+from capabilities.calendar_integration import obtenir_evenements_aujourdhui, verifier_rappels_calendrier, formater_evenements
+from capabilities.email_integration import obtenir_resume_emails, detecter_emails_urgents
 from core.error_classification import resultat_erreur
 from core.confirmations import request_streaming_confirmation
 from core.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
@@ -346,6 +349,106 @@ def detecter_automatisations() -> str:
     return "\n".join(lignes)
 
 
+def rapport_systeme() -> str:
+    """
+    Génère un rapport complet de l'état système.
+    
+    Cette fonction surveille CPU, mémoire, disque, réseau et détecte les anomalies.
+    """
+    return generer_rapport_systeme()
+
+
+def tendances_systeme(heures: int = 24) -> str:
+    """
+    Analyse les tendances système sur une période donnée.
+    
+    Args:
+        heures: Nombre d'heures à analyser
+        
+    Returns:
+        Tendances détectées (CPU, mémoire, disque)
+    """
+    tendances = obtenir_tendances_systeme(heures)
+    
+    if "message" in tendances:
+        return tendances["message"]
+    
+    lignes = ["=== TENDANCES SYSTÈME ==="]
+    lignes.append(f"Période analysée : {tendances['periode_analysee']}")
+    lignes.append(f"Données analysées : {tendances['nombre_donnees']} points")
+    lignes.append(f"\nCPU moyen : {tendances['cpu_moyen']}%")
+    lignes.append(f"Tendance CPU : {tendances['cpu_tendance']}")
+    lignes.append(f"\nMémoire moyenne : {tendances['memoire_moyenne']}%")
+    lignes.append(f"\nDisque moyen : {tendances['disque_moyen']}%")
+    lignes.append(f"\nAnalyse effectuée : {tendances['timestamp_analyse']}")
+    
+    return "\n".join(lignes)
+
+
+def evenements_aujourdhui() -> str:
+    """
+    Obtient les événements calendrier pour aujourd'hui.
+    
+    Returns:
+        Liste des événements du jour
+    """
+    evenements = obtenir_evenements_aujourdhui()
+    return formater_evenements(evenements)
+
+
+def rappels_calendrier() -> str:
+    """
+    Vérifie les rappels de calendrier imminents.
+    
+    Returns:
+        Liste des événements avec rappels dans l'heure suivante
+    """
+    rappels = verifier_rappels_calendrier()
+    
+    if not rappels:
+        return "Aucun rappel calendrier dans l'heure suivante."
+    
+    lignes = ["=== RAPPELS CALENDRIER ==="]
+    for rappel in rappels:
+        lignes.append(f"\n📅 {rappel.get('titre', 'Sans titre')}")
+        lignes.append(f"   Dans {rappel.get('minutes_restant', 0)} minutes")
+        if rappel.get("lieu"):
+            lignes.append(f"   📍 {rappel['lieu']}")
+    
+    return "\n".join(lignes)
+
+
+def resume_emails() -> str:
+    """
+    Obtient un résumé de la situation email.
+    
+    Returns:
+        Résumé des emails non lus, urgents et patterns
+    """
+    return obtenir_resume_emails()
+
+
+def emails_urgents() -> str:
+    """
+    Détecte et affiche les emails urgents.
+    
+    Returns:
+        Liste des emails marqués comme urgents
+    """
+    urgents = detecter_emails_urgents()
+    
+    if not urgents or ("erreur" in urgents[0]):
+        return "Aucun email urgent détecté ou erreur d'accès."
+    
+    lignes = [f"=== EMAILS URGENTS ({len(urgents)}) ==="]
+    for email in urgents:
+        lignes.append(f"\n🔴 {email.get('sujet', 'Sans sujet')}")
+        lignes.append(f"   De : {email.get('nom_expediteur', 'Inconnu')}")
+        lignes.append(f"   Raison : {email.get('raison', 'importance')}")
+    
+    return "\n".join(lignes)
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -394,4 +497,10 @@ OUTILS = {
     "suggerer_actions": suggerer_actions,
     "analyser_patterns": analyser_patterns,
     "detecter_automatisations": detecter_automatisations,
+    "rapport_systeme": rapport_systeme,
+    "tendances_systeme": tendances_systeme,
+    "evenements_aujourdhui": evenements_aujourdhui,
+    "rappels_calendrier": rappels_calendrier,
+    "resume_emails": resume_emails,
+    "emails_urgents": emails_urgents,
 }
