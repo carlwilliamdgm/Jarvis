@@ -58,6 +58,7 @@ from core.pattern_analyzer import obtenir_patterns_actuels, detecter_automatisat
 from core.contextual_suggestions import generer_suggestions_contextuelles, formater_suggestions
 from core.system_monitor import generer_rapport_systeme, obtenir_tendances_systeme
 from core.decision_analyzer import generer_rapport_performance, obtenir_insights_apprentissage
+from core.semantic_search import analyser_insights, enrichir_memoire_avec_metadonnees, rechercher_semantique, formater_resultats_recherche
 from capabilities.calendar_integration import obtenir_evenements_aujourdhui, verifier_rappels_calendrier, formater_evenements
 from capabilities.email_integration import obtenir_resume_emails, detecter_emails_urgents
 from core.error_classification import resultat_erreur
@@ -510,6 +511,40 @@ def generer_rapport_conscience() -> str:
     return "\n".join(lignes)
 
 
+def analyser_insights() -> str:
+    """
+    Analyse et affiche les insights profonds basés sur la recherche sémantique.
+    
+    Returns:
+        Insights sur les connexions contextuelles et patterns profonds
+    """
+    return analyser_insights()
+
+
+def enrichir_memoire() -> str:
+    """
+    Enrichit la mémoire avec des métadonnées temporelles et contextuelles.
+    
+    Returns:
+        Résultat de l'enrichissement de la mémoire
+    """
+    return enrichir_memoire_avec_metadonnees()
+
+
+def rechercher(requete: str) -> str:
+    """
+    Effectue une recherche sémantique dans les interactions passées.
+    
+    Args:
+        requete: La requête de recherche
+        
+    Returns:
+        Résultats de la recherche triés par pertinence
+    """
+    resultats = rechercher_semantique(requete)
+    return formater_resultats_recherche(resultats)
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -567,4 +602,7 @@ OUTILS = {
     "rapport_performance": rapport_performance,
     "insights_apprentissage": insights_apprentissage,
     "generer_rapport_conscience": generer_rapport_conscience,
+    "analyser_insights": analyser_insights,
+    "enrichir_memoire": enrichir_memoire,
+    "rechercher": rechercher,
 }
