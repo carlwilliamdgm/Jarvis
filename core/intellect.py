@@ -23,6 +23,7 @@ from groq import Groq as GroqClient
 from core.memory import charger_memoire, normaliser_memoire
 from core.prompt import construire_prompt_action
 from core.tool_signatures import documenter_signatures_outils
+from core.decision_analyzer import memoriser_succes, enregistrer_apprentissage
 from tools import OUTILS
 
 OS = platform.system()
@@ -110,9 +111,27 @@ def interpreter_objectif(
         if not resultat["reponse"] or not resultat["reponse"].strip():
             resultat["reponse"] = "Action effectuée, Sir."
 
+        # Enregistrer les décisions réussies pour l'apprentissage
+        if resultat.get("actions") and resultat.get("type") in {"action", "mixte"}:
+            for action in resultat["actions"]:
+                outil = action.get("outil")
+                args = action.get("args", {})
+                if outil and outil in OUTILS:
+                    try:
+                        memoriser_succes(outil, args, message)
+                    except Exception:
+                        # Ne pas bloquer si l'apprentissage échoue
+                        pass
+
         return resultat
 
     except Exception as e:
+        # Enregistrer l'échec pour apprentissage
+        try:
+            enregistrer_apprentissage("echec", f"Erreur lors du traitement: {str(e)}", message)
+        except Exception:
+            pass
+            
         # Fallback en cas d'erreur critique
         return {
             "objectif": "erreur",

@@ -57,6 +57,7 @@ from core.memory import (
 from core.pattern_analyzer import obtenir_patterns_actuels, detecter_automatisations_potentielles
 from core.contextual_suggestions import generer_suggestions_contextuelles, formater_suggestions
 from core.system_monitor import generer_rapport_systeme, obtenir_tendances_systeme
+from core.decision_analyzer import generer_rapport_performance, obtenir_insights_apprentissage
 from capabilities.calendar_integration import obtenir_evenements_aujourdhui, verifier_rappels_calendrier, formater_evenements
 from capabilities.email_integration import obtenir_resume_emails, detecter_emails_urgents
 from core.error_classification import resultat_erreur
@@ -449,6 +450,66 @@ def emails_urgents() -> str:
     return "\n".join(lignes)
 
 
+def rapport_performance() -> str:
+    """
+    Génère un rapport de performance de Jarvis.
+    
+    Returns:
+        Rapport détaillé des décisions, succès et patterns d'erreur
+    """
+    return generer_rapport_performance()
+
+
+def insights_apprentissage() -> str:
+    """
+    Obtient des insights basés sur les apprentissages enregistrés.
+    
+    Returns:
+        Insights sur l'évolution et l'apprentissage de Jarvis
+    """
+    return obtenir_insights_apprentissage()
+
+
+def generer_rapport_conscience() -> str:
+    """
+    Génère un rapport complet de conscience Jarvis.
+    
+    Returns:
+        Rapport synthétique incluant patterns, système, performance et apprentissage
+    """
+    lignes = ["=== RAPPORT CONSCIENCE JARVIS ==="]
+    lignes.append(f"Date : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # Patterns comportementaux
+    lignes.append("\n--- PATTERNS COMPORTEMENTAUX ---")
+    patterns = obtenir_patterns_actuels()
+    lignes.append(patterns)
+    
+    # État système
+    lignes.append("\n--- ÉTAT SYSTÈME ---")
+    systeme = generer_rapport_systeme()
+    lignes.append(systeme)
+    
+    # Performance
+    lignes.append("\n--- PERFORMANCE ---")
+    performance = generer_rapport_performance()
+    lignes.append(performance)
+    
+    # Apprentissage
+    lignes.append("\n--- APPRENTISSAGE ---")
+    apprentissage = obtenir_insights_apprentissage()
+    lignes.append(apprentissage)
+    
+    # Suggestions proactives
+    lignes.append("\n--- SUGGESTIONS PROACTIVES ---")
+    suggestions = suggerer_actions()
+    lignes.append(suggestions)
+    
+    lignes.append("\n=== FIN DU RAPPORT ===")
+    
+    return "\n".join(lignes)
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -503,4 +564,7 @@ OUTILS = {
     "rappels_calendrier": rappels_calendrier,
     "resume_emails": resume_emails,
     "emails_urgents": emails_urgents,
+    "rapport_performance": rapport_performance,
+    "insights_apprentissage": insights_apprentissage,
+    "generer_rapport_conscience": generer_rapport_conscience,
 }
