@@ -1,4 +1,5 @@
 import unittest
+import pytest
 
 import jarvis
 from core.error_classification import classifier_erreur_systeme, extraire_code_erreur, resultat_erreur
@@ -98,6 +99,7 @@ class AutodestructionCommandTests(unittest.TestCase):
         self.assertEqual("attente_declenchement", jarvis.etat_autodestruction.statut)
 
 
+@pytest.mark.slow
 class StarkExecutionTests(unittest.TestCase):
     def tearDown(self):
         STARK_ACTIF_PATH.write_text("[]", encoding="utf-8")

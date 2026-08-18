@@ -41,12 +41,7 @@ from core.stark_session import enregistrer_instance_stark, retirer_instance_star
 from core.autodestruct import schedule_autodestruction
 from tools import OUTILS, demander_confirmation
 
-try:
-    import psutil
-except ImportError:
-    import subprocess
-    subprocess.run(["pip", "install", "psutil", "-q"])
-    import psutil
+import psutil
 
 console = Console()
 

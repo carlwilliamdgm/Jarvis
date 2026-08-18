@@ -1,6 +1,7 @@
 import shutil
 import sys
 import unittest
+import pytest
 from pathlib import Path
 
 import tools
@@ -265,6 +266,7 @@ class ToolSmokeTests(unittest.TestCase):
     def test_task_completion_response_is_detected(self):
         self.assertTrue(jarvis.reponse_termine_tache('{"outil":"terminer_tache","args":{"resume":"ok"}}'))
 
+    @pytest.mark.slow
     def test_agentic_loop_executes_observes_and_continues(self):
         old_parler = jarvis.parler
         responses = [

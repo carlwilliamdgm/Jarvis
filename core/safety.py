@@ -148,26 +148,70 @@ class ZoneMapper:
         except Exception:
             return False
 
-    def _held_by_system_process(self, path: Path) -> bool:
+    def _check_held_by_system_process_isolated(self, target_path: Path, timeout: float = 5.0) -> bool:
+        """Check if path is held by a system process using isolated subprocess to avoid crashes."""
         if USE_FALLBACK or psutil is None:
             return False
+
+        # Script to run in subprocess: filter by username FIRST, then check open_files
+        script = """
+import sys
+import psutil
+from pathlib import Path
+
+target_path = Path(sys.argv[1]).resolve(strict=False)
+
+try:
+    # First pass: filter by username only (safe operation)
+    system_pids = []
+    for proc in psutil.process_iter(["username"]):
+        try:
+            username = (proc.info.get("username") or "").lower()
+            if username == "system" or username.endswith("\\\\system"):
+                system_pids.append(proc.pid)
+        except (OSError, psutil.Error):
+            continue
+
+    # Second pass: only check open_files for SYSTEM processes (risky operation)
+    for pid in system_pids:
+        try:
+            proc = psutil.Process(pid)
+            for opened in proc.open_files():
+                opened_path = Path(opened.path).resolve(strict=False)
+                if opened_path == target_path or opened_path.is_relative_to(target_path):
+                    print("1")
+                    sys.exit(0)
+        except (OSError, psutil.Error):
+            continue
+
+    print("0")
+    sys.exit(0)
+except Exception:
+    print("0")
+    sys.exit(1)
+"""
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-c", script, str(target_path)],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            # Non-zero return code indicates crash or error in subprocess
+            if result.returncode != 0:
+                return True  # Fail-safe: treat as protected
+            return result.stdout.strip() == "1"
+        except (subprocess.TimeoutExpired, OSError):
+            return True  # Fail-safe: treat as protected on timeout or OS error
+
+    def _held_by_system_process(self, path: Path) -> bool:
         try:
             target = path.resolve(strict=False)
         except OSError:
             return False
 
-        for proc in psutil.process_iter(("username", "open_files")):
-            try:
-                username = (proc.info.get("username") or "").lower()
-                if not (username == "system" or username.endswith("\\system")):
-                    continue
-                for opened in proc.info.get("open_files") or []:
-                    opened_path = Path(opened.path).resolve(strict=False)
-                    if opened_path == target or opened_path.is_relative_to(target):
-                        return True
-            except (OSError, psutil.Error):
-                continue
-        return False
+        return self._check_held_by_system_process_isolated(target)
 
     def est_protege(self, path: Path) -> bool:
         self._refresh_if_stale()

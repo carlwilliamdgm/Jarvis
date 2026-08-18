@@ -29,6 +29,7 @@ from jarvis import (
     executer_interaction_utilisateur,
     initialiser,
 )
+from core.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
 from core.prompt import construire_prompt_action
 from core.autodestruct import schedule_autodestruction
 from core.confirmations import (
@@ -113,6 +114,9 @@ async def startup_event():
         prompt = construire_prompt_action(memoire)
         historique = [{"role": "system", "content": prompt}]
         
+        # Démarrer l'overlay visuel vocal
+        demarrer_overlay_vocal()
+        
         print("Jarvis API server started successfully")
     except Exception as e:
         print(f"Error initializing agent: {e}")
@@ -124,6 +128,8 @@ async def shutdown_event():
     """Stop the API autonomous watch loop when the server shuts down."""
     if agent_stop_event is not None:
         agent_stop_event.set()
+    # Arrêter l'overlay visuel vocal
+    arreter_overlay_vocal()
 
 
 # Pydantic Models
