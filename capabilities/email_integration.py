@@ -236,7 +236,7 @@ def analyser_patterns_email(heures: int = 168) -> Dict[str, Any]:
         if expediteur:
             expediteurs[expediteur] = expediteurs.get(expediteur, 0) + 1
     
-    top_expediteurs = sorted(exppediteurs.items(), key=lambda x: -x[1])[:5]
+    top_expediteurs = sorted(expediteurs.items(), key=lambda x: -x[1])[:5]
     
     # Analyser les horaires de réception
     horaires = {}
@@ -326,10 +326,13 @@ def obtenir_resume_emails() -> str:
     
     lignes = ["=== RÉSUMÉ EMAILS ==="]
     
-    if non_lus and "erreur" not in non_lus[0]:
+    has_error_non_lus = non_lus and len(non_lus) > 0 and "erreur" in non_lus[0]
+    has_error_urgents = urgents and len(urgents) > 0 and "erreur" in urgents[0]
+    
+    if non_lus and not has_error_non_lus:
         lignes.append(f"\n📬 Non lus : {len(non_lus)}")
     
-    if urgents and "erreur" not in urgents[0]:
+    if urgents and not has_error_urgents:
         lignes.append(f"\n🔴 Urgents : {len(urgents)}")
         for email in urgents[:3]:
             lignes.append(f"   - {email.get('sujet', 'Sans sujet')}")

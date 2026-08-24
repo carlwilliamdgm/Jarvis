@@ -7,6 +7,12 @@ import json
 
 from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 
+# Outlook COM constants
+OL_FOLDER_CALENDAR = 9  # olFolderCalendar
+OL_APPOINTMENT_ITEM = 1  # olAppointmentItem
+APPOINTMENT_DURATION_MINUTES = 60
+REMINDER_MINUTES_BEFORE_START = 15
+
 
 def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
     """
@@ -16,7 +22,7 @@ def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
         jours: Nombre de jours à analyser
         
     Returns:
-        Liste des événements calendrier
+        Liste des événements calendrier (normalisée, même si Outlook indisponible)
     """
     try:
         # Utiliser PowerShell pour accéder au calendrier Windows
@@ -24,7 +30,7 @@ def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
         $ErrorActionPreference = SilentlyContinue
         try {{
             $outlook = New-Object -ComObject Outlook.Application
-            $calendar = $outlook.Session.GetDefaultFolder(6) # 6 = olFolderCalendar
+            $calendar = $outlook.Session.GetDefaultFolder({OL_FOLDER_CALENDAR})
             $items = $calendar.Items
             $items.Sort("[Start]")
             $items.IncludeRecurrences = $false
@@ -71,8 +77,9 @@ def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
         # Fallback : essayer via Windows Calendar API
         return _obtenir_evenements_windows_calendar_api(jours)
         
-    except Exception as e:
-        return [{"erreur": f"Impossible d'accéder au calendrier: {str(e)}"}]
+    except Exception:
+        # Return normalized empty list instead of error dict
+        return []
 
 
 def _normaliser_evenement(evenement: Dict) -> Dict[str, Any]:
@@ -178,8 +185,8 @@ def formater_evenements(evenements: List[Dict[str, Any]]) -> str:
     Returns:
         Description textuelle des événements
     """
-    if not evenements or ("erreur" in evenements[0]):
-        return "Aucun événement calendrier disponible ou erreur d'accès."
+    if not evenements:
+        return "Aucun événement calendrier disponible."
     
     lignes = ["=== ÉVÉNEMENTS CALENDRIER ==="]
     
@@ -216,21 +223,39 @@ def creer_rappel_calendrier(titre: str, date_heure: str, description: str = "") 
     Returns:
         Résultat de la création
     """
+    # Validate date_heure format strictly
     try:
+        datetime.strptime(date_heure, "%Y-%m-%d %H:%M")
+    except ValueError:
+        return "Erreur: Format de date invalide. Attendu: YYYY-MM-DD HH:MM"
+    
+    try:
+        # Use Base64 encoding to safely pass parameters without injection risk
+        import base64
+        
+        # Encode parameters as UTF-8 bytes, then Base64
+        titre_encoded = base64.b64encode(titre.encode('utf-8')).decode('ascii')
+        date_heure_encoded = base64.b64encode(date_heure.encode('utf-8')).decode('ascii')
+        description_encoded = base64.b64encode(description.encode('utf-8')).decode('ascii')
+        
         commande = f"""
         $ErrorActionPreference = SilentlyContinue
         try {{
             $outlook = New-Object -ComObject Outlook.Application
-            $appointment = $outlook.CreateItem(1) # 1 = olAppointmentItem
+            $appointment = $outlook.CreateItem({OL_APPOINTMENT_ITEM})
             
-            $appointment.Subject = "{titre}"
-            $appointment.Start = "{date_heure}"
-            $appointment.Duration = 60
-            $appointment.ReminderMinutesBeforeStart = 15
+            $titre = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{titre_encoded}'))
+            $dateHeure = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{date_heure_encoded}'))
+            $description = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{description_encoded}'))
+            
+            $appointment.Subject = $titre
+            $appointment.Start = $dateHeure
+            $appointment.Duration = {APPOINTMENT_DURATION_MINUTES}
+            $appointment.ReminderMinutesBeforeStart = {REMINDER_MINUTES_BEFORE_START}
             $appointment.ReminderSet = $true
             
-            if ("{description}") {{
-                $appointment.Body = "{description}"
+            if ($description) {{
+                $appointment.Body = $description
             }}
             
             $appointment.Save()
@@ -321,7 +346,7 @@ def synchroniser_calendrier_jarvis() -> str:
     """
     evenements = obtenir_evenements_calendrier(7)
     
-    if not evenements or ("erreur" in evenements[0]):
+    if not evenements:
         return "Aucun événement à synchroniser."
     
     data = normaliser_memoire(charger_memoire())
