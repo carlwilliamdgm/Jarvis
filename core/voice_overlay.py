@@ -7,6 +7,8 @@ Affiche un HUD discret en bas à droite de l'écran lors des états actifs.
 
 import json
 import logging
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -21,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 # Fichier d'état partagé pour la communication inter-process
 VOICE_STATE_FILE = Path(__file__).parent.parent / "voice_state.json"
+
+# Suivi global du processus overlay
+_overlay_process: Optional[subprocess.Popen] = None
+_overlay_lock = threading.Lock()
 
 
 class VoiceOverlay:
@@ -255,15 +261,87 @@ class VoiceOverlay:
 
 def lancer_process_overlay():
     """Lance l'overlay comme process séparé."""
-    import subprocess
-    import sys
+    global _overlay_process
     
-    script = __file__
-    subprocess.Popen(
-        [sys.executable, script, "--standalone"],
-        creationflags=subprocess.CREATE_NEW_CONSOLE,
-        cwd=str(Path(__file__).parent.parent)
-    )
+    with _overlay_lock:
+        # Vérifier si un overlay est déjà en cours
+        if _overlay_process is not None:
+            try:
+                # Vérifier si le processus est encore vivant
+                if _overlay_process.poll() is None:
+                    logger.debug("Overlay déjà en cours, pas de nouveau lancement")
+                    return
+                else:
+                    # Processus terminé, nettoyer la référence
+                    logger.debug("Processus overlay précédent terminé, nettoyage")
+                    _overlay_process = None
+            except Exception as e:
+                logger.debug(f"Erreur vérification processus overlay: {e}")
+                _overlay_process = None
+        
+        script = __file__
+        try:
+            # Lancer sans console visible (DETACHED_PROCESS sur Windows)
+            # Utiliser STARTUPINFO pour masquer la fenêtre console
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+            
+            _overlay_process = subprocess.Popen(
+                [sys.executable, script, "--standalone"],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                startupinfo=startupinfo,
+                cwd=str(Path(__file__).parent.parent)
+            )
+            logger.debug(f"Overlay lancé avec PID {_overlay_process.pid}")
+        except Exception as e:
+            logger.error(f"Erreur lors du lancement de l'overlay: {e}")
+            _overlay_process = None
+            raise
+
+
+def demarrer_overlay_vocal():
+    """Démarre l'overlay vocal - alias pour compatibilité."""
+    lancer_process_overlay()
+
+
+def arreter_overlay_vocal():
+    """Arrête l'overlay vocal de manière propre avec timeout."""
+    global _overlay_process
+    
+    with _overlay_lock:
+        if _overlay_process is None:
+            logger.debug("Aucun overlay à arrêter")
+            return
+        
+        try:
+            # Vérifier si le processus est encore vivant
+            if _overlay_process.poll() is not None:
+                logger.debug("Processus overlay déjà terminé")
+                _overlay_process = None
+                return
+            
+            logger.debug(f"Arrêt de l'overlay PID {_overlay_process.pid}")
+            
+            # Arrêt propre : terminer le processus
+            _overlay_process.terminate()
+            
+            # Attendre avec timeout (2 secondes)
+            try:
+                _overlay_process.wait(timeout=2.0)
+                logger.debug("Overlay arrêté proprement")
+            except subprocess.TimeoutExpired:
+                # Force kill si timeout
+                logger.debug("Timeout arrêt, force kill")
+                _overlay_process.kill()
+                _overlay_process.wait(timeout=1.0)
+                logger.debug("Overlay forcé terminé")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'arrêt de l'overlay: {e}")
+        finally:
+            # Nettoyer l'état interne
+            _overlay_process = None
 
 
 def main_standalone():
