@@ -53,22 +53,18 @@ def est_mode_stark_actif() -> bool:
 
 
 def _bootstrap_import(module_name: str, package_name: str | None = None):
+    """
+    Importe un module optionnel sans installation dynamique.
+    
+    En cas d'import échoué, active le mode fallback et retourne None.
+    Aucune installation pip n'est effectuée au runtime.
+    """
     global USE_FALLBACK
     try:
         return importlib.import_module(module_name)
     except ImportError:
-        try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", package_name or module_name, "-q"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=60,
-                check=True,
-            )
-            return importlib.import_module(module_name)
-        except Exception:
-            USE_FALLBACK = True
-            return None
+        USE_FALLBACK = True
+        return None
 
 
 psutil = _bootstrap_import("psutil")
