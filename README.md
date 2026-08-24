@@ -4,7 +4,7 @@ Jarvis est un assistant IA local-first en Python, développé par Carl-William D
 
 Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
 
-> **État vérifié le 13 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 48 tests passants. Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
+> **État vérifié le 18 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 69 tests passants (57 tests rapides + 12 tests lents). Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
 
 ## Vue d'ensemble
 
@@ -12,7 +12,91 @@ Le projet est pensé autour d'un principe simple : le raisonnement est centralis
 
 Pour une installation et configuration pas à pas, consultez le guide [PREMIER_LANCEMENT.md](PREMIER_LANCEMENT.md).
 
-### Capacités principales
+### Fonctionnalités avancées
+
+### Interface vocale et overlay visuel
+
+Jarvis dispose d'une interface vocale complète avec un indicateur visuel temps réel :
+
+- **Reconnaissance vocale** : 
+  - Wake word "Hey Jarvis" via Vosk
+  - Activation par double-clap via clap detection
+  - Modèles vocaux locaux (français et anglais)
+  
+- **Synthèse vocale (TTS)** :
+  - Réponses vocales via Piper
+  - Modèles voix français et anglais
+  - Contrôle de la vitesse et du ton
+
+- **Overlay visuel vocal** :
+  - HUD flottant en bas-droite de l'écran
+  - États visuels distincts : ÉCOUTE (cyan), RÉFLEXION (orange), PAROLE (cyan), ERREUR (rouge)
+  - Communication via fichier `voice_state.json` partagé
+  - Non-intrusif : passe les clics à travers, ne vole pas le focus
+  - Démarrage automatique avec JarvisAgent
+
+### Intelligence comportementale
+
+- **Suggestions contextuelles** : Jarvis propose des actions basées sur vos habitudes, l'heure actuelle, l'état système et votre contexte utilisateur
+- **Analyse de patterns** : Détection automatique des actions répétitives, séquences courantes et horaires d'utilisation
+- **Apprentissage** : Mémorisation des solutions réussies pour réutilisation future, détection de patterns d'erreur récurrents
+- **Recherche sémantique** : Indexation de l'historique des interactions avec recherche par mots-clés et thématiques
+
+### Surveillance système
+
+- **Monitoring continu** : CPU, mémoire, disque, réseau, processus
+- **Détection d'anomalies** : Alertes automatiques sur les seuils critiques (CPU > 90%, mémoire > 90%, disque > 95%)
+- **Historique système** : Enregistrement des métriques pour analyse des tendances
+- **Rapports système** : Générations de rapports détaillés sur l'état de la machine
+
+### Personnalité adaptative
+
+- **Traits ajustables** : Sarcasme, formalité, proactivité, humour, empathie, concision, créativité
+- **Adaptation contextuelle** : Ajustement du ton en fonction de l'humeur détectée dans le message
+- **Évolution automatique** : La personnalité évolue progressivement basée sur les interactions et les préférences utilisateur
+- **Rapports de personnalité** : Visualisation des traits actuels et de leur évolution
+
+## Modèle de confiance et prérequis réseau
+
+### Installation mono-utilisateur
+
+Jarvis est conçu comme une installation privée mono-utilisateur. Toute entité ayant accès à l'API Jarvis est considérée comme pleinement autorisée à agir avec les privilèges du compte Windows utilisateur sur lequel Jarvis s'exécute.
+
+### Périmètre réseau attendu
+
+L'accès distant à Jarvis est intentionnel et doit passer par le réseau privé Tailscale de l'utilisateur :
+
+- L'API Jarvis ne doit jamais être exposée publiquement sur Internet.
+- Tailscale est le périmètre réseau attendu pour l'accès distant.
+- Une compromission du compte Tailscale autorisé doit être considérée comme une compromission de l'accès à Jarvis.
+
+### Recommandations opérationnelles
+
+Pour sécuriser l'installation Jarvis :
+
+- **Pare-feu Windows** : Restreindre l'accès au port 8000 à l'interface/réseau Tailscale lorsque possible.
+- **Contrôle des appareils** : Surveiller et contrôler les appareils et sessions autorisés sur le tailnet.
+- **Confidentialité des URLs** : Ne pas partager les URLs d'instances Jarvis avec des tiers.
+- **Mises à jour** : Garder Python, les dépendances et Jarvis à jour selon le mécanisme documenté dans `bootstrap/update.ps1`.
+- **Sécurité du poste** : Protéger le poste Windows puisque Jarvis agit sous le compte connecté.
+
+### Mode Stark
+
+Le Mode Stark est une fonctionnalité volontairement autonome :
+
+- Il peut exécuter des actions sans confirmations interactives supplémentaires.
+- Il ne doit être utilisé que pour des objectifs dont l'utilisateur accepte les effets.
+- Il reste soumis à l'autorité de l'utilisateur propriétaire de l'installation.
+
+### Mécanisme de démarrage
+
+Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
+
+- Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
+- Elle lance `uvicorn api.server:app --host 0.0.0.0 --port 8000`.
+- Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
+
+## Capacités principales
 
 - Assistant conversationnel local avec mémoire persistante.
 - Exécution d'outils réels via `tools.OUTILS`.
@@ -25,6 +109,13 @@ Pour une installation et configuration pas à pas, consultez le guide [PREMIER_L
 - Interface web multi-device servie par FastAPI dans `gui/web/index.html`.
 - Tâche planifiée `JarvisAgent` capable de lancer automatiquement `uvicorn api.server:app` dans la session utilisateur.
 - Mémoire, rappels, automatisations, surveillance de dossiers, stockage, commandes shell/PowerShell et commandes personnalisées.
+- **Interface vocale** : reconnaissance vocale via wake word ("Hey Jarvis") ou double-clap, synthèse vocale (TTS) pour les réponses.
+- **Overlay visuel vocal** : indicateur flottant HUD affichant l'état vocal (ÉCOUTE, RÉFLEXION, PAROLE, ERREUR) en temps réel.
+- **Suggestions contextuelles** : génération proactive de suggestions basées sur les patterns comportementaux, l'état système et le contexte utilisateur.
+- **Analyse de performance** : auto-réflexion sur les décisions, détection de patterns d'erreur, apprentissage des solutions réussies.
+- **Recherche sémantique** : indexation et recherche dans l'historique des interactions avec analyse thématique.
+- **Surveillance système** : monitoring continu CPU, mémoire, disque, réseau avec détection d'anomalies.
+- **Personnalité adaptative** : traits de personnalité ajustables (sarcasme, formalité, proactivité, humour, empathie, concision, créativité) avec évolution basée sur les interactions.
 
 ### Surfaces utilisateur
 
@@ -635,7 +726,20 @@ core/
 ├── memory.py
 ├── safety.py
 ├── stark_parser.py
-└── stark_session.py
+├── stark_session.py
+├── voice_state.py
+├── voice_overlay.py
+├── autodestruct.py
+├── contextual_suggestions.py
+├── decision_analyzer.py
+├── error_classification.py
+├── pattern_analyzer.py
+├── semantic_search.py
+├── system_monitor.py
+├── personality.py
+├── translator.py
+├── paths.py
+└── confirmations.py
 
 tools.py
 └── OUTILS
@@ -648,7 +752,12 @@ capabilities/
 ├── memory_tools.py
 ├── scheduler.py
 ├── custom_commands.py
-└── watchers.py
+├── watchers.py
+├── voice_input.py
+├── voice_output.py
+├── clap_input.py
+├── calendar_integration.py
+└── email_integration.py
 ```
 
 ### Responsabilités
@@ -660,6 +769,19 @@ capabilities/
 - `api/server.py` : transport HTTP/SSE et fichiers statiques.
 - `gui/app.py` et `gui/web/index.html` : présentation.
 - `JarvisAgent` : tâche planifiée Windows exécutée dans la session utilisateur.
+
+### Nouveaux modules core
+
+- `core/voice_state.py` : Gestion de l'état vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partagé pour l'overlay
+- `core/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'état vocal en temps réel avec style HUD
+- `core/autodestruct.py` : Auto-destruction complète de Jarvis (service, tâches planifiées, variables d'environnement, dossier)
+- `core/contextual_suggestions.py` : Génération de suggestions intelligentes basées sur patterns, état système, contexte utilisateur et automatisations potentielles
+- `core/decision_analyzer.py` : Auto-réflexion sur les décisions, détection de patterns d'erreur, apprentissage des solutions réussies
+- `core/error_classification.py` : Classification mécanique des erreurs système avec catégories prédéfinies
+- `core/pattern_analyzer.py` : Détection et analyse des patterns comportementaux (horaires, actions répétitives, séquences)
+- `core/semantic_search.py` : Indexation et recherche sémantique dans l'historique des interactions avec analyse thématique
+- `core/system_monitor.py` : Surveillance continue de l'état système (CPU, mémoire, disque, réseau) avec détection d'anomalies
+- `core/personality.py` : Gestion et adaptation de la personnalité Jarvis avec traits ajustables et évolution automatique
 
 ## Outils principaux
 
@@ -682,6 +804,10 @@ Familles principales :
 - Traducteur : consultation et demande de modification.
 - Agentique : `terminer_tache()`, `bilan_proactif()`.
 - Introspection : `lire_capacites()`.
+- **Vocal** : `activer_vocal()`, `desactiver_vocal()`, `lire_etat_vocal()`, `configurer_vocal()`.
+- **Système** : `obtenir_etat_systeme()`, `generer_rapport_systeme()`, `detecter_anomalies()`.
+- **Intelligence** : `generer_suggestions_contextuelles()`, `analyser_decisions_recentes()`, `rechercher_semantique()`.
+- **Personnalité** : `obtenir_personnalite()`, `ajuster_personnalite()`, `generer_rapport_personnalite()`.
 
 ## Mémoire et fichiers d'état
 
@@ -727,7 +853,24 @@ cd %USERPROFILE%\Jarvis
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-Résultat de la dernière vérification : `48 passed`.
+Résultat de la dernière vérification : `69 tests passants` (57 tests rapides + 12 tests lents).
+
+### Tests vocaux et overlay
+
+Tests spécifiques pour les fonctionnalités vocales :
+
+- `tests/test_voice_input.py` : Tests de reconnaissance vocale et wake word
+- `tests/test_voice_output.py` : Tests de synthèse vocale (TTS)
+- `tests/test_voice_state.py` : Tests de gestion de l'état vocal
+- `tests/test_voice_overlay.py` : Tests de l'overlay visuel vocal
+- `tests/test_clap_input.py` : Tests de détection de double-clap
+
+### Tests manuels
+
+Le dossier `tests/manual/` contient des tests nécessitant une intervention humaine :
+
+- `test_overlay_direct.py` : Test direct de l'overlay sans uvicorn
+- `test_overlay_manuel.py` : Test manuel des transitions d'état de l'overlay
 
 Compilation rapide :
 

@@ -125,6 +125,50 @@ Pour un essai matériel des écouteurs, lancez :
 python scripts/manuel_voix.py
 ```
 
+## Fonctionnalités vocales et overlay
+
+### Activation de l'interface vocale
+
+Une fois les modèles vocaux installés, vous pouvez activer l'interface vocale :
+
+```powershell
+# Dans la console Jarvis
+Jarvis, active le vocal
+```
+
+Ou via l'outil :
+
+```powershell
+activer_vocal()
+```
+
+### Wake word et double-clap
+
+Jarvis supporte deux modes d'activation vocale :
+
+- **Wake word** : Dites "Hey Jarvis" pour activer l'écoute
+- **Double-clap** : Faites deux claques rapides pour activer l'écoute alternative
+
+### Overlay visuel vocal
+
+L'overlay visuel s'affiche automatiquement lors du démarrage de JarvisAgent :
+
+- **ÉCOUTE** (cyan) : Jarvis écoute votre commande
+- **RÉFLEXION** (orange) : Jarvis traite votre demande
+- **PAROLE** (cyan) : Jarvis répond à voix haute
+- **ERREUR** (rouge) : Une erreur vocale s'est produite
+- **IDLE** : L'overlay est masqué
+
+L'overlay est non-intrusif : il ne bloque pas les clics et ne vole pas le focus.
+
+### Test de l'overlay
+
+Pour tester l'overlay sans démarrer Jarvis complet :
+
+```powershell
+python tests\manual\test_overlay_direct.py
+```
+
 ## Étape 4 - Premier lancement via script
 
 ### Lancement console (interface terminal)
@@ -272,6 +316,40 @@ Depuis l'interface web ou Tkinter :
 1. Sélectionnez l'instance distante dans le sélecteur
 2. Envoyez un message
 3. Vérifiez que la réponse provient bien de l'instance distante
+
+## Sécurité et modèle de confiance
+
+### Installation mono-utilisateur
+
+Jarvis est conçu comme une installation privée mono-utilisateur. Toute entité ayant accès à l'API Jarvis est considérée comme pleinement autorisée à agir avec les privilèges du compte Windows utilisateur sur lequel Jarvis s'exécute.
+
+### Périmètre réseau attendu
+
+L'accès distant à Jarvis est intentionnel et doit passer par le réseau privé Tailscale de l'utilisateur :
+
+- L'API Jarvis ne doit jamais être exposée publiquement sur Internet.
+- Tailscale est le périmètre réseau attendu pour l'accès distant.
+- Une compromission du compte Tailscale autorisé doit être considérée comme une compromission de l'accès à Jarvis.
+
+### Recommandations opérationnelles
+
+Pour sécuriser l'installation Jarvis :
+
+- **Pare-feu Windows** : Restreindre l'accès au port 8000 à l'interface/réseau Tailscale lorsque possible.
+- **Contrôle des appareils** : Surveiller et contrôler les appareils et sessions autorisés sur le tailnet.
+- **Confidentialité des URLs** : Ne pas partager les URLs d'instances Jarvis avec des tiers.
+- **Mises à jour** : Garder Python, les dépendances et Jarvis à jour selon le mécanisme documenté dans `bootstrap/update.ps1`.
+- **Sécurité du poste** : Protéger le poste Windows puisque Jarvis agit sous le compte connecté.
+
+### Mode Stark
+
+Le Mode Stark est une fonctionnalité volontairement autonome :
+
+- Il peut exécuter des actions sans confirmations interactives supplémentaires.
+- Il ne doit être utilisé que pour des objectifs dont l'utilisateur accepte les effets.
+- Il reste soumis à l'autorité de l'utilisateur propriétaire de l'installation.
+
+Pour plus de détails sur le modèle de confiance et les hypothèses de sécurité, consultez `ARCHITECTURE.md`.
 
 ## Dépannage du premier lancement
 

@@ -255,6 +255,71 @@ python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
 
 Elle s'exécute sous le compte Windows connecté : CLI, web et Tkinter disposent donc du même profil et des mêmes permissions. `bootstrap/install.ps1` crée ou met à jour cette tâche et désactive le service historique `JarvisService` lorsqu'il existe.
 
+## Modèle de confiance et hypothèses de sécurité
+
+### Installation mono-utilisateur
+
+Jarvis est conçu comme une installation privée mono-utilisateur :
+
+- Le système n'implémente pas de gestion multi-utilisateur ou de permissions granulaires par utilisateur.
+- Toute entité ayant accès à l'API Jarvis est considérée comme pleinement autorisée à agir avec les privilèges du compte Windows utilisateur sur lequel Jarvis s'exécute.
+- L'accès à l'API Jarvis doit être compris comme une autorisation complète d'agir avec les privilèges du compte Windows utilisateur.
+
+### Périmètre réseau attendu
+
+L'accès distant à Jarvis est intentionnel et repose sur les hypothèses suivantes :
+
+- L'API Jarvis ne doit jamais être exposée publiquement sur Internet.
+- Tailscale est le périmètre réseau attendu pour l'accès distant.
+- Une compromission du compte Tailscale autorisé doit être considérée comme une compromission de l'accès à Jarvis.
+- L'endpoint `/jarvis/discover` facilite la détection des appareils Jarvis sur le tailnet pour la gestion multi-instance.
+
+### Recommandations opérationnelles
+
+Pour sécuriser l'installation Jarvis :
+
+- **Pare-feu Windows** : Restreindre l'accès au port 8000 à l'interface/réseau Tailscale lorsque possible.
+- **Contrôle des appareils** : Surveiller et contrôler les appareils et sessions autorisés sur le tailnet.
+- **Confidentialité des URLs** : Ne pas partager les URLs d'instances Jarvis avec des tiers.
+- **Mises à jour** : Garder Python, les dépendances et Jarvis à jour selon le mécanisme documenté dans `bootstrap/update.ps1`.
+- **Sécurité du poste** : Protéger le poste Windows puisque Jarvis agit sous le compte connecté.
+
+### Mode Stark
+
+Le Mode Stark est une fonctionnalité volontairement autonome :
+
+- Il peut exécuter des actions sans confirmations interactives supplémentaires.
+- Il ne doit être utilisé que pour des objectifs dont l'utilisateur accepte les effets.
+- Il reste soumis à l'autorité de l'utilisateur propriétaire de l'installation.
+- `core/safety.py` gère l'activation du mode Stark via `activer_mode_stark()`.
+
+### Mécanisme de démarrage
+
+Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
+
+- Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
+- Elle lance `uvicorn api.server:app --host 0.0.0.0 --port 8000`.
+- Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
+- `bootstrap/install.ps1` configure `JarvisAgent` et désactive `JarvisService` s'il existe.
+
+### Garanties fournies
+
+Jarvis fournit les garanties suivantes :
+
+- **Pas d'auto-installation de dépendances** : Jarvis n'effectue aucune installation de dépendance au runtime. Les dépendances doivent être installées explicitement via `pip install -r requirements.txt`.
+- **Confirmation ciblée** : Les écritures vers `JARVIS_DIR` ou des zones système Windows demandent confirmation (sauf en mode Stark).
+- **Pas d'exposition publique de l'API** : L'API est conçue pour un usage local ou via Tailscale, pas pour une exposition publique.
+- **Gestion sécurisée du PAT GitHub** : Le PAT GitHub n'est jamais inclus dans l'URL Git, jamais journalisé, et stocké uniquement dans une variable d'environnement Machine.
+
+### Garanties non fournies
+
+Jarvis ne fournit pas les garanties suivantes :
+
+- **Isolation multi-utilisateur** : Jarvis n'est pas conçu pour isoler les actions entre plusieurs utilisateurs.
+- **Sécurité contre les compromissions de compte** : Une compromission du compte Windows utilisateur ou du compte Tailscale autorisé compromet l'accès à Jarvis.
+- **Protection contre les actions malveillantes** : Jarvis exécute les actions demandées via l'API avec les permissions du compte utilisateur.
+- **Audit réseau avancé** : Jarvis n'implémente pas d'audit réseau avancé au-delà de la détection Tailscale.
+
 ## Securite et permissions
 
 La politique actuelle est une confirmation ciblee, pas un blocage global.
