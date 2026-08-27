@@ -34,6 +34,13 @@ MODELES_GROQ = ["openai/gpt-oss-120b"]
 MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
 
+# Mots d'acquittement pour une classification déterministe (sans appel LLM)
+MOTS_ACQUITTEMENT = [
+    "parfait", "ok", "d'accord", "merci", "super", "génial", 
+    "genial", "bien", "top", "nickel", "impeccable", "excellent",
+    "bravo", "chouette", "formidable", "parfaitement",
+]
+
 
 def interpreter_objectif(
     message: str,
@@ -149,6 +156,23 @@ def _normaliser_decision(contenu: str, message_original: str) -> dict:
 
 
 def _decision_requiert_reparation(resultat: dict, message: str, forcer_action: bool) -> bool:
+    """Skip repair for purely conversational types to allow natural responses."""
+    # Si le type est conversation et aucun outil n'est requis, pas de réparation
+    if resultat.get("type") == "conversation" and not resultat.get("actions"):
+        return False
+    
+    # Si le message contient des mots d'acquittement purs, pas de réparation
+    message_lower = message.casefold().strip()
+    if any(mot in message_lower for mot in MOTS_ACQUITTEMENT):
+        mots_action = (
+            "fais", "fait", "crée", "creer", "supprime", "liste", "lis ",
+            "ouvre", "exécute", "execute", "lance", "note", "ajoute",
+            "ajouter", "rappelle", "organise", "nettoie", "vide", "surveille",
+            "mémorise", "memorise", "oublie", "commande", "powershell",
+        )
+        if not any(mot in message_lower for mot in mots_action):
+            return False
+    
     if resultat.get("actions"):
         return False
     if resultat.get("type") in {"action", "mixte"}:
@@ -157,6 +181,21 @@ def _decision_requiert_reparation(resultat: dict, message: str, forcer_action: b
 
 
 def _message_ressemble_a_une_action(message: str) -> bool:
+    """Plus conservateur : exclut les mots d'acquittement."""
+    # Si le message contient seulement des mots d'acquittement, ce n'est pas une action
+    message_lower = message.casefold().strip()
+    if any(mot in message_lower for mot in MOTS_ACQUITTEMENT):
+        # Vérifier si c'est un acquittement pur (pas combiné avec des mots d'action)
+        mots_action = (
+            "fais", "fait", "crée", "creer", "supprime", "liste", "lis ",
+            "ouvre", "exécute", "execute", "lance", "note", "ajoute",
+            "ajouter", "rappelle", "organise", "nettoie", "vide", "surveille",
+            "mémorise", "memorise", "oublie", "commande", "powershell",
+        )
+        # Si seulement des mots d'acquittement sans mots d'action, pas une action
+        if not any(mot in message_lower for mot in mots_action):
+            return False
+    
     mots_action = (
         "fais", "fait", "crée", "creer", "supprime", "liste", "lis ",
         "ouvre", "exécute", "execute", "lance", "note", "ajoute",

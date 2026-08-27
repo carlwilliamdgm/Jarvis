@@ -17,4 +17,4 @@ build/
 dist/
 *.spec
 .pytest_cache/
-pytest.ini
+voice_state.json

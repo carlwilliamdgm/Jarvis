@@ -19,11 +19,21 @@ def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
     Obtient les événements du calendrier Windows pour les N prochains jours.
     
     Args:
-        jours: Nombre de jours à analyser
+        jours: Nombre de jours à analyser (doit être entre 1 et 365)
         
     Returns:
         Liste des événements calendrier (normalisée, même si Outlook indisponible)
     """
+    # Validate and sanitize the jours parameter
+    try:
+        jours_int = int(jours)
+    except (ValueError, TypeError):
+        return []
+    
+    # Reject invalid ranges
+    if jours_int < 1 or jours_int > 365:
+        return []
+    
     try:
         # Utiliser PowerShell pour accéder au calendrier Windows
         commande = f"""
@@ -35,7 +45,7 @@ def obtenir_evenements_calendrier(jours: int = 7) -> List[Dict[str, Any]]:
             $items.Sort("[Start]")
             $items.IncludeRecurrences = $false
             
-            $endDate = (Get-Date).AddDays({jours})
+            $endDate = (Get-Date).AddDays({jours_int})
             $items = $items.Restrict("[Start] <= '$($endDate.ToString('s'))'")
             
             $events = @()

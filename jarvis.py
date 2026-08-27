@@ -109,6 +109,9 @@ MOTS_CONVERSATION = [
     "que se passe", "pourquoi", "comment", "qu'est-ce",
     "explique", "dis-moi", "raconte", "d'accord", "ok",
     "merci", "qui es-tu", "es-tu", "sais-tu", "savais-tu",
+    "mon tony stark", "tony stark", "que se passe-t-il", "comment fonctionnes",
+    "comment fonctionnes-tu", "qui es-tu vraiment", "c'est quoi", "c'est quoi",
+    "qu'est-ce que c'est", "dis le moi", "raconte-moi", "explique-moi",
 ]
 
 MOTS_OPTIMISATION = ["optimise", "libère", "nettoie", "libere", "nettoyer"]
@@ -127,6 +130,12 @@ MOTS_VALIDATION = [
     "oui", "vas-y", "soit", "fais-le", "fais le", "ok fais", "lance",
     "go", "allez", "parfait fais", "fais", "procède", "execute",
     "continue", "confirme", "d'accord fais", "oui jarvis",
+]
+
+MOTS_ACQUITTEMENT = [
+    "parfait", "ok", "d'accord", "merci", "super", "génial", 
+    "genial", "bien", "top", "nickel", "impeccable", "excellent",
+    "bravo", "chouette", "formidable", "parfaitement",
 ]
 
 # ─── MODES : ACTION (!a) ET STARK (!S) — INDÉPENDANTS ET COMBINABLES ─────────
@@ -550,6 +559,42 @@ def _journaliser_resultat_si_erreur(resultat, contexte: str, objectif: str, outi
 
 def _est_reponse_affirmative(message: str) -> bool:
     return message.strip().lower() in {"oui", "o", "yes", "y", "affiche", "montre", "details", "détails"}
+
+
+def _est_acknowledgment_contextuel(message: str, historique: list) -> bool:
+    """
+    Détection déterministe d'acquittements contextuels (NO additional LLM calls).
+    
+    Returns True if message is a simple acknowledgment following an action.
+    Uses pure rule-based classification, never LLM calls.
+    """
+    message_lower = message.lower().strip()
+    
+    # Check if message contains acknowledgment words
+    est_acquittement = any(mot in message_lower for mot in MOTS_ACQUITTEMENT)
+    if not est_acquittement:
+        return False
+    
+    # Check if previous message was an action (context-aware)
+    if len(historique) < 2:
+        return False
+    
+    dernier_user = None
+    for msg in reversed(historique[:-1]):  # Skip system message, look at user messages
+        if msg.get("role") == "user":
+            dernier_user = msg.get("content", "")
+            break
+    
+    if not dernier_user:
+        return False
+    
+    # Check if previous user message contained action words
+    mots_action_dans_precedent = any(
+        mot in dernier_user.lower() 
+        for mot in MOTS_ACTION + MOTS_VALIDATION
+    )
+    
+    return mots_action_dans_precedent
 
 
 def _formater_details_stark(actions: list[dict]) -> str:
@@ -1158,6 +1203,15 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         historique.append({"role": "user", "content": message})
         historique.append({"role": "assistant", "content": msg_confirm})
         return msg_confirm, False
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Detection deterministe d'acquittements (NO additional LLM calls) ───────
+    if _est_acknowledgment_contextuel(message, historique):
+        # Context-dependent acknowledgment: brief response if confirming action
+        reponse_ack = "Parfait, Sir."
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": reponse_ack})
+        return reponse_ack, False
     # ─────────────────────────────────────────────────────────────────────────
 
     historique.append({"role": "user", "content": message})

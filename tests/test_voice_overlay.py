@@ -62,7 +62,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test que le démarrage crée bien un processus."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = None  # Processus vivant
+        mock_process.poll = Mock(return_value=None)  # Processus vivant
         mock_popen.return_value = mock_process
 
         voice_overlay.demarrer_overlay_vocal()
@@ -79,7 +79,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test qu'un second démarrage ne crée pas un second processus."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = None  # Processus vivant
+        mock_process.poll = Mock(return_value=None)  # Processus vivant
         mock_popen.return_value = mock_process
 
         # Premier démarrage
@@ -97,7 +97,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test qu'un redémarrage après arrêt fonctionne."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = None
+        mock_process.poll = Mock(return_value=None)
         mock_popen.return_value = mock_process
 
         # Premier démarrage
@@ -105,7 +105,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         first_pid = voice_overlay._overlay_process.pid
 
         # Simuler l'arrêt (processus terminé)
-        voice_overlay._overlay_process.poll.return_value = 123  # Code de sortie
+        voice_overlay._overlay_process.poll = Mock(return_value=123)  # Code de sortie
         
         # Second démarrage (devrait créer un nouveau processus)
         voice_overlay.demarrer_overlay_vocal()
@@ -118,8 +118,8 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test que l'arrêt appelle terminate() sur le processus."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = None  # Processus vivant
-        mock_process.wait.return_value = None
+        mock_process.poll = Mock(return_value=None)  # Processus vivant
+        mock_process.wait = Mock(return_value=None)
         mock_popen.return_value = mock_process
 
         # Démarrer l'overlay
@@ -142,7 +142,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test qu'un processus déjà mort est traité proprement."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = 123  # Processus déjà mort
+        mock_process.poll = Mock(return_value=123)  # Processus déjà mort
         mock_popen.return_value = mock_process
 
         # Démarrer l'overlay
@@ -174,11 +174,11 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test que l'arrêt force kill après timeout."""
         mock_process = Mock()
         mock_process.pid = 12345
-        mock_process.poll.return_value = None  # Processus vivant
+        mock_process.poll = Mock(return_value=None)  # Processus vivant
         
         # Simuler timeout sur wait
         from subprocess import TimeoutExpired
-        mock_process.wait.side_effect = [TimeoutExpired("cmd", 2.0), None]
+        mock_process.wait = Mock(side_effect=[TimeoutExpired("cmd", 2.0), None])
         mock_popen.return_value = mock_process
 
         # Démarrer l'overlay
@@ -201,7 +201,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         """Test que les exceptions lors du démarrage sont gérées."""
         mock_popen.side_effect = Exception("Erreur de création")
 
-        # Tenter de démarrer
+        # Tenter de démarrer - l'exception est propagée
         with self.assertRaises(Exception):
             voice_overlay.demarrer_overlay_vocal()
 

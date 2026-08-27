@@ -10,6 +10,44 @@ import threading
 from typing import Dict, List
 from uuid import uuid4
 
+"""
+Jarvis API Server - State Consistency Guarantees
+=================================================
+
+This API provides a REST interface to Jarvis with the following state consistency guarantees:
+
+Execution Model:
+- User interactions (CLI, API, voice) are serialized by INTERACTION_LOCK (process-level lock in jarvis.py)
+- Only one user interaction can execute at a time per process
+- This prevents race conditions on shared in-memory state during user interactions
+- The autonomous agent runs independently and does NOT acquire INTERACTION_LOCK
+- This allows continuous system observation without blocking user interactions
+
+State Persistence:
+- Tools may persist data (e.g., memory.json) or modify the system during execution
+- memory.json writes are serialized by _MEMORY_LOCK in core/memory.py to prevent corruption
+- Other external effects (file system, shell commands, external APIs) are NOT transactional
+- These external effects are applied immediately with no global rollback mechanism
+
+Error Handling:
+- On exception: a clean error response is returned (HTTP 500 or SSE error event)
+- In-memory state (historique, memoire, global flags) may be partially updated
+- The conversation history remains coherent and usable after errors
+- Global flags (mode_action_force, ATTENTE_DETAILS_STARK, etc.) have predictable post-error behavior
+
+Why No Rollback?
+- Tools can write to disk, execute shell commands, make network calls, etc.
+- These external effects cannot be reliably undone after they occur
+- Pretending to offer transactional safety would be misleading and dangerous
+- The current design is honest: external effects persist, errors are reported cleanly
+
+Concurrency:
+- User interactions are serialized per INTERACTION_LOCK
+- The autonomous agent runs independently for continuous system monitoring
+- Persistent writes (memory.json, file operations) are serialized by PERSISTENCE_LOCK
+- This ensures data consistency while allowing autonomous observation
+"""
+
 import psutil
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -57,19 +95,33 @@ last_activity_time = datetime.now()
 
 
 def traiter_message(message: str) -> Dict:
-    """Execute the same user interaction pipeline used by the CLI."""
+    """Execute the same user interaction pipeline used by the CLI.
+    
+    State consistency guarantees:
+    - Execution is serialized by INTERACTION_LOCK (process-level lock)
+    - Tools may persist data (e.g., memory.json) or modify the system during execution
+    - On failure: in-memory state (historique, memoire, flags) may be partially updated
+    - No transactional rollback: external effects (file writes, system changes) are NOT undone
+    - Error responses are clean and predictable; conversation history remains coherent
+    
+    This design accepts partial state updates on failure rather than pretending
+    to offer transactional safety that cannot be guaranteed for external effects.
+    """
     global historique, memoire
     
     try:
         reponse, intention_action = executer_interaction_utilisateur(
             message, historique, memoire
         )
+        
         return {
             "response": reponse if isinstance(reponse, str) else str(reponse),
             "is_action": intention_action,
             "actions_executed": [1] if intention_action else []
         }
     except Exception as e:
+        # No rollback: tools may have already persisted data or modified the system
+        # The error is reported cleanly; in-memory state may be partially updated
         raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
 
 
@@ -173,11 +225,14 @@ async def stream_jarvis(message: str, session_id: str | None = None):
 
         def worker():
             event_bus.bind(event_queue)
+            
             try:
                 handler = StreamingConfirmationHandler(active_session_id, event_bus.emit)
                 with use_confirmation_handler(handler):
                     executer_interaction_utilisateur(message, historique, memoire)
             except Exception as e:
+                # No rollback: tools may have already persisted data or modified the system
+                # The error is emitted cleanly; in-memory state may be partially updated
                 event_bus.emit("error", {"message": str(e)})
             finally:
                 event_queue.put({"type": "done"})

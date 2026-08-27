@@ -225,6 +225,68 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatu
 
 - `terminer_tache(resume="Tache terminee.")` - Signale la fin d'un objectif ou micro-objectif.
 
+### Calendrier et emails
+
+- `evenements_aujourdhui()` - Obtient les événements calendrier pour aujourd'hui.
+- `rappels_calendrier()` - Vérifie les rappels de calendrier imminents.
+- `resume_emails()` - Obtient un résumé de la situation email.
+- `emails_urgents()` - Détecte et affiche les emails urgents.
+
+### Intelligence comportementale
+
+- `suggerer_actions()` - Génère et affiche des suggestions contextuelles intelligentes.
+- `analyser_patterns()` - Analyse et affiche les patterns comportementaux détectés.
+- `detecter_automatisations()` - Détecte et suggère des automatisations potentielles.
+- `rapport_performance()` - Génère un rapport de performance de Jarvis.
+- `insights_apprentissage()` - Obtient des insights basés sur les apprentissages enregistrés.
+- `generer_rapport_conscience()` - Génère un rapport complet de conscience Jarvis.
+
+### Recherche sémantique
+
+- `analyser_insights()` - Analyse et affiche les insights profonds basés sur la recherche sémantique.
+- `enrichir_memoire()` - Enrichit la mémoire avec des métadonnées temporelles et contextuelles.
+- `rechercher(requete)` - Effectue une recherche sémantique dans les interactions passées.
+
+### Monitoring système
+
+- `rapport_systeme()` - Génère un rapport complet de l'état système.
+- `tendances_systeme(heures=24)` - Analyse les tendances système sur une période donnée.
+
+## Modules internes
+
+Les fonctions suivantes ne sont pas exposées comme outils Jarvis mais sont utilisées en interne par le système :
+
+### Interface vocale (core/voice_overlay.py, capabilities/voice_input.py, capabilities/voice_output.py)
+- `activer_vocal()` - Active l'interface vocale (reconnaissance et synthèse)
+- `desactiver_vocal()` - Désactive l'interface vocale
+- `lire_etat_vocal()` - Retourne l'état vocal actuel (IDLE, LISTENING, THINKING, SPEAKING, ERROR)
+- `configurer_vocal(parametres)` - Configure les paramètres vocaux (langue, vitesse, volume, modèles)
+
+### Monitoring système (core/system_monitor.py)
+- `obtenir_etat_systeme()` - Retourne un état complet du système (CPU, mémoire, disque, réseau, processus)
+- `detecter_anomalies()` - Détecte les anomalies dans l'état système (CPU, mémoire, disque)
+
+### Intelligence comportementale (core/contextual_suggestions.py, core/decision_analyzer.py)
+- `generer_suggestions_contextuelles()` - Génère des suggestions intelligentes basées sur patterns, état système et contexte
+- `analyser_decisions_recentes(jours=7)` - Analyse les décisions récentes pour identifier patterns de succès/échec
+- `detecter_patterns_erreur()` - Détecte les patterns d'erreur récurrents avec suggestions de correction
+- `memoriser_succes(outil, args, contexte)` - Mémorise une solution réussie pour réutilisation future
+- `rechercher_solution_similaire(outil, contexte)` - Recherche une solution similaire dans l'historique des succès
+
+### Recherche sémantique (core/semantic_search.py)
+- `rechercher_semantique(requete, limite=10)` - Effectue une recherche sémantique dans les interactions
+- `analyser_connexions_contextuelles()` - Analyse les connexions entre différents contextes
+- `generer_insights_profonds()` - Génère des insights profonds basés sur l'analyse contextuelle
+
+### Personnalité (core/personality.py)
+- `obtenir_personnalite()` - Retourne la personnalité actuelle de Jarvis avec tous les traits
+- `ajuster_personnalite(trait, delta)` - Ajuste un trait de personnalité avec une variation entre -1 et 1
+- `adapter_ton_contextuel(message)` - Adapte le ton de réponse en fonction du contexte et de l'humeur détectée
+- `generer_prompt_personnalite()` - Génère un prompt de personnalité pour le LLM
+- `evoluer_personnalite()` - Fait évoluer la personnalité basée sur les interactions passées
+- `obtenir_rapport_personnalite()` - Génère un rapport de personnalité avec traits et évolution
+- `reinitialiser_personnalite()` - Réinitialise la personnalité aux valeurs de base
+
 ## Exemples
 
 ### Note simple
@@ -309,10 +371,59 @@ core/intellect.py
 ├── _parser_reponse_intellect()
 └── _appeler_llm_avec_retry()
 
+core/voice_state.py
+├── get_voice_state()
+├── _set_voice_state()
+└── _write_state_to_file()
+
+core/voice_overlay.py
+├── VoiceOverlay class
+├── _read_state_from_file()
+├── _update_visuals()
+└── _check_state_loop()
+
+core/contextual_suggestions.py
+├── generer_suggestions_contextuelles()
+├── _suggestions_patterns()
+├── _suggestions_systeme()
+└── _suggestions_temporelles()
+
+core/decision_analyzer.py
+├── analyser_decisions_recentes()
+├── detecter_patterns_erreur()
+├── memoriser_succes()
+└── generer_rapport_performance()
+
+core/pattern_analyzer.py
+├── analyser_patterns_comportementaux()
+├── detecter_automatisations_potentielles()
+└── obtenir_patterns_actuels()
+
+core/semantic_search.py
+├── indexer_interactions_pour_recherche()
+├── rechercher_semantique()
+├── analyser_connexions_contextuelles()
+└── generer_insights_profonds()
+
+core/system_monitor.py
+├── obtenir_etat_systeme_complet()
+├── detecter_anomalies()
+├── generer_rapport_systeme()
+└── obtenir_tendances_systeme()
+
+core/personality.py
+├── obtenir_personnalite_actuelle()
+├── ajuster_personnalite()
+├── adapter_ton_contextuel()
+└── evoluer_personnalite()
+
 tools.py
 └── OUTILS
 
 capabilities/
+├── voice_input.py
+├── voice_output.py
+├── clap_input.py
 └── execution concrete des outils
 ```
 

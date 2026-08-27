@@ -22,13 +22,15 @@ class BootstrapImportTests(unittest.TestCase):
     @patch('core.safety.importlib.import_module')
     def test_bootstrap_import_never_calls_pip_on_success(self, mock_import, mock_subprocess):
         """Test que subprocess.run n'est jamais appele si l'import reussit."""
+        # Reset the flag before the test
+        core.safety.USE_FALLBACK = False
         mock_import.return_value = MagicMock()
         
         core.safety._bootstrap_import("module_existant")
         
         # subprocess.run ne doit jamais etre appele
         mock_subprocess.assert_not_called()
-        # Le mode fallback ne doit pas etre active
+        # Le mode fallback ne doit pas etre active (pas d'erreur d'import)
         self.assertFalse(core.safety.USE_FALLBACK)
 
     @patch('core.safety.subprocess.run')
@@ -82,7 +84,10 @@ class BootstrapImportTests(unittest.TestCase):
     @patch('core.safety.subprocess.run')
     @patch('core.safety.importlib.import_module')
     def test_bootstrap_import_preserves_fallback_flag(self, mock_import, mock_subprocess):
-        """Test que le flag USE_FALLBACK est correctement positionne."""
+        """Test que le flag USE_FALLBACK reste actif une fois active."""
+        # Reset the flag before the test
+        core.safety.USE_FALLBACK = False
+        
         # Premier appel qui echoue
         mock_import.side_effect = ImportError("Module not found")
         result1 = core.safety._bootstrap_import("module_inexistant")
@@ -95,7 +100,7 @@ class BootstrapImportTests(unittest.TestCase):
         mock_import.return_value = MagicMock()
         result2 = core.safety._bootstrap_import("module_existant")
         
-        # Le flag fallback reste active
+        # Le flag fallback reste active (comportement attendu de l'implementation)
         self.assertTrue(core.safety.USE_FALLBACK)
         # subprocess.run n'a toujours pas ete appele
         mock_subprocess.assert_not_called()

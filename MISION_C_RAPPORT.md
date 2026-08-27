@@ -214,3 +214,22 @@ Lors de l'analyse de la dette technique post-implémentation, les corrections su
 
 ### Résultat
 Le projet est maintenant dans un état optimal avec une dette technique minimale. L'overlay vocal fonctionne correctement avec la communication robuste via fichier JSON partagé, et l'ensemble du codebase est propre et bien organisé.
+
+## Mise à jour de la documentation (Août 2026)
+
+Suite à l'implémentation de l'overlay vocal et des nouveaux modules d'intelligence comportementale, la documentation a été mise à jour pour refléter l'état actuel du projet :
+
+### Fichiers mis à jour
+- **README.md** : Ajout des sections "Fonctionnalités avancées" et mise à jour de l'architecture technique
+- **ARCHITECTURE.md** : Ajout des descriptions des nouveaux modules core (voice_state, voice_overlay, contextual_suggestions, decision_analyzer, error_classification, pattern_analyzer, semantic_search, system_monitor, personality)
+- **EXECUTION_OUTILS.md** : Ajout des outils vocaux, système, intelligence comportementale, recherche sémantique et personnalité
+- **PREMIER_LANCEMENT.md** : Ajout des instructions pour l'interface vocale et l'overlay visuel
+
+### Nouvelles fonctionnalités documentées
+- Interface vocale complète (reconnaissance, synthèse, wake word, double-clap)
+- Overlay visuel vocal avec états distincts et style HUD
+- Suggestions contextuelles basées sur patterns comportementaux
+- Analyse de performance et auto-réflexion
+- Recherche sémantique dans l'historique des interactions
+- Surveillance système continue avec détection d'anomalies
+- Personnalité adaptative avec traits ajustables
