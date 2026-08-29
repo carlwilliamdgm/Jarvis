@@ -10,9 +10,7 @@ import logging
 import subprocess
 import sys
 import threading
-import time
 import tkinter as tk
-from tkinter import ttk
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +45,7 @@ class VoiceOverlay:
     
     def __init__(self):
         self._root: Optional[tk.Tk] = None
+        self._canvas: Optional[tk.Canvas] = None
         self._current_state = VoiceState.IDLE
         self._stop_event = threading.Event()
         
@@ -78,8 +77,8 @@ class VoiceOverlay:
                     data = json.load(f)
                     state_str = data.get("state", "idle")
                     return VoiceState(state_str)
-        except (json.JSONDecodeError, IOError):
-            pass
+        except (json.JSONDecodeError, IOError, ValueError, AttributeError, TypeError):
+            logger.debug("Fichier d'état vocal invalide ou incomplet")
         return VoiceState.IDLE
     
     def _get_state_config(self) -> dict:
@@ -137,7 +136,7 @@ class VoiceOverlay:
         self._root.bind("<Key>", lambda e: "break")     # Bloquer les touches
         
         # Fond avec effet de lueur simulé
-        canvas = tk.Canvas(
+        self._canvas = tk.Canvas(
             self._root,
             width=self.WIDTH,
             height=self.HEIGHT,
@@ -145,6 +144,7 @@ class VoiceOverlay:
             highlightthickness=2,
             highlightbackground=self.ACCENT_COLOR
         )
+        canvas = self._canvas
         canvas.pack(fill=tk.BOTH, expand=True)
         
         # Désactiver les événements sur le canvas
@@ -198,7 +198,7 @@ class VoiceOverlay:
     
     def _update_visuals(self):
         """Met à jour l'apparence selon l'état courant."""
-        if not self._root:
+        if not self._root or not self._canvas:
             return
             
         config = self._get_state_config()
@@ -211,7 +211,7 @@ class VoiceOverlay:
             self._root.deiconify()
         
         # Mise à jour des éléments
-        canvas = self._root.winfo_children()[0]
+        canvas = self._canvas
         
         # Couleur d'accent
         canvas.itemconfig(self._icon_id, fill=config["accent"])
@@ -222,20 +222,20 @@ class VoiceOverlay:
         canvas.itemconfig(self._icon_id, text=config["icon"])
         canvas.itemconfig(self._label_id, text=config["label"])
     
-    def _check_state_loop(self):
-        """Boucle de surveillance de l'état vocal via fichier."""
-        while not self._stop_event.is_set():
-            new_state = self._read_state_from_file()
-            
-            if new_state != self._current_state:
-                self._current_state = new_state
-                if self._root:
-                    try:
-                        self._update_visuals()
-                    except Exception as e:
-                        logger.debug(f"Erreur update visuals: {e}")
-            
-            self._stop_event.wait(0.1)  # Polling à 100ms
+    def _check_state(self):
+        """Vérifie périodiquement l'état sans bloquer Tkinter."""
+        if not self._root or self._stop_event.is_set():
+            return
+
+        new_state = self._read_state_from_file()
+        if new_state != self._current_state:
+            self._current_state = new_state
+            try:
+                self._update_visuals()
+            except Exception:
+                logger.exception("Erreur lors de la mise à jour de l'overlay")
+
+        self._root.after(100, self._check_state)
     
     def start(self):
         """Démarre l'overlay (process autonome)."""
@@ -245,13 +245,15 @@ class VoiceOverlay:
         try:
             self._create_overlay()
             logger.debug("Overlay Tkinter créé")
-            self._check_state_loop()
-            logger.debug("Boucle d'état terminée")
-        except Exception as e:
-            logger.debug(f"Erreur overlay: {e}")
+            self._root.after(100, self._check_state)
+            self._root.mainloop()
+        except Exception:
+            logger.exception("Erreur overlay")
         finally:
             if self._root:
                 self._root.destroy()
+                self._root = None
+                self._canvas = None
                 logger.debug("Fenêtre Tkinter détruite")
     
     def stop(self):
@@ -288,7 +290,7 @@ def lancer_process_overlay():
             startupinfo.wShowWindow = subprocess.SW_HIDE
             
             _overlay_process = subprocess.Popen(
-                [sys.executable, script, "--standalone"],
+                [sys.executable, "-m", "core.voice_overlay", "--standalone"],
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 startupinfo=startupinfo,
                 cwd=str(Path(__file__).parent.parent)

@@ -13,7 +13,7 @@ from capabilities.voice_input import SAMPLE_RATE, transcrire_et_soumettre
 
 LOGGER = logging.getLogger(__name__)
 # À calibrer sur le microphone réel : amplitude int16 absolue minimale d'un clap.
-CLAP_AMPLITUDE_THRESHOLD = 9_000
+CLAP_AMPLITUDE_THRESHOLD = 3_000
 # Les deux pics doivent être espacés de cette fenêtre (en secondes).
 DOUBLE_CLAP_MIN_INTERVAL_SECONDS = 0.20
 DOUBLE_CLAP_MAX_INTERVAL_SECONDS = 0.80
@@ -50,7 +50,7 @@ def _listener_loop() -> None:
     try:
         import sounddevice as sd
         detector = DoubleClapDetector()
-        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=CLAP_BLOCK_SIZE,
+        with sd.RawInputStream(device=1, samplerate=SAMPLE_RATE, blocksize=CLAP_BLOCK_SIZE,
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
                 data, _overflowed = stream.read(CLAP_BLOCK_SIZE)

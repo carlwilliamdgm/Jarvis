@@ -6,7 +6,7 @@ if (-not (Test-Path $logDir)) {
     New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 }
 
-Start-Process -FilePath "C:\Program Files\Python312\python.exe" `
+Start-Process -FilePath "C:\Users\Carl\Jarvis\.venv\Scripts\python.exe" `
     -ArgumentList "-m uvicorn api.server:app --host 0.0.0.0 --port 8000" `
     -WorkingDirectory "C:\Users\Carl\Jarvis" `
     -WindowStyle Hidden `

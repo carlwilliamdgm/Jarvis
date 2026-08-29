@@ -98,6 +98,77 @@ Le mécanisme de démarrage de référence est la tâche planifiée Windows `Jar
 
 ## Capacités principales
 
+### Recherche web avancée
+
+Jarvis dispose désormais de capacités de recherche web avancée, similaires à celles de Claude dans Chrome :
+
+- **rechercher_web(requete, nombre_resultats)** : Effectue une recherche web via DuckDuckGo et retourne les résultats
+- **analyser_page_web(url)** : Analyse et extrait le contenu d'une page web spécifique
+- **rechercher_et_analyser(requete, nombre_pages)** : Combine recherche et analyse approfondie des pages pertinentes
+- **extraire_informations_cles(texte)** : Extrait automatiquement les informations clés (URLs, emails, nombres, dates) d'un texte
+- **synthetiser_resultats(resultats)** : Synthétise plusieurs résultats en un résumé cohérent
+
+Ces outils permettent à Jarvis de :
+- Rechercher des informations en ligne en temps réel
+- Analyser le contenu de pages web
+- Extraire et structurer automatiquement les informations importantes
+- Synthétiser des résultats provenant de plusieurs sources
+
+**Note** : La recherche web utilise DuckDuckGo qui ne nécessite pas de clé API. Le module inclut une limitation de taux pour respecter les politiques d'utilisation.
+
+### Navigation interactive
+
+Jarvis dispose désormais de capacités de navigation interactive complètes, similaires à Claude dans Chrome :
+
+- **naviguer_vers(url, headless)** : Navigue vers une URL spécifique
+- **cliquer_element(selector, url, headless)** : Clique sur un élément de la page
+- **remplir_formulaire(selector, valeur, url, headless)** : Remplit un champ de formulaire
+- **extraire_texte_page(selector, url, headless)** : Extrait le texte d'un élément ou de la page
+- **prendre_capture(path, url, full_page, headless)** : Prend une capture d'écran de la page
+- **executer_sequence(actions, headless)** : Exécute une séquence complexe d'actions
+- **obtenir_infos_page(url, headless)** : Obtient des informations détaillées sur la page
+
+Ces outils utilisent **Playwright**, choisi pour sa légèreté et ses performances optimales, permettant à Jarvis de :
+- Naviguer de manière interactive sur les sites web
+- Cliquer sur des boutons, liens et éléments interactifs
+- Remplir et soumettre des formulaires
+- Prendre des captures d'écran des pages
+- Exécuter des séquences d'actions complexes
+- Interagir avec du contenu JavaScript dynamique
+
+**Installation requise** : Pour utiliser ces fonctionnalités, installez Playwright :
+```powershell
+pip install playwright
+playwright install
+```
+
+**Note** : Par défaut, le navigateur s'exécute en mode headless (sans interface graphique) pour optimiser les ressources. Le mode avec interface est disponible en définissant `headless=False`.
+
+### Sessions de navigation parallèles
+
+Jarvis dispose désormais de capacités de sessions parallèles, similaire à Claude dans Chrome :
+
+- **demarrer_overlay_navigation()** : Démarre l'interface visuelle de navigation en temps réel
+- **arreter_overlay_navigation()** : Arrête l'interface visuelle de navigation
+- **creer_session_navigation(session_id, headless)** : Crée une nouvelle session de navigation parallèle
+- **naviguer_session(session_id, url)** : Navigue vers une URL dans une session spécifique (non-bloquant)
+- **cliquer_session(session_id, selector)** : Clique sur un élément dans une session (non-bloquant)
+- **remplir_session(session_id, selector, valeur)** : Remplit un champ dans une session (non-bloquant)
+- **capture_session(session_id)** : Prend une capture d'écran dans une session (non-bloquant)
+- **executer_js_session(session_id, script)** : Exécute du JavaScript dans une session (non-bloquant)
+- **fermer_session(session_id)** : Ferme une session de navigation
+- **lister_sessions()** : Liste toutes les sessions actives avec leur état
+- **obtenir_etat_session(session_id)** : Obtient l'état détaillé d'une session spécifique
+
+Ces outils permettent à Jarvis de :
+- Gérer plusieurs sessions de navigation en parallèle
+- Naviguer de manière non-bloquante (Jarvis continue à travailler pendant la navigation)
+- Visualiser l'état des sessions en temps réel via l'overlay
+- Exécuter des actions complexes sur plusieurs sites simultanément
+- Intégrer parfaitement avec le système événementiel de Jarvis
+
+**Fonctionnement comme Claude** : Les sessions sont non-bloquantes, Jarvis peut lancer une navigation et continuer à analyser/discuter pendant que le navigateur travaille en arrière-plan. L'overlay visuel montre l'état de toutes les sessions en temps réel.
+
 - Assistant conversationnel local avec mémoire persistante.
 - Exécution d'outils réels via `tools.OUTILS`.
 - Conscience dynamique des capacités grâce à l'inventaire temps réel de `core/tool_signatures.py`.
@@ -114,6 +185,9 @@ Le mécanisme de démarrage de référence est la tâche planifiée Windows `Jar
 - **Suggestions contextuelles** : génération proactive de suggestions basées sur les patterns comportementaux, l'état système et le contexte utilisateur.
 - **Analyse de performance** : auto-réflexion sur les décisions, détection de patterns d'erreur, apprentissage des solutions réussies.
 - **Recherche sémantique** : indexation et recherche dans l'historique des interactions avec analyse thématique.
+- **Recherche web avancée** : recherche web intelligente via DuckDuckGo, analyse de contenu de pages, extraction d'informations clés et synthèse de résultats.
+- **Navigation interactive** : automatisation de navigateur via Playwright pour naviguer, cliquer, remplir des formulaires, prendre des captures d'écran et exécuter des séquences d'actions complexes.
+- **Sessions parallèles** : gestion de multiples sessions de navigation en parallèle avec interface visuelle temps réel, similaire à Claude dans Chrome.
 - **Surveillance système** : monitoring continu CPU, mémoire, disque, réseau avec détection d'anomalies.
 - **Personnalité adaptative** : traits de personnalité ajustables (sarcasme, formalité, proactivité, humour, empathie, concision, créativité) avec évolution basée sur les interactions.
 
@@ -156,6 +230,13 @@ Installation typique :
 cd %USERPROFILE%\Jarvis
 python -m pip install -r requirements.txt
 python -m pip install fastapi uvicorn requests pywin32
+```
+
+Pour les fonctionnalités de navigation interactive (Playwright) :
+
+```powershell
+pip install playwright
+playwright install
 ```
 
 Avec un chemin Python explicite (si nécessaire) :
@@ -757,7 +838,9 @@ capabilities/
 ├── voice_output.py
 ├── clap_input.py
 ├── calendar_integration.py
-└── email_integration.py
+├── email_integration.py
+├── web_search.py
+└── browser_automation.py
 ```
 
 ### Responsabilités
@@ -807,6 +890,8 @@ Familles principales :
 - **Vocal** : `activer_vocal()`, `desactiver_vocal()`, `lire_etat_vocal()`, `configurer_vocal()`.
 - **Système** : `obtenir_etat_systeme()`, `generer_rapport_systeme()`, `detecter_anomalies()`.
 - **Intelligence** : `generer_suggestions_contextuelles()`, `analyser_decisions_recentes()`, `rechercher_semantique()`.
+- **Recherche web** : `rechercher_web()`, `analyser_page_web()`, `rechercher_et_analyser()`, `extraire_informations_cles()`, `synthetiser_resultats()`.
+- **Navigation interactive** : `naviguer_vers()`, `cliquer_element()`, `remplir_formulaire()`, `extraire_texte_page()`, `prendre_capture()`, `executer_sequence()`, `obtenir_infos_page()`.
 - **Personnalité** : `obtenir_personnalite()`, `ajuster_personnalite()`, `generer_rapport_personnalite()`.
 
 ## Mémoire et fichiers d'état
@@ -854,6 +939,18 @@ cd %USERPROFILE%\Jarvis
 ```
 
 Résultat de la dernière vérification : `69 tests passants` (57 tests rapides + 12 tests lents).
+
+### Tests de recherche web
+
+Tests spécifiques pour les fonctionnalités de recherche web :
+
+- `tests/test_web_search.py` : Tests du moteur de recherche, extraction d'informations, et synthèse de résultats
+
+### Tests de navigation interactive
+
+Tests spécifiques pour les fonctionnalités de navigation interactive :
+
+- `tests/test_browser_automation.py` : Tests de l'automatisation de navigateur, séquences d'actions, et gestion des erreurs
 
 ### Tests vocaux et overlay
 

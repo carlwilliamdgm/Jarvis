@@ -81,6 +81,8 @@ Les modules `capabilities/` executent les actions concrètes. Ils ne decident pa
 - `capabilities/clap_input.py` : detection de double-clap pour activation vocale alternative.
 - `capabilities/calendar_integration.py` : integration avec calendrier (en developpement).
 - `capabilities/email_integration.py` : integration avec email (en developpement).
+- `capabilities/web_search.py` : recherche web avancée via DuckDuckGo, analyse de contenu de pages, extraction d'informations clés et synthèse de résultats.
+- `capabilities/browser_automation.py` : automatisation de navigateur via Playwright pour navigation interactive, clics, formulaires, captures d'écran et séquences d'actions.
 
 ## Facade outils
 

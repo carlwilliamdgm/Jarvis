@@ -169,6 +169,14 @@ async def startup_event():
         # Démarrer l'overlay visuel vocal
         demarrer_overlay_vocal()
         
+        # Démarrer l'overlay visuel de navigation
+        try:
+            from core.browser_overlay import start_browser_overlay
+            start_browser_overlay()
+            print("Browser overlay started successfully")
+        except Exception as e:
+            print(f"Warning: Could not start browser overlay: {e}")
+        
         print("Jarvis API server started successfully")
     except Exception as e:
         print(f"Error initializing agent: {e}")
@@ -182,6 +190,13 @@ async def shutdown_event():
         agent_stop_event.set()
     # Arrêter l'overlay visuel vocal
     arreter_overlay_vocal()
+    # Arrêter l'overlay visuel de navigation
+    try:
+        from core.browser_overlay import stop_browser_overlay
+        stop_browser_overlay()
+        print("Browser overlay stopped successfully")
+    except Exception as e:
+        print(f"Warning: Could not stop browser overlay: {e}")
 
 
 # Pydantic Models
@@ -380,6 +395,86 @@ async def discover_tailscale_devices() -> Dict:
         raise HTTPException(status_code=504, detail="Tailscale command timed out")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error discovering Tailscale devices: {str(e)}")
+
+
+@app.get("/jarvis/browser-sessions")
+async def get_browser_sessions() -> Dict:
+    """Retourne l'état de toutes les sessions de navigation actives."""
+    try:
+        from core.browser_session import get_session_manager
+        manager = get_session_manager()
+        sessions = manager.get_all_sessions()
+        return {"sessions": sessions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
+
+
+@app.get("/jarvis/browser-sessions/stream")
+async def stream_browser_sessions():
+    """Stream les événements des sessions de navigation avec Server-Sent Events."""
+    
+    def event_stream():
+        event_queue = queue.Queue()
+        browser_event_callback = None
+        
+        try:
+            from core.browser_session import get_session_manager
+            manager = get_session_manager()
+            
+            # Ajouter un callback pour les événements de session
+            def browser_event_callback(event):
+                event_queue.put({
+                    "type": "browser_event",
+                    "data": event
+                })
+            
+            # S'abonner à toutes les sessions existantes
+            sessions = manager.get_all_sessions()
+            for session_data in sessions:
+                session_id = session_data.get("session_id")
+                if session_id:
+                    session = manager.get_session(session_id)
+                    if session:
+                        session.add_event_callback(browser_event_callback)
+            
+            # Envoyer l'état initial
+            event_queue.put({
+                "type": "browser_state",
+                "data": {"sessions": sessions}
+            })
+            
+            # Boucle de streaming
+            while True:
+                try:
+                    event = event_queue.get(timeout=30)
+                    payload = json.dumps(event, ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+                    
+                    if event.get("type") == "done":
+                        break
+                except queue.Empty:
+                    # Heartbeat
+                    yield ": heartbeat\n\n"
+                    
+        except GeneratorExit:
+            pass
+        finally:
+            # Nettoyage
+            if browser_event_callback:
+                try:
+                    from core.browser_session import get_session_manager
+                    manager = get_session_manager()
+                    sessions = manager.get_all_sessions()
+                    for session_data in sessions:
+                        session_id = session_data.get("session_id")
+                        if session_id:
+                            session = manager.get_session(session_id)
+                            if session and browser_event_callback in session.event_callbacks:
+                                session.event_callbacks.remove(browser_event_callback)
+                except Exception:
+                    pass
+    
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @app.post("/jarvis/kill")

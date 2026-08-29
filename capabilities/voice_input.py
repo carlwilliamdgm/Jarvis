@@ -29,7 +29,7 @@ LOGGER = logging.getLogger(__name__)
 SAMPLE_RATE = 16_000
 WAKE_WORD_FRAME_LENGTH = 1_280
 # Seuil conservateur utilisé sans calibration locale ; configurable au démarrage.
-DEFAULT_WAKE_WORD_DETECTION_THRESHOLD = 0.5
+DEFAULT_WAKE_WORD_DETECTION_THRESHOLD = 0.1
 WAKE_WORD_DETECTION_THRESHOLD = DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
 TRANSCRIPTION_TIMEOUT_SECONDS = 8.0
 SILENCE_TIMEOUT_SECONDS = 1.2
@@ -191,7 +191,7 @@ def écouter_et_transcrire() -> str | None:
         return None
 
     try:
-        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=WAKE_WORD_FRAME_LENGTH,
+        with sd.RawInputStream(device=1, samplerate=SAMPLE_RATE, blocksize=WAKE_WORD_FRAME_LENGTH,
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
                 pcm, _overflowed = stream.read(WAKE_WORD_FRAME_LENGTH)

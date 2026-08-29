@@ -93,6 +93,7 @@ MAX_ETAPES_AGENT = 5
 MAX_ETAPES_PAR_MICRO_OBJECTIF = 5
 MAX_CONTEXTE_TENTATIVES_STARK = 4000
 SEUIL_ECHECS_CONSECUTIFS_STARK = 3
+SEUIL_ECHECS_RECHERCHE_WEB = 2  # Nombre max d'échecs de recherche web avant abandon
 DERNIERS_DETAILS_STARK = []
 ATTENTE_DETAILS_STARK = False
 AUTODESTRUCT_CONFIRM_WINDOW_SEC = 30
@@ -682,6 +683,7 @@ class EtatMicroObjectif:
     resultat_final: str | None = None
     statut_erreur_technique: bool = False
     echecs_consecutifs: int = 0
+    echecs_recherche_web: int = 0  # Compteur spécifique pour les échecs de recherche web
 
 
 def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
@@ -948,9 +950,21 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
         etat.derniere_action = {"outil": outil, "args": args}
         if entree["erreur"]:
             etat.echecs_consecutifs += 1
+            
+            # Détection spécifique pour les échecs de recherche web
+            if outil in ["rechercher_web", "rechercher_et_analyser", "analyser_page_web"]:
+                etat.echecs_recherche_web += 1
+                if etat.echecs_recherche_web >= SEUIL_ECHECS_RECHERCHE_WEB:
+                    console.print(f"[yellow]⚡ Seuil d'échecs recherche web atteint ({SEUIL_ECHECS_RECHERCHE_WEB}), abandon de la recherche[/yellow]")
+                    etat.resultat_final = f"Échec de la recherche web après {SEUIL_ECHECS_RECHERCHE_WEB} tentatives. Veuillez reformuler votre demande ou vérifier votre connexion internet."
+                    etat.termine = True
+            
             _journaliser_resultat_si_erreur(resultat_outil, "mode_stark", etat.objectif, outil, args)
         else:
             etat.echecs_consecutifs = 0
+            # Réinitialiser le compteur de recherche web en cas de succès
+            if outil in ["rechercher_web", "rechercher_et_analyser", "analyser_page_web"]:
+                etat.echecs_recherche_web = 0
         event_bus.emit(
             "tool_failed" if entree["erreur"] else "tool_completed",
             {
@@ -1014,6 +1028,15 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
         })
         etat.derniere_action = {"outil": outil, "args": args}
         etat.echecs_consecutifs += 1
+        
+        # Détection spécifique pour les échecs de recherche web
+        if outil in ["rechercher_web", "rechercher_et_analyser", "analyser_page_web"]:
+            etat.echecs_recherche_web += 1
+            if etat.echecs_recherche_web >= SEUIL_ECHECS_RECHERCHE_WEB:
+                console.print(f"[yellow]⚡ Seuil d'échecs recherche web atteint ({SEUIL_ECHECS_RECHERCHE_WEB}), abandon de la recherche[/yellow]")
+                etat.resultat_final = f"Échec de la recherche web après {SEUIL_ECHECS_RECHERCHE_WEB} tentatives. Veuillez reformuler votre demande ou vérifier votre connexion internet."
+                etat.termine = True
+        
         journaliser_erreur_systeme(
             resultat,
             contexte="mode_stark",

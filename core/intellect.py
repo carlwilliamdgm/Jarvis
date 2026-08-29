@@ -85,11 +85,13 @@ def interpreter_objectif(
         reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature, on_event=on_event)
 
         if reponse is None:
+            providers_cloud = _providers_cloud_disponibles()
+            providers_noms = [p["nom"] for p in providers_cloud] if providers_cloud else ["aucun"]
             return {
                 "objectif": "erreur",
                 "type": "conversation",
                 "actions": [],
-                "reponse": "Cloud indisponible, Sir. Je ne peux pas traiter ça correctement pour le moment."
+                "reponse": f"Cloud indisponible, Sir. Les modèles cloud ({', '.join(providers_noms)}) ne répondent pas. J'utilise le modèle local {MODELE_LOCAL}. Vérifiez votre connexion internet et vos clés API si le problème persiste."
             }
 
         contenu = reponse["message"]["content"]
@@ -110,8 +112,10 @@ def interpreter_objectif(
                 "type": "diagnostic",
                 "actions": [],
                 "reponse": (
-                    "Je n'ai exécuté aucune action, Sir : je n'ai pas obtenu "
-                    "de décision exploitable pour cette demande."
+                    "Je n'ai exécuté aucune action, Sir. Le modèle n'a pas fourni d'outil valide "
+                    "correspondant à votre demande. Soit aucun outil ne permet cette action, "
+                    "soit la réponse n'était pas au format attendu. Vérifiez que votre demande "
+                    "correspond à une capacité disponible."
                 ),
             }
 
@@ -145,7 +149,7 @@ def interpreter_objectif(
             "objectif": "erreur",
             "type": "conversation",
             "actions": [],
-            "reponse": f"Je ne peux pas traiter ça correctement, Sir. Erreur: {e}"
+            "reponse": f"Erreur technique lors du traitement, Sir. Cause : {str(e)[:100]}. Le traitement a échoué à l'étape d'interprétation. Si cela se reproduit, vérifiez que votre demande est claire."
         }
 
 
@@ -267,6 +271,7 @@ Règles spécifiques au Mode Stark :
     instructions_personnalite = generer_prompt_personnalite()
 
     return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
+Tu as été créé par Carl-William DJEGUEMA. Etudiant en informatique à l'Institut Africain d'Informatique(IAI). Carl-William aspire à devenir ingénieur en Génie Logiciel et developpeur full stack.
 Tu es un assistant local déployé pour l'utilisateur courant.
 Tu n'es PAS dans une simulation. Tu es un agent réel qui agit sur une vraie machine. Chaque outil que tu invoques produit un effet réel et immédiat.
 
@@ -349,7 +354,7 @@ def _parser_reponse_intellect(contenu: str, message_original: str) -> dict:
             "objectif": message_original[:100],
             "type": "conversation",
             "actions": [],
-            "reponse": "Je ne peux pas traiter ça correctement, Sir."
+            "reponse": "Je ne peux pas traiter ça correctement, Sir. Le modèle a retourné une réponse au format invalide (JSON attendu). Le traitement a échoué lors du parsing de la décision."
         }
 
 
