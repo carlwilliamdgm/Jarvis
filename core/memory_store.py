@@ -39,15 +39,17 @@ class BaseMemoryStore(ABC):
         pass
 
 
+_GLOBAL_MEMORY_LOCK = threading.RLock()
+
+
 class JsonMemoryStore(BaseMemoryStore):
     """Implémentation du stockage mémoire basée sur un fichier JSON avec locking process-level."""
 
     def __init__(self, file_path: Optional[Path] = None):
         self.file_path = file_path or MEMORY_PATH
-        self._lock = threading.RLock()
 
     def load(self) -> dict:
-        with self._lock:
+        with _GLOBAL_MEMORY_LOCK:
             try:
                 with open(self.file_path, "r", encoding="utf-8") as f:
                     contenu = f.read().strip()
@@ -56,41 +58,41 @@ class JsonMemoryStore(BaseMemoryStore):
                 return {}
 
     def save(self, data: dict) -> None:
-        with self._lock:
-            tmp_path = self.file_path.with_suffix(".json.tmp")
-
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-
-            derniere_erreur = None
-            for tentative in range(5):
-                try:
-                    os.replace(tmp_path, self.file_path)
-                    return
-                except OSError as e:
-                    derniere_erreur = e
-                    winerror = getattr(e, "winerror", None)
-                    if winerror in (5, 32) or e.errno in (5, 13, 16, 32):
-                        time.sleep(0.05 * (tentative + 1))
-                        continue
-                    raise
-
+        with _GLOBAL_MEMORY_LOCK:
+            tmp_path = self.file_path.with_name(
+                f"{self.file_path.stem}_{os.getpid()}_{threading.get_ident()}_{time.time_ns()}.tmp"
+            )
             try:
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                derniere_erreur = None
+                for tentative in range(5):
+                    try:
+                        os.replace(tmp_path, self.file_path)
+                        return
+                    except OSError as e:
+                        derniere_erreur = e
+                        winerror = getattr(e, "winerror", None)
+                        if winerror in (5, 32) or e.errno in (5, 13, 16, 32):
+                            time.sleep(0.05 * (tentative + 1))
+                            continue
+                        raise
+
                 shutil.copy2(tmp_path, self.file_path)
-                tmp_path.unlink(missing_ok=True)
-            except Exception as e2:
-                raise OSError(
-                    f"JsonMemoryStore.save : impossible d'écrire {self.file_path} "
-                    f"après 5 tentatives. Dernière erreur replace : {derniere_erreur} | "
-                    f"Erreur fallback : {e2}"
-                )
+            finally:
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
 
     @contextmanager
     def transaction(self) -> Generator[dict, None, None]:
         from core.memory import normaliser_memoire
-        with self._lock:
+        with _GLOBAL_MEMORY_LOCK:
             data = normaliser_memoire(self.load())
             yield data
             self.save(data)
