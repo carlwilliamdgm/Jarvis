@@ -48,8 +48,11 @@ Concurrency:
 - This ensures data consistency while allowing autonomous observation
 """
 
+import secrets
 import psutil
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -76,7 +79,151 @@ from core.confirmations import (
     use_confirmation_handler,
 )
 
-app = FastAPI(title="Jarvis API", version="1.0.0")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle context manager replacing deprecated startup/shutdown events."""
+    global agent, agent_stop_event, memoire, historique
+    try:
+        memoire = initialiser()
+        from rich.console import Console
+
+        console = Console()
+        agent, agent_stop_event, _ = demarrer_agent_autonome(memoire, console)
+
+        prompt = construire_prompt_action(memoire)
+        historique = [{"role": "system", "content": prompt}]
+
+        # Démarrer l'overlay visuel vocal
+        demarrer_overlay_vocal()
+
+        # Démarrer l'overlay visuel de navigation
+        try:
+            from core.browser_overlay import start_browser_overlay
+            start_browser_overlay()
+            print("Browser overlay started successfully")
+        except Exception as e:
+            print(f"Warning: Could not start browser overlay: {e}")
+
+        print("Jarvis API server started successfully")
+    except Exception as e:
+        print(f"Error initializing agent: {e}")
+        raise
+
+    yield
+
+    if agent_stop_event is not None:
+        agent_stop_event.set()
+    # Arrêter l'overlay visuel vocal
+    arreter_overlay_vocal()
+    # Arrêter l'overlay visuel de navigation
+    try:
+        from core.browser_overlay import stop_browser_overlay
+        stop_browser_overlay()
+        print("Browser overlay stopped successfully")
+    except Exception as e:
+        print(f"Warning: Could not stop browser overlay: {e}")
+
+
+app = FastAPI(title="Jarvis API", version="1.0.0", lifespan=lifespan)
+
+# Security & CORS configuration
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "JARVIS_ALLOWED_ORIGINS",
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
+
+# Autorise les origines locales et toute IP du Tailnet (100.x.y.z)
+TAILNET_ORIGIN_REGEX = r"^https?://(100\.[0-9]+\.[0-9]+\.[0-9]+|localhost|127\.0\.0\.1)(:[0-9]+)?$"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=TAILNET_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Jarvis-Internal-Kill"],
+)
+
+
+def obtenir_infos_tailscale() -> Dict:
+    """Détecte l'IP Tailscale locale et les appareils distants connectés sur le Tailnet."""
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        status_data = json.loads(result.stdout)
+        self_info = status_data.get("Self", {})
+        self_ips = self_info.get("TailscaleIPs", [])
+        local_ip = next((ip for ip in self_ips if ":" not in ip), None)
+        local_hostname = self_info.get("HostName", "")
+
+        devices = []
+        peers = status_data.get("Peer", {})
+        for peer_key, peer_info in peers.items():
+            tailscale_ips = peer_info.get("TailscaleIPs", [])
+            ip = next((addr for addr in tailscale_ips if ":" not in addr), None)
+            hostname = peer_info.get("HostName", peer_info.get("DNSName", peer_key))
+            is_online = peer_info.get("Online", False)
+            os_type = peer_info.get("OS", "unknown")
+            dns_name = peer_info.get("DNSName", "").rstrip(".")
+
+            if ip and hostname:
+                devices.append({
+                    "nom": hostname,
+                    "ip": ip,
+                    "os": os_type,
+                    "online": is_online,
+                    "dns": dns_name,
+                })
+
+        return {
+            "disponible": True,
+            "self": {"nom": local_hostname, "ip": local_ip},
+            "devices": devices,
+        }
+    except Exception:
+        return {
+            "disponible": False,
+            "self": {"nom": None, "ip": None},
+            "devices": [],
+        }
+
+
+security = HTTPBearer(auto_error=False)
+
+
+def verify_api_key(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> bool:
+    """Valide l'authentification par Bearer Token / API Key."""
+    api_key = os.environ.get("JARVIS_API_KEY")
+    if not api_key:
+        return True
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Jeton d'authentification manquant",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not secrets.compare_digest(credentials.credentials, api_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Jeton d'authentification invalide",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return True
+
 WEB_DIR = Path(__file__).resolve().parent.parent / "gui" / "web"
 app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
 
@@ -151,54 +298,6 @@ def detect_activity() -> bool:
         return True  # Default to active if detection fails
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the global agent instance at startup."""
-    global agent, agent_stop_event, memoire, historique
-    
-    try:
-        memoire = initialiser()
-        from rich.console import Console
-        
-        console = Console()
-        agent, agent_stop_event, _ = demarrer_agent_autonome(memoire, console)
-        
-        prompt = construire_prompt_action(memoire)
-        historique = [{"role": "system", "content": prompt}]
-        
-        # Démarrer l'overlay visuel vocal
-        demarrer_overlay_vocal()
-        
-        # Démarrer l'overlay visuel de navigation
-        try:
-            from core.browser_overlay import start_browser_overlay
-            start_browser_overlay()
-            print("Browser overlay started successfully")
-        except Exception as e:
-            print(f"Warning: Could not start browser overlay: {e}")
-        
-        print("Jarvis API server started successfully")
-    except Exception as e:
-        print(f"Error initializing agent: {e}")
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Stop the API autonomous watch loop when the server shuts down."""
-    if agent_stop_event is not None:
-        agent_stop_event.set()
-    # Arrêter l'overlay visuel vocal
-    arreter_overlay_vocal()
-    # Arrêter l'overlay visuel de navigation
-    try:
-        from core.browser_overlay import stop_browser_overlay
-        stop_browser_overlay()
-        print("Browser overlay stopped successfully")
-    except Exception as e:
-        print(f"Warning: Could not stop browser overlay: {e}")
-
-
 # Pydantic Models
 class AskRequest(BaseModel):
     message: str
@@ -218,7 +317,7 @@ class ConfirmRequest(BaseModel):
 
 # Endpoints
 @app.post("/jarvis/ask")
-async def ask_jarvis(request: AskRequest) -> Dict:
+async def ask_jarvis(request: AskRequest, _auth: bool = Depends(verify_api_key)) -> Dict:
     """Process a message through Jarvis."""
     try:
         result = traiter_message(request.message)
@@ -230,7 +329,11 @@ async def ask_jarvis(request: AskRequest) -> Dict:
 
 
 @app.get("/jarvis/stream")
-async def stream_jarvis(message: str, session_id: str | None = None):
+def stream_jarvis(
+    message: str,
+    session_id: str | None = None,
+    _auth: bool = Depends(verify_api_key),
+):
     """Stream Jarvis events with Server-Sent Events."""
 
     active_session_id = session_id or uuid4().hex
@@ -264,7 +367,7 @@ async def stream_jarvis(message: str, session_id: str | None = None):
                     continue
 
                 payload = json.dumps(event, ensure_ascii=False)
-                yield f"data: {payload}\n\n"
+                yield f"data: {payload}\n\n".encode("utf-8")
 
                 if event.get("type") == "done":
                     break
@@ -275,7 +378,7 @@ async def stream_jarvis(message: str, session_id: str | None = None):
 
 
 @app.get("/jarvis/status")
-async def get_status() -> Dict:
+async def get_status(_auth: bool = Depends(verify_api_key)) -> Dict:
     """Get system status: CPU, RAM, and activity."""
     try:
         cpu_percent = psutil.cpu_percent(interval=0.5)
@@ -292,7 +395,7 @@ async def get_status() -> Dict:
 
 
 @app.post("/jarvis/signal")
-async def receive_signal(request: SignalRequest) -> Dict:
+async def receive_signal(request: SignalRequest, _auth: bool = Depends(verify_api_key)) -> Dict:
     """Receive a signal from an external device (e.g., TECNO)."""
     try:
         signal_data = {
@@ -308,7 +411,7 @@ async def receive_signal(request: SignalRequest) -> Dict:
 
 
 @app.get("/jarvis/alerts")
-async def get_alerts() -> Dict:
+async def get_alerts(_auth: bool = Depends(verify_api_key)) -> Dict:
     """Get and clear pending alerts."""
     try:
         alerts = list(alerts_queue)
@@ -319,7 +422,7 @@ async def get_alerts() -> Dict:
 
 
 @app.post("/jarvis/confirm")
-async def confirm_action(request: ConfirmRequest) -> Dict:
+async def confirm_action(request: ConfirmRequest, _auth: bool = Depends(verify_api_key)) -> Dict:
     """Confirm or refuse a pending action."""
     state = confirmation_manager.resolve(
         session_id=request.session_id,
@@ -336,69 +439,19 @@ async def confirm_action(request: ConfirmRequest) -> Dict:
 
 
 @app.get("/jarvis/discover")
-async def discover_tailscale_devices() -> Dict:
+async def discover_tailscale_devices(_auth: bool = Depends(verify_api_key)) -> Dict:
     """Discover Tailscale devices on the tailnet."""
-    try:
-        # Check if tailscale command is available
-        try:
-            subprocess.run(["tailscale", "--version"], capture_output=True, check=True, timeout=5)
-        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-            raise HTTPException(
-                status_code=503,
-                detail="Tailscale non disponible sur cette instance"
-            )
-        
-        # Get Tailscale status in JSON format
-        result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=10
+    info = obtenir_infos_tailscale()
+    if not info.get("disponible"):
+        raise HTTPException(
+            status_code=503,
+            detail="Tailscale non disponible sur cette instance",
         )
-        
-        status_data = json.loads(result.stdout)
-        
-        # Extract peer information
-        devices = []
-        peers = status_data.get("Peer", {})
-        
-        for peer_key, peer_info in peers.items():
-            # Skip if offline
-            if not peer_info.get("Online", False):
-                continue
-            
-            # Get machine name
-            hostname = peer_info.get("HostName", peer_info.get("DNSName", peer_key))
-            
-            # Get Tailscale IP (first IPv4 address)
-            tailscale_ips = peer_info.get("TailscaleIPs", [])
-            ip = None
-            for addr in tailscale_ips:
-                if ":" not in addr:  # IPv4
-                    ip = addr
-                    break
-            
-            if ip and hostname:
-                devices.append({
-                    "nom": hostname,
-                    "ip": ip
-                })
-        
-        return {"devices": devices}
-        
-    except HTTPException:
-        raise
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse Tailscale JSON output: {str(e)}")
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Tailscale command timed out")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error discovering Tailscale devices: {str(e)}")
+    return info
 
 
 @app.get("/jarvis/browser-sessions")
-async def get_browser_sessions() -> Dict:
+async def get_browser_sessions(_auth: bool = Depends(verify_api_key)) -> Dict:
     """Retourne l'état de toutes les sessions de navigation actives."""
     try:
         from core.browser_session import get_session_manager
@@ -410,7 +463,7 @@ async def get_browser_sessions() -> Dict:
 
 
 @app.get("/jarvis/browser-sessions/stream")
-async def stream_browser_sessions():
+def stream_browser_sessions(_auth: bool = Depends(verify_api_key)):
     """Stream les événements des sessions de navigation avec Server-Sent Events."""
     
     def event_stream():
@@ -448,13 +501,13 @@ async def stream_browser_sessions():
                 try:
                     event = event_queue.get(timeout=30)
                     payload = json.dumps(event, ensure_ascii=False)
-                    yield f"data: {payload}\n\n"
+                    yield f"data: {payload}\n\n".encode("utf-8")
                     
                     if event.get("type") == "done":
                         break
                 except queue.Empty:
                     # Heartbeat
-                    yield ": heartbeat\n\n"
+                    yield b": heartbeat\n\n"
                     
         except GeneratorExit:
             pass
@@ -478,7 +531,7 @@ async def stream_browser_sessions():
 
 
 @app.post("/jarvis/kill")
-async def kill_jarvis(request: Request) -> Dict:
+async def kill_jarvis(request: Request, _auth: bool = Depends(verify_api_key)) -> Dict:
     """Debug-only HTTP teardown endpoint.
 
     Runtime teardown is normally triggered by the internal Mode Stark command
@@ -495,4 +548,22 @@ async def kill_jarvis(request: Request) -> Dict:
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    ts_info = obtenir_infos_tailscale()
+    # Si Tailscale est actif, écoute sur 0.0.0.0 pour faciliter la connexion des appareils distants
+    default_host = "0.0.0.0" if ts_info.get("disponible") else "127.0.0.1"
+    host = os.environ.get("JARVIS_API_HOST", default_host)
+    port = int(os.environ.get("JARVIS_API_PORT", "8000"))
+
+    if ts_info.get("disponible"):
+        local_ip = ts_info.get("self", {}).get("ip")
+        hostname = ts_info.get("self", {}).get("nom")
+        print(f"\n🌐 Tailscale actif sur cette machine ({hostname}) :")
+        print(f"   👉 URL Web locale    : http://127.0.0.1:{port}/web")
+        if local_ip:
+            print(f"   👉 URL Web Tailscale : http://{local_ip}:{port}/web")
+        online_devices = [d for d in ts_info.get("devices", []) if d.get("online")]
+        if online_devices:
+            dev_str = ", ".join(f"{d['nom']} ({d['ip']})" for d in online_devices)
+            print(f"   📱 Appareils distants connectés : {dev_str}\n")
+
+    uvicorn.run(app, host=host, port=port)

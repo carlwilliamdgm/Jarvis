@@ -60,9 +60,13 @@ class FakeWakeWordModel:
 class VoiceInputTests(unittest.TestCase):
     def setUp(self):
         _set_voice_state(VoiceState.IDLE)
+        voice_input._STOP_EVENT.clear()
+        voice_input.WAKE_WORD_DETECTION_THRESHOLD = voice_input.DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
 
     def tearDown(self):
         _set_voice_state(VoiceState.IDLE)
+        voice_input._STOP_EVENT.clear()
+        voice_input.WAKE_WORD_DETECTION_THRESHOLD = voice_input.DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
 
     def test_transcription_and_pipeline_nominal(self):
         with patch.object(voice_input, "_new_recognizer", return_value=FakeRecognizer()), \

@@ -1047,6 +1047,28 @@ def obtenir_etat_session(session_id: str) -> str:
         return resultat_erreur(f"Erreur lors de l'obtention de l'état: {str(e)}", e)
 
 
+def decouvrir_appareils_tailscale() -> str:
+    """Détecte et liste les appareils connectés sur le réseau privé Tailscale."""
+    try:
+        from api.server import obtenir_infos_tailscale
+        info = obtenir_infos_tailscale()
+        if not info.get("disponible"):
+            return "Tailscale n'est pas disponible ou actif sur cette machine."
+        self_info = info.get("self", {})
+        devices = info.get("devices", [])
+        lignes = [f"Machine locale : {self_info.get('nom', 'Inconnue')} ({self_info.get('ip', 'Pas d\'IP')})"]
+        if not devices:
+            lignes.append("Aucun appareil distant détecté sur le Tailnet.")
+        else:
+            lignes.append("Appareils sur le Tailnet :")
+            for d in devices:
+                statut = "🟢 en ligne" if d.get("online") else "⚪ hors ligne"
+                lignes.append(f"- {d.get('nom')} ({d.get('ip')}) [{d.get('os')}] : {statut}")
+        return "\n".join(lignes)
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de la détection Tailscale: {str(e)}", e)
+
+
 OUTILS = {
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
@@ -1130,4 +1152,5 @@ OUTILS = {
     "fermer_session": fermer_session,
     "lister_sessions": lister_sessions,
     "obtenir_etat_session": obtenir_etat_session,
+    "decouvrir_appareils_tailscale": decouvrir_appareils_tailscale,
 }

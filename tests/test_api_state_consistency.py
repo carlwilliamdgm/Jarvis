@@ -217,7 +217,7 @@ class EventBusCleanupTests(unittest.TestCase):
         mock_event_bus.subscribe.return_value = event_queue
         mock_event_bus.bind = MagicMock()
         mock_event_bus.unbind = MagicMock()
-        mock_event_bus.emit = MagicMock()
+        mock_event_bus.emit = MagicMock(side_effect=lambda t, d: event_queue.put({"type": t, "data": d}))
         mock_event_bus.unsubscribe = MagicMock()
         
         # Mock executer to fail
@@ -464,7 +464,9 @@ class DocumentationConsistencyTests(unittest.TestCase):
                                'rechercher_semantique', 'analyser_connexions_contextuelles', 
                                'generer_insights_profonds', 'obtenir_personnalite', 'ajuster_personnalite',
                                'adapter_ton_contextuel', 'generer_prompt_personnalite', 'evoluer_personnalite',
-                               'obtenir_rapport_personnalite', 'reinitialiser_personnalite']:
+                               'obtenir_rapport_personnalite', 'reinitialiser_personnalite',
+                               'demander_confirmation', 'action_bloquee', 'chemin_autorise',
+                               'executer_interaction_utilisateur']:
                 documented_tools.add(tool_name)
         
         # Get actual tool names

@@ -252,6 +252,42 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatu
 - `rapport_systeme()` - Génère un rapport complet de l'état système.
 - `tendances_systeme(heures=24)` - Analyse les tendances système sur une période donnée.
 
+### Réseau & Tailscale
+
+- `decouvrir_appareils_tailscale()` - Détecte l'IP locale et la liste des appareils pairs connectés sur le Tailnet privé.
+
+### Recherche Web
+
+- `rechercher_web(requete, max_resultats=5)` - Effectue une recherche web via DuckDuckGo ou moteur configuré.
+- `analyser_page_web(url)` - Extrait et analyse le contenu textuel d'une page web.
+- `rechercher_et_analyser(requete, max_resultats=3)` - Recherche et analyse les pages pertinentes.
+- `extraire_informations_cles(url, sujet)` - Extrait des informations ciblées sur un sujet précis depuis une URL.
+- `synthetiser_resultats(resultats, requete)` - Synthétise un ensemble de résultats web.
+
+### Automatisation de Navigateur
+
+- `naviguer_vers(url)` - Navigue vers une URL dans le navigateur contrôlé.
+- `cliquer_element(selecteur)` - Clique sur un élément via sélecteur CSS ou texte.
+- `remplir_formulaire(selecteur, texte)` - Saisit du texte dans un champ de formulaire.
+- `extraire_texte_page(selecteur="")` - Extrait le texte complet ou d'une zone de la page.
+- `prendre_capture(nom_fichier="capture.png")` - Capture l'écran de la page active.
+- `executer_sequence(actions)` - Exécute une séquence d'actions de navigation.
+- `obtenir_infos_page()` - Récupère le titre et l'URL de la page courante.
+
+### Sessions de Navigation & Overlay
+
+- `demarrer_overlay_navigation()` - Démarre le visualiseur d'overlay du navigateur.
+- `arreter_overlay_navigation()` - Arrête l'overlay de navigation.
+- `creer_session_navigation(url="", browser_type="chromium", headless=False)` - Crée une nouvelle session de navigation persistante.
+- `naviguer_session(session_id, url)` - Charge une page dans une session spécifique.
+- `cliquer_session(session_id, selecteur)` - Clique sur un élément dans une session spécifique.
+- `remplir_session(session_id, selecteur, texte)` - Saisit du texte dans une session spécifique.
+- `capture_session(session_id, chemin="")` - Capture la vue d'une session de navigation.
+- `executer_js_session(session_id, script)` - Exécute un script JavaScript dans la session.
+- `fermer_session(session_id)` - Ferme et nettoie une session de navigation.
+- `lister_sessions()` - Liste toutes les sessions de navigation actives.
+- `obtenir_etat_session(session_id)` - Obtient l'état et l'historique d'une session.
+
 ## Modules internes
 
 Les fonctions suivantes ne sont pas exposées comme outils Jarvis mais sont utilisées en interne par le système :
