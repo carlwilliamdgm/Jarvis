@@ -75,7 +75,9 @@ from capabilities.browser_automation import (
     extraire_texte,
     prendre_capture,
     executer_sequence,
-    obtenir_infos_page
+    obtenir_infos_page,
+    fermer_navigateur,
+    reinitialiser_navigateur
 )
 from core.browser_session import get_session_manager
 from core.browser_overlay import start_browser_overlay, stop_browser_overlay, get_browser_overlay
@@ -770,6 +772,32 @@ def obtenir_infos_page_tool(url: str = None, headless: bool = True) -> str:
         return resultat_erreur(f"Erreur lors de l'obtention des infos: {str(e)}", e)
 
 
+def fermer_navigateur_tool() -> str:
+    """
+    Ferme le navigateur persistant et libère les ressources.
+    
+    Returns:
+        Message de confirmation
+    """
+    try:
+        return fermer_navigateur()
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de la fermeture du navigateur: {str(e)}", e)
+
+
+def reinitialiser_navigateur_tool() -> str:
+    """
+    Réinitialise la session de navigation persistante.
+    
+    Returns:
+        Message de confirmation
+    """
+    try:
+        return reinitialiser_navigateur()
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de la réinitialisation du navigateur: {str(e)}", e)
+
+
 def demarrer_overlay_navigation() -> str:
     """
     Démarre l'overlay visuel de navigation en temps réel.
@@ -1141,6 +1169,8 @@ OUTILS = {
     "prendre_capture": prendre_capture_tool,
     "executer_sequence": executer_sequence_tool,
     "obtenir_infos_page": obtenir_infos_page_tool,
+    "fermer_navigateur": fermer_navigateur_tool,
+    "reinitialiser_navigateur": reinitialiser_navigateur_tool,
     "demarrer_overlay_navigation": demarrer_overlay_navigation,
     "arreter_overlay_navigation": arreter_overlay_navigation,
     "creer_session_navigation": creer_session_navigation,

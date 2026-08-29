@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import sounddevice as sd
 from openwakeword.model import Model
+from capabilities.voice_input import get_input_device
 from capabilities.clap_input import DoubleClapDetector, _maximum_amplitude, CLAP_AMPLITUDE_THRESHOLD
 
 def test_wakeword_detection():
@@ -23,7 +24,8 @@ def test_wakeword_detection():
     print("\nTest avec différents seuils de détection (parlez 'Hey Jarvis')...")
     print("Appuyez sur Ctrl+C pour arrêter\n")
     
-    with sd.RawInputStream(device=1, samplerate=16000, blocksize=1280, dtype="int16", channels=1) as stream:
+    device_in = get_input_device()
+    with sd.RawInputStream(device=device_in, samplerate=16000, blocksize=1280, dtype="int16", channels=1) as stream:
         max_score = 0.0
         start_time = time.monotonic()
         
@@ -70,7 +72,8 @@ def test_clap_detection():
     print(f"Seuil de détection: {CLAP_AMPLITUDE_THRESHOLD}")
     print("Faites des double-claps (appuyez sur Ctrl+C pour arrêter)\n")
     
-    with sd.RawInputStream(device=1, samplerate=16000, blocksize=800, dtype="int16", channels=1) as stream:
+    device_in = get_input_device()
+    with sd.RawInputStream(device=device_in, samplerate=16000, blocksize=800, dtype="int16", channels=1) as stream:
         max_amplitude = 0
         start_time = time.monotonic()
         

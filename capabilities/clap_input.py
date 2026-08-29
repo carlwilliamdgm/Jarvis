@@ -8,7 +8,7 @@ import time
 from typing import Any
 
 from core.voice_state import VoiceState, _set_voice_state
-from capabilities.voice_input import SAMPLE_RATE, transcrire_et_soumettre
+from capabilities.voice_input import SAMPLE_RATE, get_input_device, transcrire_et_soumettre
 
 
 LOGGER = logging.getLogger(__name__)
@@ -50,7 +50,8 @@ def _listener_loop() -> None:
     try:
         import sounddevice as sd
         detector = DoubleClapDetector()
-        with sd.RawInputStream(device=1, samplerate=SAMPLE_RATE, blocksize=CLAP_BLOCK_SIZE,
+        device_in = get_input_device()
+        with sd.RawInputStream(device=device_in, samplerate=SAMPLE_RATE, blocksize=CLAP_BLOCK_SIZE,
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
                 data, _overflowed = stream.read(CLAP_BLOCK_SIZE)

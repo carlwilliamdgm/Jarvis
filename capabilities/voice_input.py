@@ -181,6 +181,28 @@ def _new_wake_word_model() -> Any:
     return Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
 
 
+def get_input_device() -> int | None:
+    """Retourne l'identifiant du périphérique d'entrée audio (ou None pour le défaut système)."""
+    configured = os.environ.get("JARVIS_AUDIO_INPUT_DEVICE") or os.environ.get("JARVIS_MICROPHONE_DEVICE")
+    if configured is not None:
+        try:
+            return int(configured)
+        except ValueError:
+            LOGGER.warning("Périphérique microphone invalide (%s) ; utilisation du défaut système", configured)
+    try:
+        import sounddevice as sd
+        default_dev = sd.default.device
+        if isinstance(default_dev, (list, tuple)) and len(default_dev) > 0:
+            default_in = default_dev[0]
+            if default_in is not None and default_in >= 0:
+                return int(default_in)
+        elif isinstance(default_dev, int) and default_dev >= 0:
+            return int(default_dev)
+    except Exception:
+        pass
+    return None
+
+
 def écouter_et_transcrire() -> str | None:
     """Attend un wake word puis transcrit et transmet une seule requête."""
     try:
@@ -191,7 +213,8 @@ def écouter_et_transcrire() -> str | None:
         return None
 
     try:
-        with sd.RawInputStream(device=1, samplerate=SAMPLE_RATE, blocksize=WAKE_WORD_FRAME_LENGTH,
+        device_in = get_input_device()
+        with sd.RawInputStream(device=device_in, samplerate=SAMPLE_RATE, blocksize=WAKE_WORD_FRAME_LENGTH,
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
                 pcm, _overflowed = stream.read(WAKE_WORD_FRAME_LENGTH)

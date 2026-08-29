@@ -145,3 +145,13 @@ class VoiceInputTests(unittest.TestCase):
             voice_input.WAKE_WORD_DETECTION_THRESHOLD = original_threshold
 
         self.assertEqual(0.72, loaded_threshold)
+
+    def test_get_input_device_from_env(self):
+        with patch.dict("os.environ", {"JARVIS_AUDIO_INPUT_DEVICE": "3"}):
+            self.assertEqual(3, voice_input.get_input_device())
+
+    def test_get_input_device_default_fallback(self):
+        fake_sd = SimpleNamespace(default=SimpleNamespace(device=[2, 0]))
+        with patch.dict("os.environ", {}, clear=True), \
+             patch.dict(sys.modules, {"sounddevice": fake_sd}):
+            self.assertEqual(2, voice_input.get_input_device())

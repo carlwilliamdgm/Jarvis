@@ -18,8 +18,16 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Callable
 
-from groq import Groq as GroqClient
-
+from core.llm_client import (
+    MODELES_GROQ,
+    MODELES_OPENROUTER,
+    MODELE_LOCAL,
+    get_llm_client,
+    get_groq_clients as _get_groq_clients,
+    chat_with_cloud as _chat_with_groq,
+    chat_with_openrouter as _chat_with_openrouter,
+    providers_cloud_disponibles as _providers_cloud_disponibles,
+)
 from core.memory import charger_memoire, normaliser_memoire
 from core.prompt import construire_prompt_action
 from core.tool_signatures import documenter_signatures_outils
@@ -29,10 +37,6 @@ from tools import OUTILS
 
 OS = platform.system()
 HOME = Path.home()
-
-MODELES_GROQ = ["openai/gpt-oss-120b"]
-MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
-MODELE_LOCAL = "qwen2.5:7b"
 
 # Mots d'acquittement pour une classification déterministe (sans appel LLM)
 MOTS_ACQUITTEMENT = [
@@ -405,162 +409,14 @@ def _appeler_llm_avec_retry(
 ) -> dict | None:
     """
     Appelle le LLM avec retry sur cloud puis fallback local.
+    Centralisé via core.llm_client.LLMClient.
     """
-    from rich.console import Console
-    console = Console()
-    max_tentatives = 2
-
-    for tentative in range(max_tentatives):
-        providers_cloud = _providers_cloud_disponibles()
-
-        if providers_cloud:
-            if tentative == 0:
-                console.print(f"[dim]-> Cle API cloud detectee. Tentative modeles cloud...[/dim]")
-            else:
-                console.print(f"[dim yellow]-> Retry modeles cloud (tentative {tentative + 1})...[/dim yellow]")
-
-            for provider in providers_cloud:
-                nom = provider["nom"]
-                modele = provider["modeles"][0]
-                try:
-                    reponse = provider["fonction"](modele, messages, temperature=temperature)
-                    console.print(f"[dim green]✓ {nom} reussi : {modele}[/dim green]")
-                    if on_event is not None:
-                        on_event("provider", {"provider": nom, "model": modele})
-                    return reponse
-                except Exception as e:
-                    console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
-                    continue
-
-        # Fallback local
-        if tentative == 0:
-            console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
-        try:
-            reponse = ollama.chat(
-                model=MODELE_LOCAL,
-                messages=messages,
-                options={"think": False, "temperature": temperature},
-            )
-            if on_event is not None:
-                on_event("provider", {"provider": "Ollama", "model": MODELE_LOCAL})
-            return reponse
-        except Exception as e:
-            console.print(f"[red]✗ Erreur modèle local : {e}[/red]")
-            continue
-
-    return None
-
-
-def _providers_cloud_disponibles() -> list:
-    """Retourne la liste des providers cloud disponibles."""
-    providers = []
-
-    groq_clients = _get_groq_clients()
-    if groq_clients:
-        providers.append({
-            "nom": "Groq",
-            "modeles": MODELES_GROQ,
-            "fonction": _chat_with_groq,
-        })
-
-    if os.environ.get("OPENROUTER_API_KEY"):
-        providers.append({
-            "nom": "OpenRouter",
-            "modeles": MODELES_OPENROUTER,
-            "fonction": _chat_with_openrouter,
-        })
-
-    return providers
-
-
-def _get_groq_clients() -> list:
-    """Retourne une liste de clients Groq avec support multi-clés."""
-    clients = []
-    i = 1
-    while True:
-        key = os.environ.get(f"GROQ_API_KEY_{i}")
-        if not key:
-            break
-        clients.append(GroqClient(api_key=key))
-        i += 1
-
-    if not clients and os.environ.get("GROQ_API_KEY"):
-        clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY")))
-
-    return clients
-
-
-def _chat_with_groq(modele: str, messages: list, temperature: float = 0.7) -> dict:
-    """Appel Groq avec switch automatique sur 429."""
-    clients = _get_groq_clients()
-    if not clients:
-        raise Exception("Aucune clé Groq configurée.")
-
-    groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-    derniere_erreur = None
-
-    for client in clients:
-        try:
-            response = client.chat.completions.create(
-                model=modele,
-                messages=groq_messages,
-                max_tokens=1024,
-                temperature=temperature
-            )
-            return {"message": {"content": response.choices[0].message.content}}
-        except Exception as e:
-            derniere_erreur = e
-            if "429" in str(e):
-                continue
-            raise Exception(f"Groq error: {e}")
-
-    raise Exception(f"Groq error: toutes clés épuisées — {derniere_erreur}")
-
-
-def _chat_with_openrouter(modele: str, messages: list, temperature: float = 0.7) -> dict:
-    """Appel OpenRouter avec injection prompt système."""
-    import urllib.request
-
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise Exception("OPENROUTER_API_KEY absente.")
-
-    systeme = next((m["content"] for m in messages if m["role"] == "system"), "")
-    autres = [m for m in messages if m["role"] != "system"]
-
-    messages_envoyes = []
-    if systeme:
-        messages_envoyes.append({"role": "system", "content": systeme})
-
-    if autres and systeme:
-        premier_user = autres[0]["content"]
-        autres[0] = {
-            "role": "user",
-            "content": f"[INSTRUCTIONS SYSTÈME - À RESPECTER STRICTEMENT]\n{systeme}\n[FIN INSTRUCTIONS]\n\n{premier_user}"
-        }
-
-    messages_envoyes.extend([{"role": m["role"], "content": m["content"]} for m in autres])
-
-    payload = json.dumps({
-        "model": modele,
-        "messages": messages_envoyes,
-        "max_tokens": 2048,
-        "temperature": temperature,
-    }).encode("utf-8")
-
-    request = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://localhost/jarvis",
-            "X-Title": "Jarvis Local",
-        },
-        method="POST",
+    from core.llm_client import LLMConfig
+    client = get_llm_client()
+    return client.generate_with_fallback(
+        messages=messages,
+        memoire=memoire,
+        config=LLMConfig(temperature=temperature),
+        on_event=on_event,
     )
 
-    with urllib.request.urlopen(request, timeout=60) as response:
-        data = json.loads(response.read().decode("utf-8"))
-
-    return {"message": {"content": data["choices"][0]["message"]["content"]}}

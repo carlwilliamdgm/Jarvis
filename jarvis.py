@@ -15,7 +15,20 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
-from groq import Groq as GroqClient
+from core.llm_client import (
+    MODELES_GROQ,
+    MODELES_OPENROUTER,
+    MODELE_LOCAL,
+    get_groq_clients,
+    chat_with_cloud,
+    chat_with_openrouter,
+    chat_with_local,
+    providers_cloud_disponibles,
+    ordonner_providers_cloud,
+    memoriser_provider_cloud,
+    register_event_emitter,
+    get_llm_client,
+)
 from rich.console import Console
 from rich.panel import Panel
 from rich.markup import escape
@@ -77,6 +90,7 @@ class EventBus:
 
 
 event_bus = EventBus()
+register_event_emitter(event_bus.emit)
 
 # Une interaction modifie l'historique et peut appeler le LLM. Toutes les
 # surfaces (CLI, API et voix) passent donc par ce verrou process-level.
@@ -85,9 +99,6 @@ INTERACTION_LOCK = threading.Lock()
 OS = platform.system()
 HOME = Path.home()
 
-MODELES_GROQ = ["openai/gpt-oss-120b"]
-MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
-MODELE_LOCAL = "qwen2.5:7b"
 MAX_MESSAGES_HISTORIQUE = 20
 MAX_ETAPES_AGENT = 5
 MAX_ETAPES_PAR_MICRO_OBJECTIF = 5
@@ -258,164 +269,6 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
     if len(extraire_json_objets(message)) > 1:
         score += 1
     return "complexe" if score >= 2 else "simple"
-
-
-def get_groq_clients():
-    """Retourne une liste de clients Groq, un par cle API disponible.
-
-    Cherche GROQ_API_KEY_1, GROQ_API_KEY_2, ... dans l'environnement.
-    Si aucune n'est definie, retombe sur GROQ_API_KEY (compatibilite).
-    """
-    clients = []
-    i = 1
-    while True:
-        key = os.environ.get(f"GROQ_API_KEY_{i}")
-        if not key:
-            break
-        clients.append(GroqClient(api_key=key))
-        i += 1
-    if not clients and os.environ.get("GROQ_API_KEY"):
-        clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY")))
-    return clients
-
-
-def chat_with_cloud(modele, messages):
-    """Appel a Groq pour modeles cloud gratuits.
-
-    Essaie chaque cle API disponible (GROQ_API_KEY_1, _2, ...) dans l'ordre.
-    Si une cle renvoie une erreur de rate limit (429), passe a la suivante.
-    Toute autre erreur est levee immediatement.
-    """
-    groq_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-    clients = get_groq_clients()
-    if not clients:
-        raise Exception("Aucune cle Groq configuree.")
-
-    derniere_erreur = None
-    for client in clients:
-        try:
-            response = client.chat.completions.create(
-                model=modele,
-                messages=groq_messages,
-                max_tokens=1024,
-                temperature=0.7
-            )
-            event_bus.emit("provider", {"provider": "Groq", "model": modele})
-            return {"message": {"content": response.choices[0].message.content}}
-        except Exception as e:
-            derniere_erreur = e
-            if "429" in str(e):
-                continue
-            raise Exception(f"Groq error: {e}")
-
-    raise Exception(f"Groq error (toutes cles epuisees): {derniere_erreur}")
-
-
-def chat_with_openrouter(modele, messages):
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise Exception("OPENROUTER_API_KEY absente.")
-
-    systeme = next((m["content"] for m in messages if m["role"] == "system"), "")
-    autres = [m for m in messages if m["role"] != "system"]
-
-    messages_envoyes = []
-    if systeme:
-        messages_envoyes.append({"role": "system", "content": systeme})
-
-    if autres and systeme:
-        premier_user = autres[0]["content"]
-        autres[0] = {
-            "role": "user",
-            "content": f"[INSTRUCTIONS SYSTÈME - À RESPECTER STRICTEMENT]\n{systeme}\n[FIN INSTRUCTIONS]\n\n{premier_user}"
-        }
-
-    messages_envoyes.extend([{"role": m["role"], "content": m["content"]} for m in autres])
-
-    payload = json.dumps({
-        "model": modele,
-        "messages": messages_envoyes,
-        "max_tokens": 2048,
-        "temperature": 0.7,
-    }).encode("utf-8")
-
-    request = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://localhost/jarvis",
-            "X-Title": "Jarvis Local",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        event_bus.emit("provider", {"provider": "OpenRouter", "model": modele})
-        return {"message": {"content": data["choices"][0]["message"]["content"]}}
-    except Exception as e:
-        raise Exception(f"OpenRouter error: {e}")
-
-
-def chat_with_local(modele, messages):
-    try:
-        response = ollama.chat(model=modele, messages=messages, options={"think": False})
-        event_bus.emit("provider", {"provider": "Ollama", "model": modele})
-        return response
-    except Exception as e:
-        raise Exception(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.")
-
-
-def providers_cloud_disponibles() -> list[dict]:
-    providers = []
-    if get_groq_clients():
-        providers.append({
-            "nom": "Groq",
-            "modeles": MODELES_GROQ,
-            "fonction": chat_with_cloud,
-            "niveau": "simple",
-        })
-    if os.environ.get("OPENROUTER_API_KEY"):
-        providers.append({
-            "nom": "OpenRouter",
-            "modeles": MODELES_OPENROUTER,
-            "fonction": chat_with_openrouter,
-            "niveau": "simple",
-        })
-    return providers
-
-
-def ordonner_providers_cloud(providers: list[dict], memoire: dict, complexite: str = "simple") -> list[dict]:
-    if len(providers) <= 1:
-        return providers
-    priorite = ["complexe", "simple"] if complexite == "complexe" else ["simple", "complexe"]
-    routeur = memoire.get("routeur_modeles", {})
-    ordonnes = []
-    for niveau in priorite:
-        groupe = [provider for provider in providers if provider["niveau"] == niveau]
-        if not groupe:
-            continue
-        dernier = routeur.get(f"dernier_provider_{niveau}")
-        noms = [provider["nom"] for provider in groupe]
-        if dernier in noms:
-            index_suivant = (noms.index(dernier) + 1) % len(groupe)
-            groupe = groupe[index_suivant:] + groupe[:index_suivant]
-        ordonnes.extend(groupe)
-    return ordonnes
-
-
-def memoriser_provider_cloud(nom_provider: str) -> None:
-    data = normaliser_memoire(charger_memoire())
-    routeur = data.setdefault("routeur_modeles", {})
-    routeur["dernier_provider_cloud"] = nom_provider
-    for provider in providers_cloud_disponibles():
-        if provider["nom"] == nom_provider:
-            routeur[f"dernier_provider_{provider['niveau']}"] = nom_provider
-            break
-    routeur["maj"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sauvegarder_memoire(data)
 
 
 def initialiser() -> dict:

@@ -1,5 +1,6 @@
 #core/memory.py
 
+from contextlib import contextmanager
 import json
 import os
 import shutil
@@ -11,6 +12,7 @@ from json import JSONDecodeError
 
 from core.error_classification import CATEGORIES_ERREUR, classifier_erreur_systeme, extraire_code_erreur
 from core.paths import MEMORY_PATH
+from core.memory_store import get_memory_store
 
 CATEGORIES_CONTEXTE = {"profil", "habitudes", "objectifs", "projets", "faits", "contraintes", "style"}
 MAX_JOURNAL_CONVERSATION = 20
@@ -20,53 +22,32 @@ MAX_ERREURS_SYSTEME_PAR_CATEGORIE = 100
 _MEMORY_LOCK = threading.RLock()
 
 
+@contextmanager
+def transaction_memoire():
+    """
+    Gestionnaire de contexte transactionnel pour la mémoire.
+    Délègue au store actif (SQLite WAL ou JSON).
+    Garantit l'atomicité et l'isolation des opérations de lecture-modification-écriture.
+    En cas d'exception non gérée dans le bloc, aucune modification n'est persistée (rollback implicite).
+    """
+    store = get_memory_store()
+    with store.transaction() as data:
+        yield data
+
+
 def schema_contexte() -> dict:
     return {categorie: {} for categorie in sorted(CATEGORIES_CONTEXTE)}
 
 
 def charger_memoire() -> dict:
-    with _MEMORY_LOCK:
-        try:
-            with open(MEMORY_PATH, "r", encoding="utf-8") as f:
-                contenu = f.read().strip()
-                return json.loads(contenu) if contenu else {}
-        except (FileNotFoundError, JSONDecodeError):
-            return {}
+    store = get_memory_store()
+    return store.load()
 
 
 def sauvegarder_memoire(data: dict):
-    with _MEMORY_LOCK:
-        tmp_path = MEMORY_PATH.with_suffix(".json.tmp")
+    store = get_memory_store()
+    store.save(data)
 
-        # Écriture + flush disque avant tout replace
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-
-        # Replace avec retry — protège contre WinError 5/32 (double instance)
-        derniere_erreur = None
-        for tentative in range(5):
-            try:
-                os.replace(tmp_path, MEMORY_PATH)
-                return  # succès
-            except OSError as e:
-                derniere_erreur = e
-                if e.errno in (5, 32):
-                    time.sleep(0.05 * (tentative + 1))  # 50ms → 250ms
-                    continue
-                raise  # autre erreur OS → on remonte immédiatement
-
-        # Dernier recours : copy2 + suppression du tmp
-        try:
-            shutil.copy2(tmp_path, MEMORY_PATH)
-            tmp_path.unlink(missing_ok=True)
-        except Exception as e2:
-            raise OSError(
-                f"sauvegarder_memoire : impossible d'écrire memory.json "
-                f"après 5 tentatives. Dernière erreur replace : {derniere_erreur} | "
-                f"Erreur fallback : {e2}"
-            )
 
 
 def normaliser_memoire(data: dict) -> dict:
@@ -110,8 +91,7 @@ def normaliser_memoire(data: dict) -> dict:
 
 
 def journaliser_action(outil: str, args: dict, resultat: str) -> None:
-    with _MEMORY_LOCK:
-        data = normaliser_memoire(charger_memoire())
+    with transaction_memoire() as data:
         historique = data.get("historique_actions", [])
         historique.append({
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -120,7 +100,6 @@ def journaliser_action(outil: str, args: dict, resultat: str) -> None:
             "resultat": resultat[:300],
         })
         data["historique_actions"] = historique[-MAX_HISTORIQUE_ACTIONS:]
-        sauvegarder_memoire(data)
 
 
 def journaliser_erreur_systeme(
@@ -133,8 +112,7 @@ def journaliser_erreur_systeme(
 ) -> str:
     categorie = classifier_erreur_systeme(erreur)
     code_brut = extraire_code_erreur(erreur)
-    with _MEMORY_LOCK:
-        data = normaliser_memoire(charger_memoire())
+    with transaction_memoire() as data:
         erreurs = data["erreurs_systeme"]
         entree = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -147,13 +125,14 @@ def journaliser_erreur_systeme(
         }
         erreurs[categorie].append(entree)
         erreurs[categorie] = erreurs[categorie][-MAX_ERREURS_SYSTEME_PAR_CATEGORIE:]
-        sauvegarder_memoire(data)
     return categorie
 
 
 def signalement_erreurs_autre_recurrentes() -> str | None:
-    with _MEMORY_LOCK:
-        data = normaliser_memoire(charger_memoire())
+    code = None
+    compteur = None
+    selection = []
+    with transaction_memoire() as data:
         occurrences = data["erreurs_systeme"].get("autre", [])
         codes = [
             entree.get("code_brut")
@@ -164,17 +143,18 @@ def signalement_erreurs_autre_recurrentes() -> str | None:
         deja_notifies = set(data.get("signaux_erreurs_autre_notifies", []))
         code = next(
             (
-                code
-                for code, total in sorted(compteur.items(), key=lambda item: (-item[1], str(item[0])))
-                if total >= 3 and str(code) not in deja_notifies
+                c
+                for c, total in sorted(compteur.items(), key=lambda item: (-item[1], str(item[0])))
+                if total >= 3 and str(c) not in deja_notifies
             ),
             None,
         )
-        if code is None:
-            return None
-        selection = [entree for entree in occurrences if entree.get("code_brut") == code][-3:]
-        data["signaux_erreurs_autre_notifies"].append(str(code))
-        sauvegarder_memoire(data)
+        if code is not None:
+            selection = [entree for entree in occurrences if entree.get("code_brut") == code][-3:]
+            data["signaux_erreurs_autre_notifies"].append(str(code))
+
+    if code is None:
+        return None
 
     lignes = [
         f"Code d'erreur système non classifié revenu {compteur[code]} fois : {code}.",
@@ -189,8 +169,7 @@ def signalement_erreurs_autre_recurrentes() -> str | None:
 
 
 def enregistrer_echange(utilisateur: str, jarvis: str) -> str:
-    with _MEMORY_LOCK:
-        data = normaliser_memoire(charger_memoire())
+    with transaction_memoire() as data:
         journal = data.get("journal_conversation", [])
         journal.append({
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -198,15 +177,13 @@ def enregistrer_echange(utilisateur: str, jarvis: str) -> str:
             "jarvis": jarvis[:500],
         })
         data["journal_conversation"] = journal[-MAX_JOURNAL_CONVERSATION:]
-        sauvegarder_memoire(data)
     return "Echange journalise."
 
 
 def sauvegarder_session(historique: list) -> None:
     """Sauvegarde les derniers échanges de la session pour reprise."""
-    data = normaliser_memoire(charger_memoire())
-    data["session_precedente"] = historique[-10:]
-    sauvegarder_memoire(data)
+    with transaction_memoire() as data:
+        data["session_precedente"] = historique[-10:]
 
 
 def charger_session_precedente() -> list:
@@ -217,35 +194,34 @@ def charger_session_precedente() -> list:
 
 def enregistrer_tache(description: str, etat: str = "en_cours", contexte: dict = None) -> int:
     """Enregistre une tâche avec son état pour reprise possible."""
-    data = normaliser_memoire(charger_memoire())
-    taches = data.get("taches", [])
-    tache_id = max([t.get("id", 0) for t in taches], default=0) + 1
-    taches.append({
-        "id": tache_id,
-        "description": description,
-        "etat": etat,
-        "contexte": contexte or {},
-        "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "mis_a_jour_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    })
-    data["taches"] = taches[-MAX_TACHES:]
-    sauvegarder_memoire(data)
+    tache_id = 1
+    with transaction_memoire() as data:
+        taches = data.get("taches", [])
+        tache_id = max([t.get("id", 0) for t in taches], default=0) + 1
+        taches.append({
+            "id": tache_id,
+            "description": description,
+            "etat": etat,
+            "contexte": contexte or {},
+            "cree_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "mis_a_jour_le": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        data["taches"] = taches[-MAX_TACHES:]
     return tache_id
 
 
 def mettre_a_jour_tache(tache_id: int, etat: str, contexte: dict = None) -> None:
     """Met à jour l'état d'une tâche."""
-    data = normaliser_memoire(charger_memoire())
-    taches = data.get("taches", [])
-    for tache in taches:
-        if tache.get("id") == tache_id:
-            tache["etat"] = etat
-            tache["mis_a_jour_le"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if contexte:
-                tache["contexte"] = contexte
-            break
-    data["taches"] = taches
-    sauvegarder_memoire(data)
+    with transaction_memoire() as data:
+        taches = data.get("taches", [])
+        for tache in taches:
+            if tache.get("id") == tache_id:
+                tache["etat"] = etat
+                tache["mis_a_jour_le"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if contexte:
+                    tache["contexte"] = contexte
+                break
+        data["taches"] = taches
 
 
 def taches_interrompues() -> list:

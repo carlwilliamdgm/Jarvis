@@ -359,18 +359,6 @@ Le PAT GitHub est manipule de maniere a minimiser son exposition :
 - L'agent autonome dans `jarvis.py` observe periodiquement stockage, rappels, automatisations et surveillances, puis affiche uniquement les signaux utiles.
 - La proactivite reste discrete : elle suggere ou notifie, mais les actions de rangement/suppression passent par les outils et leurs garde-fous.
 
-## Modules futurs
-
-Le dossier `modules/` contient des modules planifies mais pas encore implementes :
-
-- `modules/context_engine` : Perception du contexte permanent pour une comprehension plus profonde de l'utilisateur
-- `modules/datashield` : Protection des donnees sensibles et gestion de la confidentialite
-- `modules/progress_tracker` : Suivi des progres sur les taches et projets a long terme
-- `modules/syncsphere` : Synchronisation entre differents appareils et services
-- `modules/taskflow` : Gestion des flux de taches complexes multi-etapes
-
-Ces modules sont actuellement des squelettes (fichiers `__init__.py` avec documentation) en attente d'implementation.
-
 ## Regles de conception
 
 - Core Intellect est le seul composant qui pense.
@@ -380,4 +368,3 @@ Ces modules sont actuellement des squelettes (fichiers `__init__.py` avec docume
 - Les confirmations passent par `demander_confirmation()` ou `confirmer_ecriture_si_requise()`.
 - Le contexte durable vient de `memory.json`, pas de l'historique brut envoye au modele.
 - Le mode Stark doit rester autonome, structure et economique en tokens.
-- Les modules futurs doivent respecter l'architecture existante et ne pas briser les principes de separation des responsabilites.

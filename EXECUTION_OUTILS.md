@@ -273,6 +273,8 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatu
 - `prendre_capture(nom_fichier="capture.png")` - Capture l'écran de la page active.
 - `executer_sequence(actions)` - Exécute une séquence d'actions de navigation.
 - `obtenir_infos_page()` - Récupère le titre et l'URL de la page courante.
+- `fermer_navigateur()` - Ferme la session de navigation persistante et libère les ressources Chromium.
+- `reinitialiser_navigateur()` - Réinitialise la session de navigation persistante (ferme et rouvre).
 
 ### Sessions de Navigation & Overlay
 

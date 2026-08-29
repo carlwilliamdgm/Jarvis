@@ -1,5 +1,18 @@
 import unittest
-import pytest
+try:
+    import pytest
+except ImportError:
+    # pytest n'est pas disponible : on fournit des stubs no-op
+    # pour que le fichier soit importable via unittest discover.
+    class _MarkStub:
+        def __getattr__(self, name):
+            return lambda *a, **kw: (lambda f: f)
+    class _PytestStub:
+        mark = _MarkStub()
+        @staticmethod
+        def skip(reason=""):
+            raise unittest.SkipTest(reason)
+    pytest = _PytestStub()  # type: ignore[assignment]
 
 import jarvis
 from core.error_classification import classifier_erreur_systeme, extraire_code_erreur, resultat_erreur

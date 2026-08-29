@@ -1,7 +1,18 @@
 import shutil
 import sys
 import unittest
-import pytest
+try:
+    import pytest
+except ImportError:
+    class _MarkStub:
+        def __getattr__(self, name):
+            return lambda *a, **kw: (lambda f: f)
+    class _PytestStub:
+        mark = _MarkStub()
+        @staticmethod
+        def skip(reason=""):
+            raise unittest.SkipTest(reason)
+    pytest = _PytestStub()  # type: ignore[assignment]
 from pathlib import Path
 
 import tools

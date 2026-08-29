@@ -413,11 +413,17 @@ class BrowserAutomation:
             return f"Erreur lors du survol: {str(e)}"
 
 
-# Fonctions synchrones pour l'intégration avec Jarvis
+# Fonctions synchrones unifiées pour l'intégration avec Jarvis (session persistante)
+
+def _get_persistent_session(headless: bool = True):
+    """Récupère la session de navigation persistante par défaut."""
+    from core.browser_session import get_session_manager
+    return get_session_manager().get_default_session(headless=headless)
+
 
 def naviguer_vers(url: str, headless: bool = True) -> str:
     """
-    Fonction synchrone pour naviguer vers une URL.
+    Fonction synchrone pour naviguer vers une URL sur la session persistante.
     
     Args:
         url: URL vers laquelle naviguer
@@ -426,11 +432,8 @@ def naviguer_vers(url: str, headless: bool = True) -> str:
     Returns:
         Résultat de la navigation
     """
-    async def _navigate():
-        async with BrowserAutomation(headless=headless) as browser:
-            return await browser.navigate(url)
-    
-    return asyncio.run(_navigate())
+    session = _get_persistent_session(headless=headless)
+    return session.navigate_sync(url)
 
 
 def cliquer_element(selector: str, url: str = None, headless: bool = True) -> str:
@@ -445,13 +448,12 @@ def cliquer_element(selector: str, url: str = None, headless: bool = True) -> st
     Returns:
         Résultat du clic
     """
-    async def _click():
-        async with BrowserAutomation(headless=headless) as browser:
-            if url:
-                await browser.navigate(url)
-            return await browser.click(selector)
-    
-    return asyncio.run(_click())
+    session = _get_persistent_session(headless=headless)
+    if url:
+        current_url = session.get_url_sync()
+        if current_url != url:
+            session.navigate_sync(url)
+    return session.click_sync(selector)
 
 
 def remplir_formulaire(selector: str, valeur: str, url: str = None, headless: bool = True) -> str:
@@ -467,13 +469,12 @@ def remplir_formulaire(selector: str, valeur: str, url: str = None, headless: bo
     Returns:
         Résultat du remplissage
     """
-    async def _fill():
-        async with BrowserAutomation(headless=headless) as browser:
-            if url:
-                await browser.navigate(url)
-            return await browser.fill(selector, valeur)
-    
-    return asyncio.run(_fill())
+    session = _get_persistent_session(headless=headless)
+    if url:
+        current_url = session.get_url_sync()
+        if current_url != url:
+            session.navigate_sync(url)
+    return session.fill_sync(selector, valeur)
 
 
 def extraire_texte(selector: str = "body", url: str = None, headless: bool = True) -> str:
@@ -488,13 +489,12 @@ def extraire_texte(selector: str = "body", url: str = None, headless: bool = Tru
     Returns:
         Texte extrait
     """
-    async def _get_text():
-        async with BrowserAutomation(headless=headless) as browser:
-            if url:
-                await browser.navigate(url)
-            return await browser.get_text(selector)
-    
-    return asyncio.run(_get_text())
+    session = _get_persistent_session(headless=headless)
+    if url:
+        current_url = session.get_url_sync()
+        if current_url != url:
+            session.navigate_sync(url)
+    return session.get_text_sync(selector)
 
 
 def prendre_capture(path: str = None, url: str = None, full_page: bool = False, headless: bool = True) -> str:
@@ -510,18 +510,17 @@ def prendre_capture(path: str = None, url: str = None, full_page: bool = False, 
     Returns:
         Résultat de la capture
     """
-    async def _screenshot():
-        async with BrowserAutomation(headless=headless) as browser:
-            if url:
-                await browser.navigate(url)
-            return await browser.screenshot(path, full_page)
-    
-    return asyncio.run(_screenshot())
+    session = _get_persistent_session(headless=headless)
+    if url:
+        current_url = session.get_url_sync()
+        if current_url != url:
+            session.navigate_sync(url)
+    return session.screenshot_sync(path=path, full_page=full_page)
 
 
 def executer_sequence(actions: List[Dict[str, Any]], headless: bool = True) -> str:
     """
-    Exécute une séquence d'actions de navigation.
+    Exécute une séquence d'actions de navigation sur la session persistante.
     
     Args:
         actions: Liste d'actions à exécuter
@@ -530,43 +529,40 @@ def executer_sequence(actions: List[Dict[str, Any]], headless: bool = True) -> s
     Returns:
         Résultats de toutes les actions
     """
-    async def _execute_sequence():
-        async with BrowserAutomation(headless=headless) as browser:
-            results = []
-            
-            for action in actions:
-                action_type = action.get("type")
-                
-                if action_type == "navigate":
-                    result = await browser.navigate(action["url"])
-                elif action_type == "click":
-                    result = await browser.click(action["selector"])
-                elif action_type == "fill":
-                    result = await browser.fill(action["selector"], action["value"])
-                elif action_type == "wait":
-                    result = await browser.wait_for_element(action["selector"])
-                elif action_type == "screenshot":
-                    result = await browser.screenshot(action.get("path"), action.get("full_page", False))
-                elif action_type == "scroll":
-                    result = await browser.scroll(action.get("pixels", 500))
-                elif action_type == "javascript":
-                    result = await browser.execute_javascript(action["script"])
-                elif action_type == "select":
-                    result = await browser.select_option(action["selector"], action["value"])
-                elif action_type == "check":
-                    result = await browser.check(action["selector"])
-                elif action_type == "uncheck":
-                    result = await browser.uncheck(action["selector"])
-                elif action_type == "hover":
-                    result = await browser.hover(action["selector"])
-                else:
-                    result = f"Action inconnue: {action_type}"
-                
-                results.append(f"{action_type}: {result}")
-            
-            return "\n".join(results)
+    session = _get_persistent_session(headless=headless)
+    results = []
     
-    return asyncio.run(_execute_sequence())
+    for action in actions:
+        action_type = action.get("type")
+        
+        if action_type == "navigate":
+            result = session.navigate_sync(action["url"])
+        elif action_type == "click":
+            result = session.click_sync(action["selector"])
+        elif action_type == "fill":
+            result = session.fill_sync(action["selector"], action["value"])
+        elif action_type == "wait":
+            result = session.wait_for_element_sync(action["selector"])
+        elif action_type == "screenshot":
+            result = session.screenshot_sync(action.get("path"), action.get("full_page", False))
+        elif action_type == "scroll":
+            result = session.scroll_sync(action.get("pixels", 500))
+        elif action_type == "javascript":
+            result = session.execute_javascript_sync(action["script"])
+        elif action_type == "select":
+            result = session.select_option_sync(action["selector"], action["value"])
+        elif action_type == "check":
+            result = session.check_sync(action["selector"])
+        elif action_type == "uncheck":
+            result = session.uncheck_sync(action["selector"])
+        elif action_type == "hover":
+            result = session.hover_sync(action["selector"])
+        else:
+            result = f"Action inconnue: {action_type}"
+        
+        results.append(f"{action_type}: {result}")
+    
+    return "\n".join(results)
 
 
 def obtenir_infos_page(url: str = None, headless: bool = True) -> str:
@@ -580,19 +576,33 @@ def obtenir_infos_page(url: str = None, headless: bool = True) -> str:
     Returns:
         Informations sur la page
     """
-    async def _get_info():
-        async with BrowserAutomation(headless=headless) as browser:
-            if url:
-                await browser.navigate(url)
-            
-            infos = []
-            infos.append(f"=== INFORMATIONS PAGE ===")
-            infos.append(f"URL: {await browser.get_url()}")
-            infos.append(f"Titre: {await browser.get_title()}")
-            infos.append(f"\n=== CONTENU PRINCIPAL ===")
-            text_content = await browser.get_text("body")
-            infos.append(text_content[:2000])  # Limiter à 2000 caractères
-            
-            return "\n".join(infos)
+    session = _get_persistent_session(headless=headless)
+    if url:
+        current_url = session.get_url_sync()
+        if current_url != url:
+            session.navigate_sync(url)
     
-    return asyncio.run(_get_info())
+    return session.get_info_sync()
+
+
+def fermer_navigateur() -> str:
+    """
+    Ferme la session de navigation persistante et libère les ressources.
+    
+    Returns:
+        Confirmation de fermeture
+    """
+    from core.browser_session import get_session_manager
+    get_session_manager().close_default_session()
+    return "Navigateur fermé avec succès"
+
+
+def reinitialiser_navigateur() -> str:
+    """
+    Réinitialise la session de navigation persistante.
+    
+    Returns:
+        Confirmation de réinitialisation
+    """
+    fermer_navigateur()
+    return "Session de navigation réinitialisée"

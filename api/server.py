@@ -64,6 +64,7 @@ if sys.stdout.encoding != 'utf-8':
 if sys.stderr.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 
+from core.llm_client import get_llm_client
 from jarvis import (
     demarrer_agent_autonome,
     event_bus,
@@ -88,6 +89,7 @@ async def lifespan(app: FastAPI):
     global agent, agent_stop_event, memoire, historique
     try:
         memoire = initialiser()
+        llm_client = get_llm_client()
         from rich.console import Console
 
         console = Console()
@@ -95,6 +97,12 @@ async def lifespan(app: FastAPI):
 
         prompt = construire_prompt_action(memoire)
         historique = [{"role": "system", "content": prompt}]
+
+        # Attacher l'état global et les services à app.state
+        app.state.memoire = memoire
+        app.state.llm_client = llm_client
+        app.state.agent = agent
+        app.state.agent_stop_event = agent_stop_event
 
         # Démarrer l'overlay visuel vocal
         demarrer_overlay_vocal()
