@@ -1,7 +1,9 @@
+import ctypes
 import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -15,6 +17,14 @@ try:
     import psutil
 except ImportError:
     psutil = None
+
+
+def is_admin() -> bool:
+    """Check if the current process has administrative elevation."""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin() != 0
+    except Exception:
+        return False
 
 
 LOGGER = logging.getLogger("jarvis.autodestruct")
@@ -98,20 +108,31 @@ def _delete_scheduled_tasks() -> None:
 
 
 def _delete_machine_environment() -> None:
+    if not is_admin():
+        LOGGER.warning(
+            "Skipping machine environment deletion (HKLM): process lacks administrative elevation."
+        )
+        return
+
     if winreg is None:
         LOGGER.warning("Skipping machine environment deletion: winreg unavailable")
         return
 
     key_path = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
-        for var_name in MACHINE_ENV_VARS_TO_DELETE:
-            try:
-                winreg.DeleteValue(key, var_name)
-                LOGGER.info("Deleted machine environment variable: %s", var_name)
-            except FileNotFoundError:
-                LOGGER.info("Machine environment variable absent: %s", var_name)
-            except OSError:
-                LOGGER.exception("Failed deleting machine environment variable: %s", var_name)
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path, 0, winreg.KEY_SET_VALUE) as key:
+            for var_name in MACHINE_ENV_VARS_TO_DELETE:
+                try:
+                    winreg.DeleteValue(key, var_name)
+                    LOGGER.info("Deleted machine environment variable: %s", var_name)
+                except FileNotFoundError:
+                    LOGGER.info("Machine environment variable absent: %s", var_name)
+                except OSError:
+                    LOGGER.exception("Failed deleting machine environment variable: %s", var_name)
+    except PermissionError:
+        LOGGER.warning("Permission denied while accessing HKLM environment variables.")
+    except Exception:
+        LOGGER.exception("Unexpected error while modifying HKLM environment.")
 
     _run_command(
         [
@@ -171,9 +192,36 @@ def _other_local_jarvis_installation_running() -> bool:
 
 
 def _delete_jarvis_folder() -> None:
-    jarvis_path = JARVIS_DIR.resolve()
-    if not jarvis_path.exists():
+    jarvis_path = str(JARVIS_DIR.resolve())
+    if not os.path.exists(jarvis_path):
         LOGGER.info("Jarvis folder already absent: %s", jarvis_path)
         return
-    shutil.rmtree(jarvis_path, ignore_errors=False)
-    LOGGER.info("Deleted Jarvis folder: %s", jarvis_path)
+
+    current_pid = os.getpid()
+    LOGGER.info(
+        "Detaching folder removal process for %s after PID %s exits.",
+        jarvis_path,
+        current_pid,
+    )
+
+    # Detached PowerShell command that waits for parent PID termination, then force-removes the root folder
+    ps_cmd = (
+        f"Start-Sleep -Seconds 1; "
+        f"Wait-Process -Id {current_pid} -Timeout 20 -ErrorAction SilentlyContinue; "
+        f"Remove-Item -Path '{jarvis_path}' -Recurse -Force -ErrorAction SilentlyContinue"
+    )
+
+    try:
+        detached_flags = 0
+        if sys.platform == "win32":
+            detached_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps_cmd],
+            creationflags=detached_flags,
+            close_fds=True,
+        )
+        LOGGER.info("Spawned detached cleanup process for %s.", jarvis_path)
+    except Exception:
+        LOGGER.exception("Failed to spawn detached folder removal process; falling back to direct removal.")
+        shutil.rmtree(jarvis_path, ignore_errors=True)

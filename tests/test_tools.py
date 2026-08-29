@@ -6,7 +6,11 @@ try:
 except ImportError:
     class _MarkStub:
         def __getattr__(self, name):
-            return lambda *a, **kw: (lambda f: f)
+            def _decorator(*args, **kwargs):
+                if len(args) == 1 and callable(args[0]) and not kwargs:
+                    return args[0]
+                return lambda f: f
+            return _decorator
     class _PytestStub:
         mark = _MarkStub()
         @staticmethod
@@ -24,6 +28,7 @@ from core.paths import JARVIS_DIR, MEMORY_PATH
 from jarvis import extraire_json_objets
 
 
+@pytest.mark.smoke
 class ToolSmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

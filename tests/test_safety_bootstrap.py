@@ -3,11 +3,26 @@ from unittest.mock import patch, MagicMock
 import sys
 import importlib
 
+try:
+    import pytest
+except ImportError:
+    class _MarkStub:
+        def __getattr__(self, name):
+            def _decorator(*args, **kwargs):
+                if len(args) == 1 and callable(args[0]) and not kwargs:
+                    return args[0]
+                return lambda f: f
+            return _decorator
+    class _PytestStub:
+        mark = _MarkStub()
+    pytest = _PytestStub()  # type: ignore[assignment]
+
 # Importer le module a tester
 import core.safety
 
 
-class BootstrapImportTests(unittest.TestCase):
+@pytest.mark.smoke
+class TestBootstrapImport(unittest.TestCase):
     """Tests pour garantir que _bootstrap_import n'effectue jamais d'installation pip."""
 
     def setUp(self):

@@ -68,6 +68,7 @@ if USER_SITE_PACKAGES and USER_SITE_PACKAGES not in sys.path:
     sys.path.insert(0, USER_SITE_PACKAGES)
 
 import logging
+from logging.handlers import RotatingFileHandler
 import subprocess
 import threading
 
@@ -75,12 +76,33 @@ import win32event
 import win32service
 import win32serviceutil
 
-logging.basicConfig(
-    filename=LOG_PATH,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+# Service logger with RotatingFileHandler (max 10MB, 5 backups)
+service_handler = RotatingFileHandler(
+    LOG_PATH,
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
 )
+service_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
 log = logging.getLogger(SERVICE_NAME)
+log.setLevel(logging.INFO)
+log.addHandler(service_handler)
+log.propagate = False
+
+# Uvicorn pipe logger with RotatingFileHandler (max 10MB, 5 backups)
+uvicorn_handler = RotatingFileHandler(
+    UVICORN_LOG_PATH,
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+uvicorn_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+uvicorn_log = logging.getLogger("jarvis.service.uvicorn")
+uvicorn_log.setLevel(logging.INFO)
+uvicorn_log.addHandler(uvicorn_handler)
+uvicorn_log.propagate = False
+
 log.info("Service module loaded.")
 log.info(
     "Environment: JARVIS_INSTALL_DIR=%r, JARVIS_PYTHON_EXE=%r, "
@@ -112,7 +134,7 @@ class JarvisService(win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         self.stop_event = threading.Event()
         self.process = None
-        self.uvicorn_log = None
+        self.pump_thread = None
 
     def SvcStop(self):
         log.info("Stop requested.")
@@ -132,7 +154,26 @@ class JarvisService(win32serviceutil.ServiceFramework):
             except Exception:
                 log.exception("Failed to stop uvicorn process.")
 
+        self._close_uvicorn_log()
         win32event.SetEvent(self.hWaitStop)
+
+    def _pipe_reader(self, process_stdout):
+        try:
+            for line in iter(process_stdout.readline, b""):
+                if not line:
+                    break
+                decoded_line = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                if decoded_line:
+                    uvicorn_log.info(decoded_line)
+                if self.stop_event.is_set() and (self.process and self.process.poll() is not None):
+                    break
+        except Exception:
+            log.exception("Error while streaming uvicorn logs.")
+        finally:
+            try:
+                process_stdout.close()
+            except Exception:
+                pass
 
     def SvcDoRun(self):
         log.info("Service starting.")
@@ -158,8 +199,7 @@ class JarvisService(win32serviceutil.ServiceFramework):
             env["PYTHONPATH"] = os.pathsep.join(python_path)
             log.info("Prepared PYTHONPATH=%r.", env["PYTHONPATH"])
 
-            log.info("Opening uvicorn log at %r.", UVICORN_LOG_PATH)
-            self.uvicorn_log = open(UVICORN_LOG_PATH, "w")
+            log.info("Configured rotating uvicorn log handler at %r (max 10MB, 5 backups).", UVICORN_LOG_PATH)
             command = PYTHON_COMMAND + [
                 "-m",
                 "uvicorn",
@@ -174,10 +214,21 @@ class JarvisService(win32serviceutil.ServiceFramework):
                 command,
                 cwd=JARVIS_DIR,
                 env=env,
-                stdout=self.uvicorn_log,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
+                bufsize=1,
             )
             log.info("uvicorn started, PID=%s.", self.process.pid)
+
+            # Start background pipe streaming thread to RotatingFileHandler
+            self.pump_thread = threading.Thread(
+                target=self._pipe_reader,
+                args=(self.process.stdout,),
+                daemon=True,
+                name="UvicornLogPump",
+            )
+            self.pump_thread.start()
+
             time.sleep(2)
             exit_code = self.process.poll()
             if exit_code is not None:
@@ -200,6 +251,8 @@ class JarvisService(win32serviceutil.ServiceFramework):
 
     def _read_uvicorn_log_tail(self, max_chars=8000):
         try:
+            if not os.path.exists(UVICORN_LOG_PATH):
+                return "<empty uvicorn log>"
             with open(UVICORN_LOG_PATH, "r", encoding="utf-8", errors="replace") as log_file:
                 content = log_file.read()
             return content[-max_chars:] if content else "<empty uvicorn log>"
@@ -207,13 +260,11 @@ class JarvisService(win32serviceutil.ServiceFramework):
             return "Failed to read uvicorn log:\n%s" % traceback.format_exc()
 
     def _close_uvicorn_log(self):
-        if self.uvicorn_log:
-            try:
-                self.uvicorn_log.close()
-            except Exception:
-                log.error("Failed to close uvicorn log file:\n%s", traceback.format_exc())
-            finally:
-                self.uvicorn_log = None
+        try:
+            uvicorn_handler.flush()
+            service_handler.flush()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
