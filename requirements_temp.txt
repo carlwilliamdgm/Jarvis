@@ -1,0 +1,18 @@
+C:\Users\Carl\Jarvis\requirements.txt:1:# Dépendances Jarvis avec versions bornées strictement
+C:\Users\Carl\Jarvis\requirements.txt:2:# Pour un verrouillage complet avec hashes, exécuter ultérieurement :
+C:\Users\Carl\Jarvis\requirements.txt:3:# python -m pip install -r requirements.txt --require-hashes -c constraints.txt
+C:\Users\Carl\Jarvis\requirements.txt:4:# où constraints.txt sera généré par : python -m pip freeze > constraints.txt
+C:\Users\Carl\Jarvis\requirements.txt:5:fastapi>=0.115.0,<0.116.0
+C:\Users\Carl\Jarvis\requirements.txt:6:uvicorn[standard]>=0.32.0,<0.33.0
+C:\Users\Carl\Jarvis\requirements.txt:7:requests>=2.32.0,<2.33.0
+C:\Users\Carl\Jarvis\requirements.txt:8:pywin32>=306,<307
+C:\Users\Carl\Jarvis\requirements.txt:9:ollama>=0.4.0,<0.5.0
+C:\Users\Carl\Jarvis\requirements.txt:10:plyer>=2.1.0,<2.2.0
+C:\Users\Carl\Jarvis\requirements.txt:11:psutil>=6.0.0,<7.0.0
+C:\Users\Carl\Jarvis\requirements.txt:12:rich>=13.9.0,<14.0.0
+C:\Users\Carl\Jarvis\requirements.txt:13:groq>=0.12.0,<0.13.0
+C:\Users\Carl\Jarvis\requirements.txt:14:together>=1.3.0,<1.4.0
+C:\Users\Carl\Jarvis\requirements.txt:15:openwakeword>=0.5.0,<0.6.0
+C:\Users\Carl\Jarvis\requirements.txt:16:vosk>=0.3.45,<0.4.0
+C:\Users\Carl\Jarvis\requirements.txt:17:sounddevice>=0.5.0,<0.6.0
+C:\Users\Carl\Jarvis\requirements.txt:19:playwright>=1.40.0,<1.41.0

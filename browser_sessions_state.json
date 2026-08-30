@@ -1,16 +1,4 @@
 {
-  "sessions": [
-    {
-      "session_id": "overlay_test",
-      "state": "idle",
-      "current_url": "",
-      "current_title": "",
-      "error_message": "",
-      "last_activity": "2026-08-28T08:22:57.887821",
-      "actions_count": 0,
-      "has_screenshot": false,
-      "content_length": 0
-    }
-  ],
-  "timestamp": "2026-08-28T08:22:58.098853"
+  "sessions": [],
+  "timestamp": "2026-08-30T06:42:32.596464"
 }

@@ -19,7 +19,7 @@ if sys.stderr.encoding != 'utf-8':
 HEADER_BG = "#0a0a0f"
 TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
 LOCAL_INSTANCE_ID = "local"
-LOCAL_INSTANCE = {"id": LOCAL_INSTANCE_ID, "nom": "Local", "url": "http://localhost:8000"}
+LOCAL_INSTANCE = {"id": LOCAL_INSTANCE_ID, "nom": "Local", "url": "http://localhost:8001"}
 
 
 THEMES = {
@@ -78,7 +78,7 @@ class JarvisGUI:
         self.session_id = uuid.uuid4().hex
         
         # Instance management
-        self.api_base = "http://localhost:8000"
+        self.api_base = os.getenv("JARVIS_API_BASE", "http://localhost:8000")
         self.instances = []
         self.active_instance_id = LOCAL_INSTANCE_ID
         self.load_instances()

@@ -416,16 +416,16 @@ def rechercher_web(requete: str, nombre_resultats: int = 5) -> str:
     engine = WebSearchEngine()
     results = engine.search(requete, min(nombre_resultats, 10))
     
-    if not results:
-        return f"Aucun résultat trouvé pour la recherche: {requete}"
+    # Filtrer les résultats factices provenant du fallback DuckDuckGo
+    filtered_results = [r for r in results if not (r.get('url') == 'https://duckduckgo.com/' and 'temporairement indisponible' in r.get('title', '').lower())]
+    if not filtered_results:
+        return f"Erreur lors de la recherche: aucun résultat fiable trouvé. Vérifiez votre connexion ou configurez une clé API Brave Search (BRAVE_API_KEY)."
     
-    if "error" in results[0]:
-        return f"Erreur lors de la recherche: {results[0].get('error', 'Erreur inconnue')}"
-    
+    # Utiliser les résultats filtrés pour le formatage
     lignes = [f"=== RÉSULTATS DE RECHERCHE: {requete} ==="]
-    lignes.append(f"{len(results)} résultats trouvés\n")
+    lignes.append(f"{len(filtered_results)} résultats trouvés\n")
     
-    for i, result in enumerate(results, 1):
+    for i, result in enumerate(filtered_results, 1):
         lignes.append(f"{i}. {result.get('title', 'Sans titre')}")
         lignes.append(f"   URL: {result.get('url', 'N/A')}")
         if result.get('snippet'):

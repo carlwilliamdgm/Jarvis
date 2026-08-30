@@ -500,6 +500,102 @@ class ErrorClassificationTests(unittest.TestCase):
         self.assertIn("9999", signalement)
         self.assertIn("3 fois", signalement)
 
+    def test_stark_reasoning_captured_and_emitted(self):
+        from core.intellect import _construire_prompt_interpretation, _parser_reponse_intellect
+        
+        # 1. Vérifier que le prompt Stark intègre les règles tri-phase et le champ raisonnement
+        prompt = _construire_prompt_interpretation({}, mode_stark=True, message_actuel="test")
+        self.assertIn("Règles impératives du Mode Stark (Plein Accès & Raisonnement Renforcé)", prompt)
+        self.assertIn("DIAGNOSTIC", prompt)
+        self.assertIn("ÉVALUATION D'IMPACT", prompt)
+        self.assertIn('"raisonnement"', prompt)
+
+        # 2. Vérifier le parsing du raisonnement dans la décision
+        reponse_json = """{
+            "objectif": "lister",
+            "type": "action",
+            "raisonnement": "Diagnostic: répertoire inconnu. Impact: lecture seule. Décision: lister.",
+            "actions": [{"outil": "lister_dossier", "args": {"chemin": "."}}],
+            "reponse": "J'inspecte le dossier, Sir."
+        }"""
+        decision = _parser_reponse_intellect(reponse_json, "lister")
+        self.assertEqual("Diagnostic: répertoire inconnu. Impact: lecture seule. Décision: lister.", decision.get("raisonnement"))
+
+    def test_stark_inter_segment_context_propagation(self):
+        old_interpreter = jarvis.interpreter_objectif
+        appels = []
+
+        def fake_interpreter(message, historique, memoire, **kwargs):
+            appels.append(message)
+            if "etape 1" in message:
+                return {
+                    "actions": [{"outil": "terminer_tache", "args": {"resume": "Fichier config.json trouve et analyse"}}],
+                    "reponse": "ok 1",
+                    "raisonnement": "Étape 1 terminée avec succès."
+                }
+            else:
+                return {
+                    "actions": [{"outil": "terminer_tache", "args": {"resume": "Déploiement achevé"}}],
+                    "reponse": "ok 2",
+                    "raisonnement": "Étape 2 terminée avec succès en utilisant config.json."
+                }
+
+        jarvis.interpreter_objectif = fake_interpreter
+        try:
+            rapport = jarvis.executer_mode_stark("etape 1 >> etape 2", [], {})
+        finally:
+            jarvis.interpreter_objectif = old_interpreter
+
+        self.assertEqual(2, len(appels))
+        self.assertIn("Fichier config.json trouve et analyse", appels[1])
+        self.assertIn("Contexte et acquis des étapes précédentes", appels[1])
+        self.assertIn("1. réussi", rapport)
+        self.assertIn("2. réussi", rapport)
+
+    def test_stark_is_clean_from_memory_and_chat_history_pollution(self):
+        from core.intellect import _construire_prompt_interpretation, interpreter_objectif
+        
+        memoire_avec_bribes = {
+            "notes": [{"contenu": "Note personnelle : acheter des oeufs"}],
+            "journal_conversation": [{"date": "2026-08-29", "utilisateur": "Raconte une blague", "jarvis": "Pourquoi les plongeurs..."}],
+        }
+        
+        # 1. Vérifier que le prompt système Stark n'a AUCUNE trace de notes ou d'anciens échanges
+        prompt_stark = _construire_prompt_interpretation(memoire_avec_bribes, mode_stark=True, message_actuel="test")
+        self.assertNotIn("Notes enregistrées récemment", prompt_stark)
+        self.assertNotIn("acheter des oeufs", prompt_stark)
+        self.assertNotIn("Raconte une blague", prompt_stark)
+        self.assertNotIn("Pourquoi les plongeurs", prompt_stark)
+        
+        # 2. Vérifier que le mode normal conserve bien la mémoire
+        prompt_normal = _construire_prompt_interpretation(memoire_avec_bribes, mode_stark=False, message_actuel="test")
+        self.assertIn("Notes enregistrées récemment", prompt_normal)
+        self.assertIn("acheter des oeufs", prompt_normal)
+
+        # 3. Vérifier que l'historique conversationnel n'est pas injecté dans les messages LLM en mode Stark
+        historique_bavardage = [
+            {"role": "user", "content": "Salut Jarvis !"},
+            {"role": "assistant", "content": "Bonjour Sir, que puis-je faire ?"},
+        ]
+        appels_llm = []
+        import core.intellect
+        old_appeler_llm = core.intellect._appeler_llm_avec_retry
+        try:
+            core.intellect._appeler_llm_avec_retry = lambda msgs, mem, **kw: appels_llm.append(msgs) or {
+                "message": {"content": '{"objectif": "test", "type": "action", "actions": [{"outil": "terminer_tache", "args": {}}], "reponse": "ok"}'}
+            }
+            interpreter_objectif("micro-objectif stark", historique_bavardage, memoire_avec_bribes, mode_stark=True)
+            
+            # En mode Stark, messages ne contient que [system_prompt, user_micro_objectif]
+            self.assertEqual(1, len(appels_llm))
+            messages_envoyes = appels_llm[0]
+            self.assertEqual(2, len(messages_envoyes))
+            self.assertEqual("system", messages_envoyes[0]["role"])
+            self.assertEqual("user", messages_envoyes[1]["role"])
+            self.assertEqual("micro-objectif stark", messages_envoyes[1]["content"])
+        finally:
+            core.intellect._appeler_llm_avec_retry = old_appeler_llm
+
 
 if __name__ == "__main__":
     unittest.main()

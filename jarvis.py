@@ -577,14 +577,33 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
 
     try:
         chaine_interrompue = False
+        contexte_global_segments = []
         for segment, rapport_segment in zip(plan.segments, rapports_segments):
             if chaine_interrompue:
                 rapport_segment["statut"] = "jamais tenté à cause d'une dépendance non satisfaite"
                 continue
 
-            succes_segment = _executer_segment_stark(segment, historique, memoire, rapport_segment)
+            succes_segment = _executer_segment_stark(
+                segment,
+                historique,
+                memoire,
+                rapport_segment,
+                contexte_precedent=contexte_global_segments,
+            )
             if succes_segment:
                 rapport_segment["statut"] = "réussi"
+                # Synthèse du résultat pour le contexte des étapes suivantes
+                resume_segment = "Segment validé avec succès."
+                for detail in rapport_segment.get("details", []):
+                    for alt in detail.get("alternatives", []):
+                        if alt.get("statut") == "réussi" and alt.get("resume"):
+                            resume_segment = alt.get("resume")
+                contexte_global_segments.append({
+                    "index": segment.index,
+                    "texte": segment.texte,
+                    "statut": "réussi",
+                    "resume": resume_segment,
+                })
             else:
                 if any(detail.get("statut") == "erreur_technique" for detail in rapport_segment["details"]):
                     rapport_segment["statut"] = "erreur_technique"
@@ -615,14 +634,25 @@ def executer_mode_stark(objectif: str, historique: list, memoire: dict) -> str:
         desactiver_mode_stark()
 
 
-def _executer_segment_stark(segment: StarkSegment, historique: list, memoire: dict, rapport_segment: dict) -> bool:
+def _executer_segment_stark(
+    segment: StarkSegment,
+    historique: list,
+    memoire: dict,
+    rapport_segment: dict,
+    contexte_precedent: list[dict] | None = None,
+) -> bool:
     for position, branche in enumerate(segment.branches, start=1):
         succes_branche = False
         erreur_technique = False
         echecs_consecutifs = False
         details_alternatives = []
         for alternative in branche.actions:
-            resultat = _executer_micro_objectif_stark(alternative, historique, memoire)
+            resultat = _executer_micro_objectif_stark(
+                alternative,
+                historique,
+                memoire,
+                contexte_precedent=contexte_precedent,
+            )
             details_alternatives.append(resultat)
             if resultat["statut"] == "réussi":
                 succes_branche = True
@@ -658,12 +688,21 @@ def _extraire_actions_brutes_rapport(rapports_segments: list[dict]) -> list[dict
     return actions
 
 
-def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoire: dict) -> dict:
+def _executer_micro_objectif_stark(
+    micro_objectif: str,
+    historique: list,
+    memoire: dict,
+    contexte_precedent: list[dict] | None = None,
+) -> dict:
     etat = EtatMicroObjectif(objectif=micro_objectif)
     avertissement_repetition = None
 
     while etat.decisions_utilisees < MAX_ETAPES_PAR_MICRO_OBJECTIF and not etat.termine:
-        message_stark = _construire_message_micro_objectif(etat, avertissement_repetition)
+        message_stark = _construire_message_micro_objectif(
+            etat,
+            avertissement=avertissement_repetition,
+            contexte_precedent=contexte_precedent,
+        )
         avertissement_repetition = None
         with console.status(
             f"[red]⚡ Stark réfléchit ({etat.decisions_utilisees + 1}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}) : {micro_objectif[:80]}[/red]",
@@ -678,6 +717,9 @@ def _executer_micro_objectif_stark(micro_objectif: str, historique: list, memoir
                 mode_stark=True,
                 on_event=event_bus.emit,
             )
+
+        if resultat.get("raisonnement"):
+            console.print(f"[dim italic red]⚡ Raisonnement : {resultat['raisonnement']}[/dim italic red]")
 
         etat.decisions_utilisees += 1
 
@@ -935,24 +977,39 @@ def _actions_brutes(etat: EtatMicroObjectif) -> list[dict]:
     ]
 
 
-def _construire_message_micro_objectif(etat: EtatMicroObjectif, avertissement: str | None = None) -> str:
+def _construire_message_micro_objectif(
+    etat: EtatMicroObjectif,
+    avertissement: str | None = None,
+    contexte_precedent: list[dict] | None = None,
+) -> str:
     resume = _formater_etat_micro_objectif(etat)
     bloc_avertissement = f"\n\nAvertissement runtime :\n{avertissement}" if avertissement else ""
 
+    bloc_contexte_precedent = ""
+    if contexte_precedent:
+        lignes_ctx = []
+        for ctx in contexte_precedent:
+            statut = ctx.get("statut", "inconnu")
+            texte = ctx.get("texte", "")
+            resume_ctx = ctx.get("resume", "")
+            lignes_ctx.append(f"- Étape {ctx.get('index', '?')} [{statut}] : {texte}\n  Acquis : {resume_ctx}")
+        if lignes_ctx:
+            bloc_contexte_precedent = f"\n\nContexte et acquis des étapes précédentes de la mission :\n" + "\n".join(lignes_ctx)
+
     return (
-        f"[MODE STARK — MICRO-OBJECTIF]\n\n"
+        f"[MODE STARK — PLEIN ACCÈS & RAISONNEMENT RENFORCÉ]\n\n"
         f"Micro-objectif courant :\n{etat.objectif}\n\n"
-        f"Décisions utilisées : {etat.decisions_utilisees}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}\n\n"
-        f"État mécanique complet de ce micro-objectif uniquement :\n{resume}"
+        f"Décisions utilisées : {etat.decisions_utilisees}/{MAX_ETAPES_PAR_MICRO_OBJECTIF}"
+        f"{bloc_contexte_precedent}\n\n"
+        f"État mécanique des actions de ce micro-objectif :\n{resume}"
         f"{bloc_avertissement}\n\n"
-        f"Avant de proposer une action, évalue le dernier résultat obtenu :\n"
-        f"répond-il à l'objectif \"{etat.objectif}\" ?\n"
-        "- Si oui : appelle terminer_tache.\n"
-        "- Si non : qu'est-ce qui manque précisément, et quelle action peut combler ce manque ?\n"
-        "Ne propose jamais une action sans avoir d'abord fait ce constat.\n\n"
-        "Propose exactement une action utile. Si ce micro-objectif est atteint, appelle terminer_tache "
-        "comme unique action. Si l'action précédente a déjà répondu à l'objectif, appelle terminer_tache "
-        "directement : ne la réexécute pas pour vérification. Ne répète pas la dernière action avec les mêmes arguments."
+        "Protocole de décision Stark (Raisonnement structuré requis dans 'raisonnement') :\n"
+        "1. DIAGNOSTIC : Analyse le résultat ou l'erreur de l'action précédente par rapport à l'objectif.\n"
+        "2. ÉVALUATION D'IMPACT : Vérifie la cohérence des paramètres (chemins, commandes) pour éviter toute erreur machine.\n"
+        "3. DÉCISION :\n"
+        f"   - Si l'objectif \"{etat.objectif}\" est déjà atteint par l'état actuel : appelle 'terminer_tache' immédiatement avec un résumé clair.\n"
+        "   - Si l'objectif n'est pas encore atteint : propose exactement UNE action ciblée pour progresser.\n"
+        "   - Si la tentative précédente a produit une erreur : identifie la cause racine et rectifie directement ta commande sans répéter l'erreur."
     )
 
 

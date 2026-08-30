@@ -39,7 +39,7 @@ class BrowserSession:
         """
         self.session_id = session_id
         self.headless = headless
-        self.state = BrowserSessionState.IDLE
+        self.state = BrowserSessionState.CLOSED
         self.current_url = ""
         self.current_title = ""
         self.error_message = ""
@@ -51,6 +51,7 @@ class BrowserSession:
         # Événements et callbacks
         self.event_callbacks: List[Any] = []
         self.lock = threading.Lock()
+        self.ready_event = threading.Event()
         
         # Thread d'exécution asynchrone
         self.browser = None
@@ -127,12 +128,14 @@ class BrowserSession:
             if self.browser.page is not None:
                 self._update_state(BrowserSessionState.IDLE)
                 self._emit_event("session_started", {"headless": self.headless})
+                self.ready_event.set()
             else:
                 raise Exception("Le navigateur n'a pas pu être initialisé correctement")
             
         except Exception as e:
             self._update_state(BrowserSessionState.ERROR, error=str(e))
             self._emit_event("session_error", {"error": str(e)})
+            self.ready_event.set()
             raise
     
     async def _navigate(self, url: str) -> str:
@@ -355,22 +358,18 @@ class BrowserSession:
                 except Exception:
                     pass
     
-    def start(self, timeout: float = 10.0) -> bool:
+    def start(self, timeout: float = 15.0) -> bool:
         """Démarre la session dans un thread séparé."""
         if self.thread and self.thread.is_alive():
             return True
         
+        self.ready_event.clear()
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
         
         # Attendre que le navigateur soit prêt
-        start_time = time.monotonic()
-        while time.monotonic() - start_time < timeout:
-            time.sleep(0.05)
-            if self.state == BrowserSessionState.IDLE:
-                return True
-            if self.state == BrowserSessionState.ERROR:
-                return False
+        if self.ready_event.wait(timeout=timeout):
+            return self.state == BrowserSessionState.IDLE and self.browser is not None and self.browser.page is not None
         
         return False
     

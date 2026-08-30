@@ -25,6 +25,8 @@ from core.memory import (
 )
 
 # Modèles par défaut
+MODELE_SOUVERAIN_JARVIS = "jarvis-gc:latest"
+MODELES_JARVIS_GC = ["jarvis-gc:latest", "qwen2.5:3b", "qwen2.5:7b"]
 MODELES_GROQ = ["openai/gpt-oss-120b"]
 MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
@@ -76,6 +78,7 @@ class LLMResponse:
 class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 1024
+    timeout: Optional[float] = None
     extra_options: dict = field(default_factory=dict)
 
 
@@ -286,17 +289,111 @@ class OllamaProvider(BaseLLMProvider):
             raise RuntimeError(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.") from e
 
 
+class JarvisGCProvider(BaseLLMProvider):
+    """
+    Fournisseur souverain The Great Corporation - Modèle local optimisé CPU / AVX2.
+    Exploite le modèle propriétaire 'jarvis-gc:latest' avec décodage structuré et gestion éco de la mémoire.
+    Comporte une réserve de timeout stricte pour garantir la réactivité instantanée de Jarvis.
+    """
+
+    def __init__(self, modeles: Optional[list[str]] = None, host: Optional[str] = None, timeout: float = 45.0):
+        super().__init__(
+            nom="Jarvis-GC",
+            modeles=modeles or MODELES_JARVIS_GC,
+            niveau="souverain",
+        )
+        self.host = host or os.environ.get("JARVIS_MODEL_HOST") or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
+        self.default_timeout = float(os.environ.get("JARVIS_GC_TIMEOUT", timeout))
+
+    def is_available(self) -> bool:
+        if ollama is None:
+            return False
+        try:
+            req = urllib.request.Request(f"{self.host}/api/tags", method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                if resp.status == 200:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def generate(
+        self,
+        modele: str,
+        messages: list[dict],
+        config: Optional[LLMConfig] = None,
+    ) -> LLMResponse:
+        if ollama is None:
+            raise RuntimeError("Module ollama non disponible pour Jarvis-GC.")
+
+        # Fail-fast : vérification du service avant toute tentative d'inférence.
+        # Évite de bloquer 6s sur un timeout réseau si Ollama est éteint.
+        if not self.is_available():
+            raise RuntimeError(
+                f"Service Ollama inaccessible sur {self.host}. "
+                "Démarrez Ollama ('ollama serve') puis créez le modèle "
+                "('ollama create jarvis-gc -f models/jarvis_gc/Modelfile')."
+            )
+
+        cfg = config or LLMConfig(temperature=0.2)
+        timeout_val = cfg.timeout or self.default_timeout
+        options = {
+            "think": False,
+            "temperature": cfg.temperature,
+            "top_p": 0.9,
+            "num_thread": 8,
+        }
+        options.update(cfg.extra_options)
+
+        def _do_chat():
+            client = ollama.Client(host=self.host) if hasattr(ollama, "Client") else ollama
+            kwargs = {
+                "model": modele,
+                "messages": messages,
+                "options": options,
+            }
+            # Déchargement automatique après 5min d'inactivité
+            kwargs["keep_alive"] = "5m"
+            return client.chat(**kwargs)
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_do_chat)
+                response = future.result(timeout=timeout_val)
+
+            if isinstance(response, dict):
+                content = response.get("message", {}).get("content", "")
+            else:
+                content = getattr(getattr(response, "message", None), "content", "")
+            return LLMResponse(
+                content=content,
+                provider=self.nom,
+                model=modele,
+                raw=response,
+            )
+        except concurrent.futures.TimeoutError as e:
+            raise TimeoutError(
+                f"Délai d'inférence Jarvis-GC dépassé (> {timeout_val}s). "
+                f"Envisagez d'utiliser la variante 3B (plus légère) ou "
+                f"d'augmenter JARVIS_GC_TIMEOUT dans votre environnement."
+            ) from e
+        except Exception as e:
+            raise RuntimeError(f"Erreur modèle souverain Jarvis-GC ({modele}): {e}") from e
+
+
 class LLMClient:
     """
     Orchestrateur central des requêtes LLM.
-    Gère la cascade de fallback (Cloud -> Local), l'ordonnancement et les notifications d'événements.
+    Gère la cascade de fallback : Souverain Jarvis-GC -> Cloud (Groq/OpenRouter) -> Fallback Local.
     """
 
     def __init__(
         self,
         cloud_providers: Optional[list[BaseLLMProvider]] = None,
         local_provider: Optional[BaseLLMProvider] = None,
+        sovereign_provider: Optional[BaseLLMProvider] = None,
     ):
+        self.sovereign_provider = sovereign_provider or JarvisGCProvider()
         self.cloud_providers = cloud_providers or [
             GroqProvider(),
             OpenRouterProvider(),
@@ -316,16 +413,18 @@ class LLMClient:
             return providers
         priorite = ["complexe", "simple"] if complexite == "complexe" else ["simple", "complexe"]
         routeur = memoire.get("routeur_modeles", {})
+        dernier_global = routeur.get("dernier_provider_cloud")
         ordonnes = []
         for niveau in priorite:
             groupe = [p for p in providers if p.niveau == niveau]
             if not groupe:
                 continue
-            dernier = routeur.get(f"dernier_provider_{niveau}")
+            dernier = routeur.get(f"dernier_provider_{niveau}") or dernier_global
             noms = [p.nom for p in groupe]
+            # Priorité absolue au dernier provider valide pour optimiser le temps de réponse
             if dernier in noms:
-                index_suivant = (noms.index(dernier) + 1) % len(groupe)
-                groupe = groupe[index_suivant:] + groupe[:index_suivant]
+                idx = noms.index(dernier)
+                groupe = [groupe[idx]] + [p for i, p in enumerate(groupe) if i != idx]
             ordonnes.extend(groupe)
         return ordonnes
 
@@ -349,14 +448,28 @@ class LLMClient:
         max_tentatives: int = 2,
     ) -> Optional[dict]:
         """
-        Génère une réponse en essayant les providers cloud disponibles puis retombe sur Ollama local.
-        Retourne un dictionnaire compatible avec le format existant {'message': {'content': ...}}
+        Génère une réponse en priorisant le modèle souverain Jarvis-GC,
+        puis tente les providers cloud disponibles avant de retomber sur le modèle local standard.
         """
         from rich.console import Console
         console = Console()
         cfg = config or LLMConfig()
         mem = memoire or {}
 
+        # 1. Tentative avec le modèle souverain Jarvis-GC (Priorité #1)
+        if self.sovereign_provider and self.sovereign_provider.is_available():
+            modele_souverain = self.sovereign_provider.modeles[0]
+            try:
+                console.print(f"[dim green]-> Modèle Souverain The Great Corporation actif : {modele_souverain}[/dim green]")
+                resp = self.sovereign_provider.generate(modele_souverain, messages, config=cfg)
+                console.print(f"[dim green]✓ {self.sovereign_provider.nom} réussi : {modele_souverain}[/dim green]")
+                if on_event is not None:
+                    on_event("provider", {"provider": self.sovereign_provider.nom, "model": modele_souverain})
+                return resp.to_dict()
+            except Exception as e:
+                console.print(f"[dim yellow]✗ {self.sovereign_provider.nom} indisponible ({e}) -> Bascule sur cascade cloud/local[/dim yellow]")
+
+        # 2. Cascade Cloud & Local standard
         for tentative in range(max_tentatives):
             available_clouds = self.get_available_cloud_providers()
             ordered_clouds = self.order_cloud_providers(available_clouds, mem)
@@ -381,7 +494,7 @@ class LLMClient:
                         console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
                         continue
 
-            # Fallback local
+            # 3. Fallback local standard
             if tentative == 0:
                 console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
             try:
@@ -407,6 +520,20 @@ def get_llm_client() -> LLMClient:
 # =============================================================================
 # Fonctions et wrappers de compatibilité descendante
 # =============================================================================
+
+def modele_souverain_disponible() -> bool:
+    """Vérifie si le modèle souverain Jarvis-GC local est actif et disponible."""
+    provider = JarvisGCProvider()
+    return provider.is_available()
+
+
+def chat_with_jarvis_gc(modele: str = MODELE_SOUVERAIN_JARVIS, messages: list = None, temperature: float = 0.2) -> dict:
+    """Appel direct au modèle souverain Jarvis-GC de The Great Corporation."""
+    provider = JarvisGCProvider()
+    cfg = LLMConfig(temperature=temperature, extra_options={"json_mode": True})
+    resp = provider.generate(modele, messages or [], config=cfg)
+    return resp.to_dict()
+
 
 def get_groq_clients() -> list:
     groq_provider = GroqProvider()
@@ -461,16 +588,18 @@ def ordonner_providers_cloud(providers: list[dict], memoire: dict, complexite: s
         return providers
     priorite = ["complexe", "simple"] if complexite == "complexe" else ["simple", "complexe"]
     routeur = memoire.get("routeur_modeles", {})
+    dernier_global = routeur.get("dernier_provider_cloud")
     ordonnes = []
     for niveau in priorite:
         groupe = [p for p in providers if p.get("niveau") == niveau]
         if not groupe:
             continue
-        dernier = routeur.get(f"dernier_provider_{niveau}")
+        dernier = routeur.get(f"dernier_provider_{niveau}") or dernier_global
         noms = [p["nom"] for p in groupe]
+        # Priorité absolue au dernier provider valide pour optimiser le temps de réponse
         if dernier in noms:
-            index_suivant = (noms.index(dernier) + 1) % len(groupe)
-            groupe = groupe[index_suivant:] + groupe[:index_suivant]
+            idx = noms.index(dernier)
+            groupe = [groupe[idx]] + [p for i, p in enumerate(groupe) if i != idx]
         ordonnes.extend(groupe)
     return ordonnes
 

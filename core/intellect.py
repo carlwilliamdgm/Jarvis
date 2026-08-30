@@ -77,10 +77,12 @@ def interpreter_objectif(
         # Préparer les messages pour le LLM
         messages = [{"role": "system", "content": prompt_system}]
 
-        # Ajouter l'historique récent (limité)
-        for msg in historique[-10:]:
-            if msg["role"] in ["user", "assistant"]:
-                messages.append(msg)
+        # En Mode Stark, l'exécution est strictement autonome et auto-contenue
+        # Ne pas polluer le contexte avec l'historique conversationnel passé
+        if not mode_stark:
+            for msg in historique[-10:]:
+                if msg["role"] in ["user", "assistant"]:
+                    messages.append(msg)
 
         # Ajouter le message actuel
         messages.append({"role": "user", "content": message})
@@ -101,6 +103,9 @@ def interpreter_objectif(
         contenu = reponse["message"]["content"]
 
         resultat = _normaliser_decision(contenu, message)
+
+        if resultat.get("raisonnement") and on_event:
+            on_event("thinking", {"message": f"⚡ {resultat['raisonnement']}", "raisonnement": resultat["raisonnement"]})
 
         # Une action sans outil exécutable est une réponse incomplète, pas une
         # conversation. Une seconde passe ciblée évite que Jarvis annonce une
@@ -244,28 +249,46 @@ def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False, m
     home = u.get("home", str(HOME))
     langue = u.get("langue", "français")
 
-    notes = memoire.get("notes", [])
-    resume_notes = "\n".join(
-        f"- {n.get('contenu', n) if isinstance(n, dict) else n}"
-        for n in notes[-10:]
-    ) or "- Aucune"
+    bloc_memoire = ""
+    consigne_memoire = ""
+    if not mode_stark:
+        notes = memoire.get("notes", [])
+        resume_notes = "\n".join(
+            f"- {n.get('contenu', n) if isinstance(n, dict) else n}"
+            for n in notes[-10:]
+        ) or "- Aucune"
 
-    journal = memoire.get("journal_conversation", [])[-8:]
-    resume_journal = "\n".join(
-        f"- [{e['date']}] {nom}: {e['utilisateur'][:100]} | Jarvis: {e['jarvis'][:100]}"
-        for e in journal
-    ) or "- Aucun échange précédent"
+        journal = memoire.get("journal_conversation", [])[-8:]
+        resume_journal = "\n".join(
+            f"- [{e['date']}] {nom}: {e['utilisateur'][:100]} | Jarvis: {e['jarvis'][:100]}"
+            for e in journal
+        ) or "- Aucun échange précédent"
+
+        bloc_memoire = f"""
+Notes enregistrées récemment :
+{resume_notes}
+
+Échanges récents (mémoire persistante entre sessions, pas seulement cette conversation — consulte-la avant de dire que tu ne sais pas) :
+{resume_journal}
+"""
+        consigne_memoire = "\n- Avant de répondre que tu ne sais pas ou que tu n'as pas d'information sur un sujet, vérifie d'abord les notes et les échanges récents listés ci-dessus. S'ils contiennent la réponse, utilise-la — ne dis jamais \"je n'ai pas d'information\" si elle est juste au-dessus dans ce prompt."
 
     signatures_outils = documenter_signatures_outils()
     regles_stark = ""
     if mode_stark:
         regles_stark = """
 
-Règles spécifiques au Mode Stark :
+Règles impératives du Mode Stark (Plein Accès & Raisonnement Renforcé) :
+- En Mode Stark, tu disposes des pleins pouvoirs d'action sur la machine (Full Access). Cette autonomie totale exige une précision chirurgicale et une réflexion critique irréprochable.
+- Raisonnement structuré obligatoire ("raisonnement") : Avant toute décision, tu DOIS formuler une réflexion détaillée :
+  1. DIAGNOSTIC : Analyse l'état actuel, les faits établis et décortique le retour ou l'erreur de la tentative précédente.
+  2. ÉVALUATION D'IMPACT : Vérifie la validité des chemins (absolus vs relatifs), l'adéquation de la commande et préviens tout effet de bord indésirable.
+  3. DÉCISION & PLAN : Justifie rationnellement pourquoi l'outil et les arguments choisis constituent la meilleure étape suivante.
 - Ne propose qu'une seule action par réponse : le tableau "actions" doit contenir exactement un élément utile, ou être vide si aucun outil ne correspond.
 - Ne mets jamais terminer_tache dans la même réponse qu'une autre action.
 - Si le micro-objectif est atteint, appelle terminer_tache comme unique action.
-- Si l'action précédente a déjà répondu au micro-objectif, appelle terminer_tache directement ; ne la réexécute pas pour vérification.
+- Si l'action précédente a déjà répondu au micro-objectif, appelle terminer_tache directement ; ne la réexécute pas pour simple vérification.
+- Auto-correction sur erreur : Si la tentative précédente a échoué (erreur de syntaxe, chemin invalide, exception), identifie la cause racine dans "raisonnement" et adapte immédiatement ton approche.
 """
 
     # Adapter le ton en fonction du contexte
@@ -273,6 +296,19 @@ Règles spécifiques au Mode Stark :
     
     # Obtenir les instructions de personnalité
     instructions_personnalite = generer_prompt_personnalite()
+
+    # Règle de raisonnement cognitif généralisé (présent pour toutes les interactions)
+    regles_raisonnement = ""
+    if not mode_stark:
+        regles_raisonnement = """
+Règles de Raisonnement Cognitif Adaptatif :
+- Analyse critique concise ("raisonnement") obligatoire : Avant de sélectionner des actions ou de répondre, formule une brève réflexion :
+  1. DIAGNOSTIC : Identifie précisément l'intention réelle de l'utilisateur.
+  2. SÉCURITÉ & COHÉRENCE : Vérifie la validité des arguments, des chemins et préviens tout effet de bord.
+  3. DÉCISION : Justifie l'outil sélectionné ou la réponse directe.
+"""
+
+    champ_raisonnement = '\n  "raisonnement": "analyse critique concise (diagnostic, impact/risques, décision)",'
 
     return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
 Tu as été créé par Carl-William DJEGUEMA. Etudiant en informatique à l'Institut Africain d'Informatique(IAI). Carl-William aspire à devenir ingénieur en Génie Logiciel et developpeur full stack.
@@ -291,13 +327,7 @@ Contexte système :
 - OS : {os_detecte}
 - Dossier home : {home}
 - Langue : {langue}
-
-Notes enregistrées récemment :
-{resume_notes}
-
-Échanges récents (mémoire persistante entre sessions, pas seulement cette conversation — consulte-la avant de dire que tu ne sais pas) :
-{resume_journal}
-
+{bloc_memoire}
 Ta tâche : Analyser le message de l'utilisateur et déterminer :
 1. L'objectif réel (ce qu'il veut vraiment)
 2. Le type de demande (action, conversation, diagnostic, planification, mixte)
@@ -306,11 +336,12 @@ Ta tâche : Analyser le message de l'utilisateur et déterminer :
 
 {signatures_outils}
 {regles_stark}
+{regles_raisonnement}
 
 Réponds UNIQUEMENT en JSON avec ce format exact :
 {{
   "objectif": "description de l'objectif",
-  "type": "action|conversation|diagnostic|planification|mixte",
+  "type": "action|conversation|diagnostic|planification|mixte",{champ_raisonnement}
   "actions": [
     {{"outil": "nom_outil", "args": {{"cle": "valeur"}}}}
   ],
@@ -324,8 +355,7 @@ Règles absolues :
 - Pour une action, type = 'action' et inclut les outils nécessaires
 - La réponse doit être en {langue}
 - Sois précis et concis dans l'objectif, mais jamais dans "reponse" : c'est là que ta voix doit se faire entendre
-- Ne mentionne jamais le JSON, les outils ou ta structure interne dans "reponse" — l'utilisateur ne doit voir que du langage naturel
-- Avant de répondre que tu ne sais pas ou que tu n'as pas d'information sur un sujet, vérifie d'abord les notes et les échanges récents listés ci-dessus. S'ils contiennent la réponse, utilise-la — ne dis jamais "je n'ai pas d'information" si elle est juste au-dessus dans ce prompt.
+- Ne mentionne jamais le JSON, les outils ou ta structure interne dans "reponse" — l'utilisateur ne doit voir que du langage naturel{consigne_memoire}
 """
 
 
@@ -345,6 +375,9 @@ def _parser_reponse_intellect(contenu: str, message_original: str) -> dict:
         if "type" not in resultat:
             resultat["type"] = "conversation"
 
+        if "raisonnement" not in resultat:
+            resultat["raisonnement"] = ""
+
         if "actions" not in resultat:
             resultat["actions"] = []
 
@@ -357,6 +390,7 @@ def _parser_reponse_intellect(contenu: str, message_original: str) -> dict:
         return {
             "objectif": message_original[:100],
             "type": "conversation",
+            "raisonnement": "",
             "actions": [],
             "reponse": "Je ne peux pas traiter ça correctement, Sir. Le modèle a retourné une réponse au format invalide (JSON attendu). Le traitement a échoué lors du parsing de la décision."
         }
