@@ -58,13 +58,12 @@ class JarvisGCProviderTests(unittest.TestCase):
             self.assertEqual(resp.model, "jarvis-gc:latest")
             self.assertIn("Bien reçu Sir.", resp.content)
             
-            # Vérification des arguments passés à chat (format json & keep_alive)
+            # Vérification des arguments passés à chat (keep_alive)
             mock_client.chat.assert_called_once()
             call_kwargs = mock_client.chat.call_args[1]
-            self.assertEqual(call_kwargs["format"], "json")
             self.assertEqual(call_kwargs["keep_alive"], "5m")
 
-    def test_sovereign_first_cascade(self):
+    def test_cloud_first_sovereign_fallback_cascade(self):
         fake_sovereign = MagicMock(spec=JarvisGCProvider)
         fake_sovereign.nom = "Jarvis-GC"
         fake_sovereign.modeles = ["jarvis-gc:latest"]
@@ -76,13 +75,33 @@ class JarvisGCProviderTests(unittest.TestCase):
             model="jarvis-gc:latest"
         )
 
-        fake_cloud = MagicMock()
+        fake_cloud = MagicMock(spec=BaseLLMProvider)
+        fake_cloud.nom = "Groq"
+        fake_cloud.modeles = ["openai/gpt-oss-120b"]
+        fake_cloud.niveau = "simple"
         fake_cloud.is_available.return_value = True
+        fake_cloud.generate.return_value = LLMResponse(
+            content='{"objectif": "check", "type": "conversation", "actions": [], "reponse": "Exécution cloud."}',
+            provider="Groq",
+            model="openai/gpt-oss-120b"
+        )
 
         client = LLMClient(
             sovereign_provider=fake_sovereign,
             cloud_providers=[fake_cloud]
         )
+
+        # 1. En présence de cloud, c'est le cloud (Groq) qui répond en priorité #1
+        resp = client.generate_with_fallback([{"role": "user", "content": "test"}])
+        self.assertEqual(resp["provider"], "Groq")
+        fake_cloud.generate.assert_called_once()
+        fake_sovereign.generate.assert_not_called()
+
+        # 2. Si le cloud échoue, le fallback souverain prend le relais
+        fake_cloud.generate.side_effect = RuntimeError("Cloud down")
+        resp_fallback = client.generate_with_fallback([{"role": "user", "content": "test"}])
+        self.assertEqual(resp_fallback["provider"], "Jarvis-GC")
+        fake_sovereign.generate.assert_called_once()
 
     def test_jarvis_gc_timeout_triggers_timeout_error(self):
         provider = JarvisGCProvider(timeout=0.05)

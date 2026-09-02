@@ -337,11 +337,14 @@ class JarvisGCProvider(BaseLLMProvider):
 
         cfg = config or LLMConfig(temperature=0.2)
         timeout_val = cfg.timeout or self.default_timeout
+        # Sur CPU 8-threads (4 cœurs physiques), utiliser 4 threads physiques
+        # garantit que Windows conserve 4 threads libres (zéro freeze système).
         options = {
             "think": False,
             "temperature": cfg.temperature,
             "top_p": 0.9,
-            "num_thread": 8,
+            "num_thread": int(os.environ.get("JARVIS_GC_THREADS", 4)),
+            "num_ctx": 2048,
         }
         options.update(cfg.extra_options)
 
@@ -448,28 +451,17 @@ class LLMClient:
         max_tentatives: int = 2,
     ) -> Optional[dict]:
         """
-        Génère une réponse en priorisant le modèle souverain Jarvis-GC,
-        puis tente les providers cloud disponibles avant de retomber sur le modèle local standard.
+        Génère une réponse avec cascade de haute performance :
+        1. Cloud Ultra-Rapide (Groq / OpenRouter) en Priorité #1 pour réactivité instantanée (< 1s) et intelligence maximale (120B/70B).
+        2. Modèle Souverain The Great Corporation (Jarvis-GC) en Fallback Hors-Ligne #1 si le cloud est inaccessible.
+        3. Modèle local standard (Ollama fallback) en dernier recours.
         """
         from rich.console import Console
         console = Console()
         cfg = config or LLMConfig()
         mem = memoire or {}
 
-        # 1. Tentative avec le modèle souverain Jarvis-GC (Priorité #1)
-        if self.sovereign_provider and self.sovereign_provider.is_available():
-            modele_souverain = self.sovereign_provider.modeles[0]
-            try:
-                console.print(f"[dim green]-> Modèle Souverain The Great Corporation actif : {modele_souverain}[/dim green]")
-                resp = self.sovereign_provider.generate(modele_souverain, messages, config=cfg)
-                console.print(f"[dim green]✓ {self.sovereign_provider.nom} réussi : {modele_souverain}[/dim green]")
-                if on_event is not None:
-                    on_event("provider", {"provider": self.sovereign_provider.nom, "model": modele_souverain})
-                return resp.to_dict()
-            except Exception as e:
-                console.print(f"[dim yellow]✗ {self.sovereign_provider.nom} indisponible ({e}) -> Bascule sur cascade cloud/local[/dim yellow]")
-
-        # 2. Cascade Cloud & Local standard
+        # 1. CASCADE CLOUD ULTRA-RAPIDE (Priorité #1 - Fast-Track)
         for tentative in range(max_tentatives):
             available_clouds = self.get_available_cloud_providers()
             ordered_clouds = self.order_cloud_providers(available_clouds, mem)
@@ -494,7 +486,20 @@ class LLMClient:
                         console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
                         continue
 
-            # 3. Fallback local standard
+            # 2. FALLBACK SOUVERAIN HORS-LIGNE (The Great Corporation Jarvis-GC)
+            if self.sovereign_provider and self.sovereign_provider.is_available():
+                modele_souverain = self.sovereign_provider.modeles[0]
+                try:
+                    console.print(f"[dim cyan]-> Mode Hors-Ligne : Modèle Souverain The Great Corporation actif ({modele_souverain})...[/dim cyan]")
+                    resp = self.sovereign_provider.generate(modele_souverain, messages, config=cfg)
+                    console.print(f"[dim green]✓ {self.sovereign_provider.nom} réussi : {modele_souverain}[/dim green]")
+                    if on_event is not None:
+                        on_event("provider", {"provider": self.sovereign_provider.nom, "model": modele_souverain})
+                    return resp.to_dict()
+                except Exception as e:
+                    console.print(f"[dim yellow]✗ {self.sovereign_provider.nom} indisponible ({str(e)[:100]}) -> Fallback local standard[/dim yellow]")
+
+            # 3. FALLBACK LOCAL STANDARD
             if tentative == 0:
                 console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
             try:
