@@ -113,11 +113,31 @@ Chaque message est envoye a Core Intellect. Si le resultat contient des actions,
 
 ## Modeles et retry
 
-Core Intellect essaie les providers disponibles dans cet ordre logique :
+Core Intellect utilise une cascade intelligente de providers LLM :
 
-- Groq si une ou plusieurs cles `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, etc. sont configurees.
-- OpenRouter si `OPENROUTER_API_KEY` est configuree.
-- Ollama local avec `qwen2.5:7b` en fallback.
+1. **Cloud Ultra-Rapide (Priorité #1)** : Groq / OpenRouter
+   - Temps de réponse < 1s
+   - Modèles puissants (120B/70B paramètres)
+   - Mémorisation du dernier provider fonctionnel pour optimisation
+
+2. **Modèle Souverain Jarvis-GC (Fallback Hors-Ligne #1)** : The Great Corporation
+   - Base Qwen 2.5 (1.5B/3B/7B) optimisé CPU/AVX2
+   - Prompt système gravé dans le Modelfile
+   - Timeout stricte configurable (45s par défaut)
+   - Premier choix hors-ligne
+
+3. **Fallback Local Standard** : Ollama qwen2.5:7b
+   - Dernier recours si cloud et Jarvis-GC indisponibles
+
+### Configuration des providers
+
+- Groq : `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, etc.
+- OpenRouter : `OPENROUTER_API_KEY`
+- Jarvis-GC : Modèle local via Ollama (`ollama create jarvis-gc -f models/jarvis_gc/Modelfile`)
+- Variables avancées Jarvis-GC :
+  - `JARVIS_GC_TIMEOUT` : Timeout en secondes (défaut: 45)
+  - `JARVIS_GC_THREADS` : Nombre de threads (défaut: 4)
+  - `JARVIS_MODEL_HOST` : Host Ollama personnalisé
 
 Les appels LLM ont deux tentatives. Les outils fonctionnent avec n'importe quel provider tant que la reponse finale respecte le contrat JSON attendu.
 
@@ -278,17 +298,17 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatu
 
 ### Sessions de Navigation & Overlay
 
-- `demarrer_overlay_navigation()` - Démarre le visualiseur d'overlay du navigateur.
+- `demarrer_overlay_navigation()` - Démarre le visualiseur d'overlay du navigateur avec interface visuelle temps réel.
 - `arreter_overlay_navigation()` - Arrête l'overlay de navigation.
-- `creer_session_navigation(url="", browser_type="chromium", headless=False)` - Crée une nouvelle session de navigation persistante.
-- `naviguer_session(session_id, url)` - Charge une page dans une session spécifique.
-- `cliquer_session(session_id, selecteur)` - Clique sur un élément dans une session spécifique.
-- `remplir_session(session_id, selecteur, texte)` - Saisit du texte dans une session spécifique.
-- `capture_session(session_id, chemin="")` - Capture la vue d'une session de navigation.
-- `executer_js_session(session_id, script)` - Exécute un script JavaScript dans la session.
+- `creer_session_navigation(url="", browser_type="chromium", headless=False)` - Crée une nouvelle session de navigation persistante avec états et événements.
+- `naviguer_session(session_id, url)` - Charge une page dans une session spécifique (non-bloquant).
+- `cliquer_session(session_id, selecteur)` - Clique sur un élément dans une session spécifique (non-bloquant).
+- `remplir_session(session_id, selecteur, texte)` - Saisit du texte dans une session spécifique (non-bloquant).
+- `capture_session(session_id, chemin="")` - Capture la vue d'une session de navigation (non-bloquant).
+- `executer_js_session(session_id, script)` - Exécute un script JavaScript dans la session (non-bloquant).
 - `fermer_session(session_id)` - Ferme et nettoie une session de navigation.
-- `lister_sessions()` - Liste toutes les sessions de navigation actives.
-- `obtenir_etat_session(session_id)` - Obtient l'état et l'historique d'une session.
+- `lister_sessions()` - Liste toutes les sessions de navigation actives avec état détaillé.
+- `obtenir_etat_session(session_id)` - Obtient l'état complet, l'historique et les métadonnées d'une session.
 
 ## Modules internes
 
@@ -324,6 +344,36 @@ Les fonctions suivantes ne sont pas exposées comme outils Jarvis mais sont util
 - `evoluer_personnalite()` - Fait évoluer la personnalité basée sur les interactions passées
 - `obtenir_rapport_personnalite()` - Génère un rapport de personnalité avec traits et évolution
 - `reinitialiser_personnalite()` - Réinitialise la personnalité aux valeurs de base
+
+### Navigation et Sessions (core/browser_session.py, core/browser_overlay.py)
+- `get_session_manager()` - Retourne le gestionnaire global de sessions de navigateur
+- `create_session(session_id, headless=True)` - Crée une nouvelle session de navigation persistante
+- `get_session(session_id)` - Retourne une session spécifique par son ID
+- `list_sessions()` - Liste toutes les sessions actives avec leur état
+- `start_browser_overlay()` - Démarre l'overlay visuel de navigation
+- `stop_browser_overlay()` - Arrête l'overlay visuel de navigation
+- `BrowserSession.start()` - Démarre une session dans un thread dédié
+- `BrowserSession.stop()` - Arrête une session proprement
+- `BrowserSession.navigate_sync(url)` - Navigation synchrone bloquante
+- `BrowserSession.navigate(url)` - Navigation asynchrone non-bloquante
+- `BrowserSession.click_sync(selector)` - Clic synchrone bloquant
+- `BrowserSession.click(selector)` - Clic asynchrone non-bloquant
+- `BrowserSession.fill_sync(selector, value)` - Remplissage synchrone bloquant
+- `BrowserSession.fill(selector, value)` - Remplissage asynchrone non-bloquant
+- `BrowserSession.screenshot_sync(path)` - Capture synchrone bloquante
+- `BrowserSession.screenshot(path)` - Capture asynchrone non-bloquante
+
+### Client LLM (core/llm_client.py)
+- `get_llm_client()` - Retourne l'instance globale du client LLM
+- `modele_souverain_disponible()` - Vérifie si le modèle Jarvis-GC est disponible
+- `chat_with_jarvis_gc(modele, messages, temperature)` - Appel direct au modèle souverain
+- `get_groq_clients()` - Retourne les clients Groq configurés
+- `chat_with_cloud(modele, messages, temperature)` - Appel au provider cloud (Groq)
+- `chat_with_openrouter(modele, messages, temperature)` - Appel au provider OpenRouter
+- `chat_with_local(modele, messages, temperature)` - Appel au provider local Ollama
+- `providers_cloud_disponibles()` - Liste les providers cloud disponibles
+- `ordonner_providers_cloud(providers, memoire, complexite)` - Ordonne les providers par priorité
+- `memoriser_provider_cloud(nom_provider)` - Mémorise le dernier provider fonctionnel
 
 ## Exemples
 
@@ -409,6 +459,14 @@ core/intellect.py
 ├── _parser_reponse_intellect()
 └── _appeler_llm_avec_retry()
 
+core/llm_client.py
+├── LLMClient (orchestrateur cascade)
+├── JarvisGCProvider (modèle souverain)
+├── GroqProvider (cloud ultra-rapide)
+├── OpenRouterProvider (cloud alternatif)
+├── OllamaProvider (fallback local)
+└── generate_with_fallback()
+
 core/voice_state.py
 ├── get_voice_state()
 ├── _set_voice_state()
@@ -419,6 +477,19 @@ core/voice_overlay.py
 ├── _read_state_from_file()
 ├── _update_visuals()
 └── _check_state_loop()
+
+core/browser_session.py
+├── BrowserSession (session persistante)
+├── BrowserSessionState (états enum)
+├── SessionManager (gestionnaire global)
+├── Méthodes synchrones (navigate_sync, click_sync, etc.)
+└── Méthodes asynchrones (navigate, click, etc.)
+
+core/browser_overlay.py
+├── BrowserOverlay class
+├── _update_display()
+├── _get_state_color()
+└── _get_state_icon()
 
 core/contextual_suggestions.py
 ├── generer_suggestions_contextuelles()
@@ -462,6 +533,9 @@ capabilities/
 ├── voice_input.py
 ├── voice_output.py
 ├── clap_input.py
+├── web_search.py
+├── browser_automation.py
+├── browser_sessions.py
 └── execution concrete des outils
 ```
 

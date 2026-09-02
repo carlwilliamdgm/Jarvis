@@ -34,6 +34,9 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 - `core/translator.py` : traducteur d'intentions/patterns consultable via outils.
 - `core/stark_parser.py` : parseur de la grammaire Stark (`>>`, `&&`, `||`).
 - `core/stark_session.py` : coordination multi-instance Stark via `stark_actif.json`.
+- `core/llm_client.py` : orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud -> Fallback local).
+- `core/browser_session.py` : gestion de sessions de navigateur persistantes avec états, événements et exécution asynchrone.
+- `core/browser_overlay.py` : interface visuelle flottante pour la navigation en temps réel.
 
 ### Nouveaux modules Core
 
@@ -48,6 +51,58 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 - `core/system_monitor.py` : Surveillance continue de l'etat systeme (CPU, memoire, disque, reseau, processus) avec detection d'anomalies, enregistrement historique et analyse de tendances.
 - `core/personality.py` : Gestion et adaptation de la personnalite Jarvis avec traits ajustables (sarcasme, formalite, proactivite, humour, empathie, concision, creativite) et evolution automatique basee sur les interactions.
 - `core/confirmations.py` : Gestion des confirmations utilisateur avec historique et patterns de refus/acceptation.
+- `core/llm_client.py` : Orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud Groq/OpenRouter -> Fallback local Ollama).
+- `core/browser_session.py` : Gestion de sessions de navigateur persistantes avec états (IDLE, NAVIGATING, LOADING, INTERACTING, ERROR, CLOSED), événements et exécution asynchrone.
+- `core/browser_overlay.py` : Interface visuelle flottante Tkinter pour la navigation en temps réel, similaire à l'overlay vocal mais pour les sessions de navigateur.
+
+## Architecture LLM et cascade de providers
+
+Jarvis utilise une architecture de cascade intelligente pour garantir réactivité et intelligence :
+
+### Cascade de providers
+
+1. **Cloud Ultra-Rapide (Priorité #1)** : Groq / OpenRouter
+   - Temps de réponse < 1s
+   - Modèles puissants (120B/70B paramètres)
+   - Priorité absolue pour réactivité maximale
+
+2. **Modèle Souverain Jarvis-GC (Fallback Hors-Ligne #1)** : The Great Corporation
+   - Base Qwen 2.5 (1.5B/3B/7B) optimisé CPU/AVX2
+   - Prompt système gravé dans le Modelfile
+   - Timeout stricte configurable (45s par défaut)
+   - Déchargement automatique après 5min d'inactivité
+   - Premier choix hors-ligne
+
+3. **Fallback Local Standard** : Ollama qwen2.5:7b
+   - Dernier recours si cloud et Jarvis-GC indisponibles
+   - Modèle standard sans optimisations spécifiques
+
+### JarvisGCProvider
+
+Le provider souverain implémente des optimisations spécifiques :
+
+- **Optimisation Windows** : 4 threads physiques pour éviter le freeze système
+- **Fail-fast** : Vérification du service Ollama avant toute tentative d'inférence
+- **Timeout stricte** : Évite les blocages avec délai configurable
+- **Gestion éco mémoire** : Déchargement automatique après inactivité
+- **Décodage structuré** : Optimisé pour tool calling et JSON
+
+### Configuration avancée
+
+Variables d'environnement pour Jarvis-GC :
+
+- `JARVIS_GC_TIMEOUT` : Timeout en secondes (défaut: 45)
+- `JARVIS_GC_THREADS` : Nombre de threads (défaut: 4)
+- `JARVIS_MODEL_HOST` : Host Ollama personnalisé (défaut: http://127.0.0.1:11434)
+
+### LLMClient
+
+L'orchestrateur central gère :
+
+- **Ordre intelligent** : Mémorisation du dernier provider fonctionnel pour optimiser le temps de réponse
+- **Routing par complexité** : Priorité différente selon la complexité de la tâche
+- **Événements** : Intégration avec event_bus pour notifier les interfaces
+- **Fallback automatique** : Transition transparente entre providers
 
 ## Mode Stark
 
@@ -83,6 +138,7 @@ Les modules `capabilities/` executent les actions concrètes. Ils ne decident pa
 - `capabilities/email_integration.py` : integration avec email (en developpement).
 - `capabilities/web_search.py` : recherche web avancée via DuckDuckGo, analyse de contenu de pages, extraction d'informations clés et synthèse de résultats.
 - `capabilities/browser_automation.py` : automatisation de navigateur via Playwright pour navigation interactive, clics, formulaires, captures d'écran et séquences d'actions.
+- `capabilities/browser_sessions.py` : outils de gestion des sessions de navigation parallèles avec overlay visuel.
 
 ## Facade outils
 
@@ -199,6 +255,41 @@ L'overlay visuel (`core/voice_overlay.py`) presente les caracteristiques suivant
 - **Non-intrusif** : Bloque les clics et entrees clavier (pass-through), ne vole pas le focus, pas d'entree dans la barre des taches
 - **Positionnement** : Bas-droite de l'ecran par defaut, configurable
 - **Integration API** : Demarre automatiquement dans `api/server.py` via `startup_event()`, arrete proprement via `shutdown_event()`
+
+### Sessions de navigation et overlay
+
+L'architecture de navigation de Jarvis est basee sur des sessions persistantes :
+
+#### BrowserSession
+
+Chaque session de navigation (`core/browser_session.py`) est un objet persistant avec :
+
+- **États structurés** : IDLE, NAVIGATING, LOADING, INTERACTING, ERROR, CLOSED
+- **Exécution asynchrone** : Boucle asyncio dans un thread dédié
+- **Méthodes synchrones** : `navigate_sync()`, `click_sync()`, `fill_sync()`, etc. pour compatibilité
+- **Méthodes non-bloquantes** : `navigate()`, `click()`, `fill()`, etc. pour parallélisme
+- **Événements** : Émission d'événements vers event_bus pour intégration système
+- **Historique** : Journalisation des actions effectuées
+- **Captures** : Screenshot automatique après navigation
+
+#### BrowserOverlay
+
+L'overlay de navigation (`core/browser_overlay.py`) presente les caracteristiques suivantes :
+
+- **Thread Tkinter dedie** : Fonctionne dans un thread separe, compatible avec asyncio/uvicorn
+- **Style HUD** : Fond sombre avec lueur verte, police Segoe UI, titre "JARVIS BROWSER SESSIONS"
+- **États visuels distincts** :
+  - IDLE : Vert + icone ●
+  - NAVIGATING : Bleu + icone ◉
+  - LOADING : Orange + icone ◌
+  - INTERACTING : Bleu + icone ◈
+  - ERROR : Rouge + icône ⚠
+  - CLOSED : Gris + icône ○
+- **Informations détaillées** : URL actuelle, titre de page, nombre d'actions, statut de capture d'écran
+- **Gestion multi-sessions** : Affichage de toutes les sessions actives avec scroll
+- **Non-intrusif** : Transparence 0.9, topmost, fenêtre sans bordure
+- **Positionnement** : Bas-droite de l'ecran par defaut, configurable
+- **Mise à jour continue** : Polling toutes les 500ms pour affichage temps réel
 
 ### Serveur FastAPI
 

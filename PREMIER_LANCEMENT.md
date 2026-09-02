@@ -105,6 +105,46 @@ ollama pull qwen2.5:7b
 
 Ollama sera utilisé automatiquement en fallback si Groq et OpenRouter ne sont pas configurés.
 
+### Option 4 - Modèle Souverain Jarvis-GC (recommandé pour hors-ligne)
+
+Le modèle souverain Jarvis-GC est développé par The Great Corporation pour une intelligence maximale hors-ligne :
+
+1. Téléchargez et installez [Ollama](https://ollama.ai/)
+2. Lancez Ollama :
+
+```powershell
+ollama serve
+```
+
+3. Créez le modèle Jarvis-GC :
+
+```powershell
+ollama create jarvis-gc -f models/jarvis_gc/Modelfile
+```
+
+4. Vérifiez la création :
+
+```powershell
+ollama list
+```
+
+**Avantages Jarvis-GC** :
+- Fonctionnement 100% hors-ligne
+- Prompt système gravé pour cohérence maximale
+- Optimisé CPU/AVX2 pour Windows
+- Premier choix hors-ligne dans la cascade Jarvis
+
+**Configuration avancée** (optionnelle) :
+```powershell
+# Timeout personnalisé (secondes)
+$env:JARVIS_GC_TIMEOUT="60"
+
+# Nombre de threads (défaut: 4)
+$env:JARVIS_GC_THREADS="8"
+```
+
+Pour plus de détails, consultez `JARVIS_GC.md`.
+
 ## Modèles vocaux locaux (optionnel)
 
 Le mode vocal ne télécharge aucun modèle automatiquement. Téléchargez les fichiers suivants,

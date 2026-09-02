@@ -35,6 +35,36 @@ Jarvis dispose d'une interface vocale complète avec un indicateur visuel temps 
   - Non-intrusif : passe les clics à travers, ne vole pas le focus
   - Démarrage automatique avec JarvisAgent
 
+### Modèle souverain Jarvis-GC
+
+Jarvis dispose d'un modèle souverain propriétaire développé par The Great Corporation :
+
+- **Base technique** : Qwen 2.5 (1.5B/3B/7B Instruct) optimisé pour CPU/AVX2
+- **Optimisation Windows** : Utilisation de 4 threads physiques pour éviter le freeze système
+- **Prompt système gravé** : Instructions gravées dans le Modelfile pour cohérence maximale
+- **Timeout stricte** : Délai configurable (45s par défaut) pour garantir réactivité
+- **Décodage structuré** : Optimisé pour le tool calling et la prise de décision
+- **Gestion éco mémoire** : Déchargement automatique après 5min d'inactivité
+- **Fonctionnement hors-ligne** : Premier choix quand les providers cloud sont indisponibles
+
+**Installation du modèle** :
+```powershell
+ollama serve
+ollama create jarvis-gc -f models/jarvis_gc/Modelfile
+```
+
+**Configuration avancée** :
+```powershell
+# Timeout personnalisé (secondes)
+$env:JARVIS_GC_TIMEOUT="60"
+
+# Nombre de threads (défaut: 4)
+$env:JARVIS_GC_THREADS="8"
+
+# Host Ollama personnalisé
+$env:JARVIS_MODEL_HOST="http://127.0.0.1:11434"
+```
+
 ### Intelligence comportementale
 
 - **Suggestions contextuelles** : Jarvis propose des actions basées sur vos habitudes, l'heure actuelle, l'état système et votre contexte utilisateur
@@ -169,6 +199,27 @@ Ces outils permettent à Jarvis de :
 
 **Fonctionnement comme Claude** : Les sessions sont non-bloquantes, Jarvis peut lancer une navigation et continuer à analyser/discuter pendant que le navigateur travaille en arrière-plan. L'overlay visuel montre l'état de toutes les sessions en temps réel.
 
+### Overlay de navigation
+
+Jarvis dispose d'un overlay visuel dédié à la navigation web :
+
+- **Interface temps réel** : Affichage de l'état de toutes les sessions de navigateur actives
+- **États visuels distincts** : IDLE (●), NAVIGATING (◉), LOADING (◌), INTERACTING (◈), ERROR (⚠), CLOSED (○)
+- **Informations détaillées** : URL actuelle, titre de page, nombre d'actions, statut de capture d'écran
+- **Gestion des erreurs** : Affichage des messages d'erreur directement dans l'overlay
+- **Interface non-intrusive** : Fenêtre flottante avec transparence, positionnement configurable
+- **Démarrage automatique** : S'intègre avec JarvisAgent pour démarrage automatique
+
+**Activation** :
+```python
+demarrer_overlay_navigation()
+```
+
+**Arrêt** :
+```python
+arreter_overlay_navigation()
+```
+
 - Assistant conversationnel local avec mémoire persistante.
 - Exécution d'outils réels via `tools.OUTILS`.
 - Conscience dynamique des capacités grâce à l'inventaire temps réel de `core/tool_signatures.py`.
@@ -188,8 +239,10 @@ Ces outils permettent à Jarvis de :
 - **Recherche web avancée** : recherche web intelligente via DuckDuckGo, analyse de contenu de pages, extraction d'informations clés et synthèse de résultats.
 - **Navigation interactive** : automatisation de navigateur via Playwright pour naviguer, cliquer, remplir des formulaires, prendre des captures d'écran et exécuter des séquences d'actions complexes.
 - **Sessions parallèles** : gestion de multiples sessions de navigation en parallèle avec interface visuelle temps réel, similaire à Claude dans Chrome.
+- **Overlay de navigation** : interface visuelle flottante montrant l'état des sessions de navigateur en temps réel.
 - **Surveillance système** : monitoring continu CPU, mémoire, disque, réseau avec détection d'anomalies.
 - **Personnalité adaptative** : traits de personnalité ajustables (sarcasme, formalité, proactivité, humour, empathie, concision, créativité) avec évolution basée sur les interactions.
+- **Modèle souverain Jarvis-GC** : modèle local optimisé CPU/AVX2 basé sur Qwen 2.5 (1.5B/3B/7B) pour fonctionnement hors-ligne avec intelligence maximale.
 
 ### Surfaces utilisateur
 
@@ -255,11 +308,12 @@ cd %USERPROFILE%\Jarvis
 
 ### Providers LLM
 
-Jarvis peut utiliser :
+Jarvis utilise une cascade intelligente de providers LLM pour garantir réactivité et intelligence :
 
-- Groq via `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, etc.
-- OpenRouter via `OPENROUTER_API_KEY`.
-- Ollama local avec `qwen2.5:7b` en fallback.
+- **Modèle Souverain Jarvis-GC** (The Great Corporation) : Modèle local optimisé CPU/AVX2 basé sur Qwen 2.5, premier choix hors-ligne
+- **Groq** via `GROQ_API_KEY`, `GROQ_API_KEY_1`, `GROQ_API_KEY_2`, etc. : Cloud ultra-rapide (120B paramètres)
+- **OpenRouter** via `OPENROUTER_API_KEY` : Cloud alternatif (70B paramètres)
+- **Ollama local** avec `qwen2.5:7b` : Fallback standard
 
 Exemple PowerShell :
 
@@ -268,12 +322,21 @@ $env:GROQ_API_KEY="votre_cle"
 $env:OPENROUTER_API_KEY="votre_cle"
 ```
 
-Pour Ollama :
+Pour le modèle souverain Jarvis-GC :
+
+```powershell
+ollama serve
+ollama create jarvis-gc -f models/jarvis_gc/Modelfile
+```
+
+Pour Ollama fallback :
 
 ```powershell
 ollama serve
 ollama pull qwen2.5:7b
 ```
+
+**Architecture de cascade** : Jarvis essaie d'abord les providers cloud (Groq/OpenRouter) pour réactivité maximale, puis le modèle souverain Jarvis-GC hors-ligne, et enfin le fallback local standard.
 
 ## Lancer Jarvis
 
