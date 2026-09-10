@@ -6,8 +6,8 @@ import time
 import unittest
 from unittest.mock import Mock, patch, MagicMock
 
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
-from core import voice_overlay
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
+from jarvis import voice_overlay
 
 
 class VoiceOverlayTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Nettoyer l'état global après chaque test
         voice_overlay._overlay_process = None
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_demarrer_overlay_create_process(self, mock_popen):
         """Test que le démarrage crée bien un processus."""
         mock_process = Mock()
@@ -74,7 +74,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(voice_overlay._overlay_process)
         self.assertEqual(voice_overlay._overlay_process.pid, 12345)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_demarrer_overlay_no_duplicate(self, mock_popen):
         """Test qu'un second démarrage ne crée pas un second processus."""
         mock_process = Mock()
@@ -92,7 +92,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que Popen n'a été appelé qu'une seule fois
         self.assertEqual(mock_popen.call_count, first_call_count)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_demarrer_overlay_after_stop(self, mock_popen):
         """Test qu'un redémarrage après arrêt fonctionne."""
         mock_process = Mock()
@@ -113,7 +113,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que Popen a été appelé deux fois
         self.assertEqual(mock_popen.call_count, 2)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_arreter_overlay_terminate(self, mock_popen):
         """Test que l'arrêt appelle terminate() sur le processus."""
         mock_process = Mock()
@@ -137,7 +137,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que l'état a été nettoyé
         self.assertIsNone(voice_overlay._overlay_process)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_arreter_overlay_already_dead(self, mock_popen):
         """Test qu'un processus déjà mort est traité proprement."""
         mock_process = Mock()
@@ -157,7 +157,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que l'état a été nettoyé
         self.assertIsNone(voice_overlay._overlay_process)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_arreter_overlay_no_process(self, mock_popen):
         """Test que l'arrêt sans processus ne plante pas."""
         # Arrêter sans avoir démarré
@@ -169,7 +169,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que l'état reste None
         self.assertIsNone(voice_overlay._overlay_process)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_arreter_overlay_timeout_kill(self, mock_popen):
         """Test que l'arrêt force kill après timeout."""
         mock_process = Mock()
@@ -196,7 +196,7 @@ class VoiceOverlayLifecycleTests(unittest.TestCase):
         # Vérifier que l'état a été nettoyé
         self.assertIsNone(voice_overlay._overlay_process)
 
-    @patch('core.voice_overlay.subprocess.Popen')
+    @patch('jarvis.voice_overlay.subprocess.Popen')
     def test_demarrer_overlay_exception_handling(self, mock_popen):
         """Test que les exceptions lors du démarrage sont gérées."""
         mock_popen.side_effect = Exception("Erreur de création")

@@ -27,6 +27,8 @@ voice_state.json
 browser_sessions.json
 browser_sessions_state.json
 browser_overlay_state.json
+goals.json
+snapshots/
 
 # Temporary & Audit
 *.tmp

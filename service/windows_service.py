@@ -72,9 +72,43 @@ from logging.handlers import RotatingFileHandler
 import subprocess
 import threading
 
-import win32event
-import win32service
-import win32serviceutil
+# Safely import win32 modules; fallback to dummy on failure
+try:
+    import win32event
+    import win32service
+    import win32serviceutil
+    _WIN32_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _WIN32_AVAILABLE = False
+
+    # Dummy event module with required functions
+    class _DummyWin32Event:
+        @staticmethod
+        def CreateEvent(*args, **kwargs):
+            return None
+
+        @staticmethod
+        def SetEvent(event):
+            pass
+
+    # Dummy service constants
+    class _DummyWin32Service:
+        SERVICE_STOP_PENDING = 0
+        SERVICE_START_PENDING = 0
+
+    # Dummy ServiceFramework base class
+    class _DummyServiceFramework:
+        def __init__(self, args):
+            pass
+
+        def ReportServiceStatus(self, status):
+            pass
+
+    # Assign dummy modules/objects
+    win32event = _DummyWin32Event()
+    win32service = _DummyWin32Service()
+    win32serviceutil = type('win32serviceutil', (), {'ServiceFramework': _DummyServiceFramework})
+
 
 # Service logger with RotatingFileHandler (max 10MB, 5 backups)
 service_handler = RotatingFileHandler(
@@ -203,7 +237,7 @@ class JarvisService(win32serviceutil.ServiceFramework):
             command = PYTHON_COMMAND + [
                 "-m",
                 "uvicorn",
-                "api.server:app",
+                "interface_morphique.server:app",
                 "--host",
                 "0.0.0.0",
                 "--port",

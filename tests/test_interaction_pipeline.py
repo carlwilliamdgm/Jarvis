@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 from copy import deepcopy
 
 import jarvis
-from core.voice_state import VoiceState, _set_voice_state
+from jarvis.voice_state import VoiceState, _set_voice_state
 
 
 class InteractionPipelineTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class InteractionPipelineTests(unittest.TestCase):
         self.assertEqual([], self.calls)
 
     def test_non_voice_interaction_never_invokes_tts(self):
-        with patch("capabilities.voice_output.parler_a_voix_haute") as speak:
+        with patch("jarvis.voice_output.parler_a_voix_haute") as speak:
             jarvis.executer_interaction_utilisateur("bonjour", [], {})
 
         speak.assert_not_called()
@@ -71,7 +71,7 @@ class InteractionPipelineTests(unittest.TestCase):
         def fake_voice_output(_text):
             voice_started.append(jarvis.INTERACTION_LOCK.locked())
 
-        with patch("capabilities.voice_output.parler_a_voix_haute", side_effect=fake_voice_output):
+        with patch("jarvis.voice_output.parler_a_voix_haute", side_effect=fake_voice_output):
             jarvis.executer_interaction_utilisateur("bonjour", [], {}, origine_vocale=True)
 
         self.assertEqual([False], voice_started)

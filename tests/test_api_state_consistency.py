@@ -10,8 +10,8 @@ import asyncio
 from pathlib import Path
 
 # Import the real modules - no global sys.modules mutations
-import api.server
-from api.server import traiter_message, stream_jarvis
+import interface_morphique.server
+from interface_morphique.server import traiter_message, stream_jarvis
 
 
 class APIStateConsistencyTests(unittest.TestCase):
@@ -20,26 +20,26 @@ class APIStateConsistencyTests(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures with real modules but mocked dependencies."""
         # Create mock global state
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
-        api.server.agent = None
-        api.server.agent_stop_event = None
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.agent = None
+        interface_morphique.server.agent_stop_event = None
         
         # We'll patch jarvis functions in each test method
         
     def tearDown(self):
         """Clean up test state."""
         # Reset global state
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
-        api.server.agent = None
-        api.server.agent_stop_event = None
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.agent = None
+        interface_morphique.server.agent_stop_event = None
     
-    @patch('api.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
     def test_failure_before_any_write_preserves_conversation_state(self, mock_executer):
         """Test that failure before any tool write keeps conversation coherent."""
-        initial_historique_len = len(api.server.historique)
-        initial_memoire_keys = set(api.server.memoire.keys())
+        initial_historique_len = len(interface_morphique.server.historique)
+        initial_memoire_keys = set(interface_morphique.server.memoire.keys())
         
         # Mock executer to fail before any write
         mock_executer.side_effect = Exception("Simulated early failure")
@@ -53,11 +53,11 @@ class APIStateConsistencyTests(unittest.TestCase):
         
         # Verify conversation state remains coherent
         # Historique may have been modified (no rollback), but should be usable
-        self.assertIsInstance(api.server.historique, list)
-        self.assertIsInstance(api.server.memoire, dict)
+        self.assertIsInstance(interface_morphique.server.historique, list)
+        self.assertIsInstance(interface_morphique.server.memoire, dict)
         
         # Memoire should still have expected structure
-        self.assertIn("utilisateur", api.server.memoire)
+        self.assertIn("utilisateur", interface_morphique.server.memoire)
     
     def test_failure_after_simulated_write_does_not_rollback_persisted_state(self):
         """Test that failure after a simulated write does not attempt to rollback persisted state."""
@@ -95,7 +95,7 @@ class APIStateConsistencyTests(unittest.TestCase):
             if os.path.exists(temp_file):
                 os.unlink(temp_file)
     
-    @patch('api.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
     def test_error_message_is_clean_and_informative(self, mock_executer):
         """Test that error messages are clean and informative."""
         mock_executer.side_effect = ValueError("Specific error message")
@@ -109,7 +109,7 @@ class APIStateConsistencyTests(unittest.TestCase):
         self.assertIn("Error processing message", error_message)
         self.assertIn("Specific error message", error_message)
     
-    @patch('api.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
     def test_success_case_works_normally(self, mock_executer):
         """Test that successful execution works normally without rollback mechanism."""
         mock_executer.return_value = ("Test response", False)
@@ -121,7 +121,7 @@ class APIStateConsistencyTests(unittest.TestCase):
         self.assertEqual(result["is_action"], False)
         self.assertEqual(result["actions_executed"], [])
     
-    @patch('api.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
     def test_success_case_with_action(self, mock_executer):
         """Test that successful execution with action works correctly."""
         mock_executer.return_value = ("Action completed", True)
@@ -139,18 +139,18 @@ class EventBusCleanupTests(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures for event bus tests."""
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
     
     def tearDown(self):
         """Clean up test state."""
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
     
-    @patch('api.server.executer_interaction_utilisateur')
-    @patch('api.server.event_bus')
-    @patch('api.server.StreamingConfirmationHandler')
-    @patch('api.server.use_confirmation_handler')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.event_bus')
+    @patch('interface_morphique.server.StreamingConfirmationHandler')
+    @patch('interface_morphique.server.use_confirmation_handler')
     def test_real_stream_success_scenario(self, mock_use_handler, mock_confirmation_handler, mock_event_bus, mock_executer):
         """Test real stream_jarvis with success scenario."""
         # Setup event bus mock
@@ -206,10 +206,10 @@ class EventBusCleanupTests(unittest.TestCase):
         error_events = [e for e in events if e.get("type") == "error"]
         self.assertEqual(len(error_events), 0, "Should have no error events on success")
     
-    @patch('api.server.executer_interaction_utilisateur')
-    @patch('api.server.event_bus')
-    @patch('api.server.StreamingConfirmationHandler')
-    @patch('api.server.use_confirmation_handler')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.event_bus')
+    @patch('interface_morphique.server.StreamingConfirmationHandler')
+    @patch('interface_morphique.server.use_confirmation_handler')
     def test_real_stream_error_scenario(self, mock_use_handler, mock_confirmation_handler, mock_event_bus, mock_executer):
         """Test real stream_jarvis with error scenario."""
         # Setup event bus mock
@@ -266,10 +266,10 @@ class EventBusCleanupTests(unittest.TestCase):
         done_events = [e for e in events if e.get("type") == "done"]
         self.assertEqual(len(done_events), 1, "Should have exactly one 'done' event even after error")
     
-    @patch('api.server.executer_interaction_utilisateur')
-    @patch('api.server.event_bus')
-    @patch('api.server.StreamingConfirmationHandler')
-    @patch('api.server.use_confirmation_handler')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.event_bus')
+    @patch('interface_morphique.server.StreamingConfirmationHandler')
+    @patch('interface_morphique.server.use_confirmation_handler')
     def test_stream_no_queue_leak(self, mock_use_handler, mock_confirmation_handler, mock_event_bus, mock_executer):
         """Test that stream doesn't leak event queue subscriptions."""
         # Setup event bus mock
@@ -308,10 +308,10 @@ class EventBusCleanupTests(unittest.TestCase):
         # (This is verified by checking unsubscribe was called with the right queue)
         mock_event_bus.unsubscribe.assert_called_once()
     
-    @patch('api.server.executer_interaction_utilisateur')
-    @patch('api.server.event_bus')
-    @patch('api.server.StreamingConfirmationHandler')
-    @patch('api.server.use_confirmation_handler')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.event_bus')
+    @patch('interface_morphique.server.StreamingConfirmationHandler')
+    @patch('interface_morphique.server.use_confirmation_handler')
     def test_stream_confirmation_refused(self, mock_use_handler, mock_confirmation_handler, mock_event_bus, mock_executer):
         """Test stream behavior when confirmation is refused."""
         # Setup event bus mock
@@ -367,8 +367,8 @@ class ConcurrencySafetyTests(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures for concurrency tests."""
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
         
         # Create a temporary memory file for testing
         self.temp_memory_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
@@ -378,14 +378,14 @@ class ConcurrencySafetyTests(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test state."""
-        api.server.historique = [{"role": "system", "content": "System prompt"}]
-        api.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
+        interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
+        interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
         
         # Clean up temp file
         if os.path.exists(self.temp_memory_path):
             os.unlink(self.temp_memory_path)
     
-    @patch('api.server.executer_interaction_utilisateur')
+    @patch('interface_morphique.server.executer_interaction_utilisateur')
     def test_concurrent_user_interaction_and_autonomous_action(self, mock_executer):
         """Test that concurrent user interaction and autonomous action don't corrupt memory.json."""
         # Mock executer to succeed
@@ -444,7 +444,7 @@ class DocumentationConsistencyTests(unittest.TestCase):
     def test_documented_tools_match_actual_tools(self):
         """Test that tools documented in EXECUTION_OUTILS.md match tools.OUTILS."""
         # Import the actual tools
-        from tools import OUTILS
+        from taskflow.tools import OUTILS
         
         # Read the documentation file
         doc_path = Path(__file__).parent.parent / "EXECUTION_OUTILS.md"
@@ -466,7 +466,12 @@ class DocumentationConsistencyTests(unittest.TestCase):
                                'adapter_ton_contextuel', 'generer_prompt_personnalite', 'evoluer_personnalite',
                                'obtenir_rapport_personnalite', 'reinitialiser_personnalite',
                                'demander_confirmation', 'action_bloquee', 'chemin_autorise',
-                               'executer_interaction_utilisateur']:
+                               'executer_interaction_utilisateur', 'get_session', 'chat_with_local',
+                               'memoriser_provider_cloud', 'get_llm_client', 'chat_with_cloud',
+                               'ordonner_providers_cloud', 'chat_with_openrouter', 'stop_browser_overlay',
+                               'create_session', 'chat_with_jarvis_gc', 'get_session_manager',
+                               'list_sessions', 'get_groq_clients', 'providers_cloud_disponibles',
+                               'modele_souverain_disponible', 'start_browser_overlay']:
                 documented_tools.add(tool_name)
         
         # Get actual tool names

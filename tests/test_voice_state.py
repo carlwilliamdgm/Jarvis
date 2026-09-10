@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 class VoiceStateTests(unittest.TestCase):

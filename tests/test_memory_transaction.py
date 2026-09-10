@@ -3,7 +3,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from core.memory import (
+from context_engine.memory import (
     MEMORY_PATH,
     charger_memoire,
     journaliser_action,

@@ -3,9 +3,9 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import jarvis
-from capabilities import voice_input
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
+import jarvis.agent as jarvis
+from jarvis import voice_input
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 class FakeRecognizer:

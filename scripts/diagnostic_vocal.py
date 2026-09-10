@@ -79,7 +79,7 @@ def test_vosk_models():
     print("\n=== TEST MODÈLES VOSK ===")
     
     try:
-        from capabilities.voice_input import _model_path, get_vosk_model
+        from jarvis.voice_input import _model_path, get_vosk_model
         import os
         
         # Test français
@@ -136,7 +136,7 @@ def test_clap_detection():
     print("\n=== TEST DÉTECTION CLAP ===")
     
     try:
-        from capabilities.clap_input import DoubleClapDetector, CLAP_AMPLITUDE_THRESHOLD
+        from jarvis.clap_input import DoubleClapDetector, CLAP_AMPLITUDE_THRESHOLD
         
         print(f"Seuil de détection: {CLAP_AMPLITUDE_THRESHOLD}")
         detector = DoubleClapDetector()
@@ -167,7 +167,7 @@ def test_full_pipeline():
     try:
         import sounddevice as sd
         from openwakeword.model import Model
-        from capabilities.clap_input import DoubleClapDetector, _maximum_amplitude, CLAP_AMPLITUDE_THRESHOLD
+        from jarvis.clap_input import DoubleClapDetector, _maximum_amplitude, CLAP_AMPLITUDE_THRESHOLD
         
         model = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
         detector = DoubleClapDetector()

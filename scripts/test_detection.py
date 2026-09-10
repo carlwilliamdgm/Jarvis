@@ -11,8 +11,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import sounddevice as sd
 from openwakeword.model import Model
-from capabilities.voice_input import get_input_device
-from capabilities.clap_input import DoubleClapDetector, _maximum_amplitude, CLAP_AMPLITUDE_THRESHOLD
+from jarvis.voice_input import get_input_device
+from jarvis.clap_input import DoubleClapDetector, _maximum_amplitude, CLAP_AMPLITUDE_THRESHOLD
 
 def test_wakeword_detection():
     """Teste la détection du wake word avec différents seuils."""

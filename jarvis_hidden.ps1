@@ -7,7 +7,7 @@ if (-not (Test-Path $logDir)) {
 }
 
 Start-Process -FilePath "python" `
-    -ArgumentList "-m uvicorn api.server:app --host 0.0.0.0 --port 8000" `
+    -ArgumentList "-m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000" `
     -WorkingDirectory "C:\Users\Carl\Jarvis" `
     -WindowStyle Hidden `
     -RedirectStandardOutput $logFile `

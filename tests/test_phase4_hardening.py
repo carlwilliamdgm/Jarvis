@@ -23,7 +23,7 @@ except ImportError:
         mark = _MarkStub()
     pytest = _PytestStub()  # type: ignore[assignment]
 
-import core.autodestruct as autodestruct
+import datashield.autodestruct as autodestruct
 import service.windows_service as windows_service
 
 
@@ -36,8 +36,8 @@ class TestPhase4Hardening(unittest.TestCase):
         result = autodestruct.is_admin()
         self.assertIsInstance(result, bool)
 
-    @patch("core.autodestruct.is_admin", return_value=False)
-    @patch("core.autodestruct.winreg")
+    @patch("datashield.autodestruct.is_admin", return_value=False)
+    @patch("datashield.autodestruct.winreg")
     def test_delete_machine_env_skips_when_not_admin(self, mock_winreg, mock_is_admin):
         """Test _delete_machine_environment safely skips HKLM without error when non-admin."""
         with self.assertLogs("jarvis.autodestruct", level="WARNING") as cm:
@@ -45,9 +45,9 @@ class TestPhase4Hardening(unittest.TestCase):
         self.assertTrue(any("process lacks administrative elevation" in msg for msg in cm.output))
         mock_winreg.OpenKey.assert_not_called()
 
-    @patch("core.autodestruct.is_admin", return_value=True)
-    @patch("core.autodestruct.winreg")
-    @patch("core.autodestruct._run_command")
+    @patch("datashield.autodestruct.is_admin", return_value=True)
+    @patch("datashield.autodestruct.winreg")
+    @patch("datashield.autodestruct._run_command")
     def test_delete_machine_env_executes_when_admin(self, mock_run_cmd, mock_winreg, mock_is_admin):
         """Test _delete_machine_environment deletes HKLM keys when admin."""
         mock_key = MagicMock()
@@ -58,8 +58,8 @@ class TestPhase4Hardening(unittest.TestCase):
         autodestruct._delete_machine_environment()
         self.assertTrue(mock_winreg.DeleteValue.called)
 
-    @patch("core.autodestruct.subprocess.Popen")
-    @patch("core.autodestruct.os.path.exists", return_value=True)
+    @patch("datashield.autodestruct.subprocess.Popen")
+    @patch("datashield.autodestruct.os.path.exists", return_value=True)
     def test_delete_jarvis_folder_spawns_detached_process(self, mock_exists, mock_popen):
         """Test _delete_jarvis_folder detaches a PowerShell process to remove folder."""
         autodestruct._delete_jarvis_folder()

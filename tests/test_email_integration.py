@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-import capabilities.email_integration as email_integration
+import taskflow.email_integration as email_integration
 
 
 class TestEmailIntegration(unittest.TestCase):
@@ -43,7 +43,7 @@ class TestEmailIntegration(unittest.TestCase):
             }
         ]
 
-        with patch('capabilities.email_integration.obtenir_emails_recents', return_value=mock_emails):
+        with patch('taskflow.email_integration.obtenir_emails_recents', return_value=mock_emails):
             result = email_integration.analyser_patterns_email(heures=24)
 
             # Verify result structure
@@ -65,7 +65,7 @@ class TestEmailIntegration(unittest.TestCase):
 
     def test_analyser_patterns_email_with_empty_data(self):
         """Test analyser_patterns_email with empty data."""
-        with patch('capabilities.email_integration.obtenir_emails_recents', return_value=[]):
+        with patch('taskflow.email_integration.obtenir_emails_recents', return_value=[]):
             result = email_integration.analyser_patterns_email(heures=24)
 
             # Verify result contains error message
@@ -76,7 +76,7 @@ class TestEmailIntegration(unittest.TestCase):
         """Test analyser_patterns_email with access error."""
         mock_error = [{"erreur": "Impossible d'accéder aux emails"}]
 
-        with patch('capabilities.email_integration.obtenir_emails_recents', return_value=mock_error):
+        with patch('taskflow.email_integration.obtenir_emails_recents', return_value=mock_error):
             result = email_integration.analyser_patterns_email(heures=24)
 
             # Verify result contains error message
@@ -97,7 +97,7 @@ class TestEmailIntegration(unittest.TestCase):
             }
         ]
 
-        with patch('capabilities.email_integration.obtenir_emails_recents', return_value=mock_emails):
+        with patch('taskflow.email_integration.obtenir_emails_recents', return_value=mock_emails):
             # This function should not raise NameError for 'exppediteurs'
             result = email_integration.analyser_patterns_email(heures=24)
 

@@ -215,7 +215,7 @@ python tests\manual\test_overlay_direct.py
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python jarvis.py
+python greatos.py
 ```
 
 Ou utilisez le raccourci Windows si présent :
@@ -232,7 +232,7 @@ Note : `jarvis.cmd` utilise le chemin dynamique du script, il fonctionne quel qu
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 Une fois lancé, vous pouvez :
@@ -257,14 +257,14 @@ python gui\app.py
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python jarvis.py
+python greatos.py
 ```
 
 ### API manuelle
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 ### Tkinter manuelle
@@ -321,7 +321,7 @@ Testez l'envoi d'un message et vérifiez que la réponse s'affiche correctement.
 Pour démarrer automatiquement Jarvis à l'ouverture de votre session Windows, utilisez `JarvisAgent`. Elle lance :
 
 ```powershell
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 Elle s'exécute sous le compte de la session Windows, ce qui garantit les mêmes permissions pour CLI, Web et Tkinter. Le service historique `JarvisService` est désactivé par l'installation s'il existe.
@@ -412,7 +412,7 @@ python -m pip install <nom_du_module_manquant>
 - Ou utilisez un autre port :
 
 ```powershell
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8001
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8001
 ```
 
 ### Erreur "Tailscale non disponible"
@@ -469,7 +469,7 @@ Get-ChildItem Env:
 2. Cloner/télécharger Jarvis dans `%USERPROFILE%\Jarvis`
 3. Installer les dépendances : `python -m pip install -r requirements.txt`
 4. Configurer un provider LLM (Groq recommandé)
-5. Lancer : `python jarvis.py` ou `python -m uvicorn api.server:app`
+5. Lancer : `python greatos.py` ou `python -m uvicorn interface_morphique.server:app`
 6. Tester l'interface web : http://localhost:8000/web
 7. (Optionnel) Configurer la tâche `JarvisAgent` pour démarrage automatique
 

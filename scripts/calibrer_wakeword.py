@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 import numpy as np
 import sounddevice as sd
 
-from capabilities import voice_input
+from jarvis import voice_input
 
 
 def main() -> None:

@@ -2,7 +2,7 @@
 
 import time
 
-from capabilities.storage import (
+from taskflow.storage import (
     INTERVALLE,
     SEUIL_CRITIQUE,
     SEUIL_ORANGE,

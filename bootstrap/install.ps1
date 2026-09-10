@@ -418,7 +418,7 @@ if ($legacyService) {
 $taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $taskAction = New-ScheduledTaskAction `
     -Execute $pythonPath `
-    -Argument "-m uvicorn api.server:app --host 0.0.0.0 --port 8000" `
+    -Argument "-m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000" `
     -WorkingDirectory $JarvisDir
 $taskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited

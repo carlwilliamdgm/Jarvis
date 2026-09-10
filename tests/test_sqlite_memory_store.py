@@ -6,7 +6,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from core.memory_store import (
+from context_engine.memory_store import (
     JsonMemoryStore,
     SqliteMemoryStore,
     get_memory_store,

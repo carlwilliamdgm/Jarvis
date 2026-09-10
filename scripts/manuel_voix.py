@@ -7,8 +7,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from capabilities.clap_input import arreter_ecoute_clap, demarrer_ecoute_clap
-from capabilities.voice_input import arreter_ecoute_vocale, demarrer_ecoute_vocale
+from jarvis.clap_input import arreter_ecoute_clap, demarrer_ecoute_clap
+from jarvis.voice_input import arreter_ecoute_vocale, demarrer_ecoute_vocale
 from core.voice_state import get_voice_state
 
 

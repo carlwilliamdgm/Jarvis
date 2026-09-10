@@ -2,7 +2,7 @@ import threading
 import time
 import unittest
 
-from core.confirmations import ConfirmationManager
+from datashield.confirmations import ConfirmationManager
 
 
 class ConfirmationManagerTests(unittest.TestCase):

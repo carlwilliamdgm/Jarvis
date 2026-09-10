@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.llm_client import (
+from core_intellect.llm_client import (
     BaseLLMProvider,
     GroqProvider,
     LLMClient,
@@ -47,7 +47,7 @@ class LLMClientTests(unittest.TestCase):
             "GROQ_API_KEY_2": "key2",
         }
         with patch.dict(os.environ, fake_env, clear=True):
-            with patch("core.llm_client.GroqClient") as mock_groq_cls:
+            with patch("core_intellect.llm_client.GroqClient") as mock_groq_cls:
                 provider = GroqProvider()
                 clients = provider.get_clients()
                 self.assertEqual(len(clients), 2)
@@ -99,9 +99,13 @@ class LLMClientTests(unittest.TestCase):
             model="qwen2.5:7b",
         )
 
+        fake_sovereign = MagicMock(spec=BaseLLMProvider)
+        fake_sovereign.is_available.return_value = False
+
         client = LLMClient(
             cloud_providers=[fake_cloud],
             local_provider=fake_local,
+            sovereign_provider=fake_sovereign,
         )
 
         events = []

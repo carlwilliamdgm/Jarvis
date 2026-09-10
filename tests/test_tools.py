@@ -19,13 +19,13 @@ except ImportError:
     pytest = _PytestStub()  # type: ignore[assignment]
 from pathlib import Path
 
-import tools
-import jarvis
-import core.prompt
-import core.safety
-from core.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
-from core.paths import JARVIS_DIR, MEMORY_PATH
-from jarvis import extraire_json_objets
+import taskflow.tools as tools
+import jarvis.agent as jarvis
+import core_intellect.prompt
+import datashield.safety
+from context_engine.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
+from core_intellect.paths import JARVIS_DIR, MEMORY_PATH
+from jarvis.agent import extraire_json_objets
 
 
 @pytest.mark.smoke
@@ -44,15 +44,15 @@ class ToolSmokeTests(unittest.TestCase):
         shutil.rmtree(cls.workspace, ignore_errors=True)
 
     def setUp(self):
-        self.protected_roots = core.safety.ZONE_MAP.protected_roots
-        core.safety.ZONE_MAP.protected_roots = frozenset()
+        self.protected_roots = datashield.safety.ZONE_MAP.protected_roots
+        datashield.safety.ZONE_MAP.protected_roots = frozenset()
         sauvegarder_memoire({})
         shutil.rmtree(self.workspace, ignore_errors=True)
         self.workspace.mkdir(parents=True)
 
     def tearDown(self):
         shutil.rmtree(self.workspace, ignore_errors=True)
-        core.safety.ZONE_MAP.protected_roots = self.protected_roots
+        datashield.safety.ZONE_MAP.protected_roots = self.protected_roots
 
     def test_file_tools_lifecycle(self):
         dossier = self.workspace / "docs"
@@ -98,7 +98,7 @@ class ToolSmokeTests(unittest.TestCase):
         self.assertIn("lister_dossier", tools.OUTILS)
 
     def test_action_prompt_mentions_every_exposed_tool(self):
-        prompt = core.prompt.construire_prompt_action({
+        prompt = core_intellect.prompt.construire_prompt_action({
             "utilisateur": {},
             "preferences": {},
             "commandes_personnalisees": {},
@@ -217,15 +217,15 @@ class ToolSmokeTests(unittest.TestCase):
         dossier.mkdir()
         fichier = dossier / "victim.txt"
         fichier.write_text("bye", encoding="utf-8")
-        old_roots = core.safety.ZONE_MAP.protected_roots
-        core.safety.ZONE_MAP.protected_roots = frozenset()
+        old_roots = datashield.safety.ZONE_MAP.protected_roots
+        datashield.safety.ZONE_MAP.protected_roots = frozenset()
         try:
             self.assertIn("Fichier supprime", tools.OUTILS["supprimer"](str(fichier)))
         finally:
-            core.safety.ZONE_MAP.protected_roots = old_roots
+            datashield.safety.ZONE_MAP.protected_roots = old_roots
 
     def test_deleting_broad_root_is_blocked(self):
-        core.safety.ZONE_MAP.protected_roots = self.protected_roots
+        datashield.safety.ZONE_MAP.protected_roots = self.protected_roots
         old_confirm = tools.demander_confirmation
         tools.demander_confirmation = lambda description: True  # Accepter confirmation pour tester le blocage de sécurité
         try:

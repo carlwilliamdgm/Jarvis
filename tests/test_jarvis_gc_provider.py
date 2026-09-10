@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 
-from core.llm_client import (
+from core_intellect.llm_client import (
     BaseLLMProvider,
     JarvisGCProvider,
     LLMClient,
@@ -36,7 +36,7 @@ class JarvisGCProviderTests(unittest.TestCase):
         provider = JarvisGCProvider()
         self.assertFalse(provider.is_available())
 
-    @patch("core.llm_client.ollama")
+    @patch("core_intellect.llm_client.ollama")
     def test_provider_generate_nominal(self, mock_ollama):
         provider = JarvisGCProvider()
         
@@ -106,7 +106,7 @@ class JarvisGCProviderTests(unittest.TestCase):
     def test_jarvis_gc_timeout_triggers_timeout_error(self):
         provider = JarvisGCProvider(timeout=0.05)
         with patch.object(provider, "is_available", return_value=True):
-            with patch("core.llm_client.ollama") as mock_ollama:
+            with patch("core_intellect.llm_client.ollama") as mock_ollama:
                 mock_client = MagicMock()
                 import time
                 def slow_chat(**kwargs):

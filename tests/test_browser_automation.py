@@ -7,7 +7,7 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
-from capabilities.browser_automation import (
+from taskflow.browser_automation import (
     BrowserAutomation,
     BrowserType,
     naviguer_vers,
@@ -20,7 +20,7 @@ from capabilities.browser_automation import (
     fermer_navigateur,
     reinitialiser_navigateur,
 )
-from core.browser_session import BrowserSessionManager
+from taskflow.browser_session import BrowserSessionManager
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ class TestBrowserAutomationFunctionsMocked(unittest.TestCase):
         return session
 
     def _patch_session(self, session):
-        return patch("capabilities.browser_automation._get_persistent_session", return_value=session)
+        return patch("taskflow.browser_automation._get_persistent_session", return_value=session)
 
     def test_naviguer_vers_returns_string(self):
         session = self._make_session()
@@ -216,6 +216,12 @@ class TestBrowserAutomationFunctionsMocked(unittest.TestCase):
 
 @requires_playwright
 class TestBrowserAutomationIntegration(unittest.TestCase):
+
+    def tearDown(self):
+        try:
+            fermer_navigateur()
+        except Exception:
+            pass
 
     def test_naviguer_vers_example(self):
         result = naviguer_vers("https://example.com")

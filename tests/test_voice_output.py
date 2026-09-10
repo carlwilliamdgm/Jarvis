@@ -3,9 +3,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from capabilities import voice_input
-from capabilities.voice_output import _is_stop_command, _lire_avec_interruption, parler_a_voix_haute
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
+from jarvis import voice_input
+from jarvis.voice_output import _is_stop_command, _lire_avec_interruption, parler_a_voix_haute
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 class FakeEngine:
@@ -52,9 +52,9 @@ class VoiceOutputTests(unittest.TestCase):
     def test_reads_text_and_returns_to_idle(self):
         voice = FakeEngine()
         _set_voice_state(VoiceState.THINKING)
-        with patch("capabilities.voice_output.get_piper_voice", return_value=voice), \
-             patch("capabilities.voice_output._synthesise", return_value=(object(), 22_050)) as synthesize, \
-             patch("capabilities.voice_output._lire_avec_interruption") as read:
+        with patch("jarvis.voice_output.get_piper_voice", return_value=voice), \
+             patch("jarvis.voice_output._synthesise", return_value=(object(), 22_050)) as synthesize, \
+             patch("jarvis.voice_output._lire_avec_interruption") as read:
             parler_a_voix_haute("Bonjour")
 
         synthesize.assert_called_once_with(voice, "Bonjour")
@@ -63,13 +63,13 @@ class VoiceOutputTests(unittest.TestCase):
 
     def test_tts_failure_is_contained_and_returns_to_idle(self):
         _set_voice_state(VoiceState.THINKING)
-        with patch("capabilities.voice_output.get_piper_voice", side_effect=RuntimeError("audio")):
+        with patch("jarvis.voice_output.get_piper_voice", side_effect=RuntimeError("audio")):
             parler_a_voix_haute("Bonjour")
 
         self.assertEqual(VoiceState.IDLE, get_voice_state())
 
     def test_refuses_to_speak_when_not_thinking(self):
-        with patch("capabilities.voice_output.get_piper_voice", side_effect=self.fail):
+        with patch("jarvis.voice_output.get_piper_voice", side_effect=self.fail):
             parler_a_voix_haute("Bonjour")
 
         self.assertEqual(VoiceState.IDLE, get_voice_state())
@@ -94,3 +94,4 @@ class VoiceOutputTests(unittest.TestCase):
 
         self.assertEqual([True], stopped)
         self.assertEqual(VoiceState.IDLE, get_voice_state())
+

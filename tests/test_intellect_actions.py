@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from core import intellect
+from core_intellect import intellect
 
 
 def llm_response(decision: dict) -> dict:

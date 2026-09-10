@@ -2,9 +2,9 @@ import struct
 import unittest
 from unittest.mock import patch
 
-from capabilities.clap_input import DoubleClapDetector, _maximum_amplitude
-from capabilities import clap_input
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
+from jarvis.clap_input import DoubleClapDetector, _maximum_amplitude
+from jarvis import clap_input
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 class ClapInputTests(unittest.TestCase):

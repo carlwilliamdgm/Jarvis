@@ -15,7 +15,7 @@ except ImportError:
         def skip(reason=""):
             raise unittest.SkipTest(reason)
     pytest = _PytestStub()  # type: ignore[assignment]
-from capabilities.web_search import (
+from taskflow.web_search import (
     WebSearchEngine,
     rechercher_web,
     analyser_page_web,

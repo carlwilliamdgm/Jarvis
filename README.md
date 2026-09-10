@@ -123,7 +123,7 @@ Le Mode Stark est une fonctionnalité volontairement autonome :
 Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
 
 - Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
-- Elle lance `uvicorn api.server:app --host 0.0.0.0 --port 8000`.
+- Elle lance `uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000`.
 - Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
 
 ## Capacités principales
@@ -229,7 +229,7 @@ arreter_overlay_navigation()
 - Streaming SSE pour afficher les événements intermédiaires en direct.
 - Interface Tkinter locale dans `gui/app.py`.
 - Interface web multi-device servie par FastAPI dans `gui/web/index.html`.
-- Tâche planifiée `JarvisAgent` capable de lancer automatiquement `uvicorn api.server:app` dans la session utilisateur.
+- Tâche planifiée `JarvisAgent` capable de lancer automatiquement `uvicorn interface_morphique.server:app` dans la session utilisateur.
 - Mémoire, rappels, automatisations, surveillance de dossiers, stockage, commandes shell/PowerShell et commandes personnalisées.
 - **Interface vocale** : reconnaissance vocale via wake word ("Hey Jarvis") ou double-clap, synthèse vocale (TTS) pour les réponses.
 - **Overlay visuel vocal** : indicateur flottant HUD affichant l'état vocal (ÉCOUTE, RÉFLEXION, PAROLE, ERREUR) en temps réel.
@@ -346,7 +346,7 @@ La console est l'expérience directe historique.
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python jarvis.py
+python greatos.py
 ```
 
 Ou avec le Python explicite :
@@ -364,14 +364,14 @@ Le serveur expose l'API, le streaming SSE et l'interface web.
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 Avec le Python explicite :
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-& "C:\Program Files\Python312\python.exe" -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+& "C:\Program Files\Python312\python.exe" -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 URLs principales :
@@ -430,13 +430,13 @@ Le navigateur utilise `EventSource` natif, sans framework ni dépendance externe
 La tâche `JarvisAgent` lance automatiquement :
 
 ```text
-uvicorn api.server:app --host 0.0.0.0 --port 8000
+uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 Caractéristiques :
 
 - Elle s'exécute dans la session de l'utilisateur Windows connecté, avec les mêmes permissions que le CLI, l'interface web et Tkinter.
-- Elle lance uniquement `uvicorn api.server:app` ; `jarvis.cmd` reste le lancement direct du CLI.
+- Elle lance uniquement `uvicorn interface_morphique.server:app` ; `jarvis.cmd` reste le lancement direct du CLI.
 - Le service historique `JarvisService`, exécuté sous `LocalSystem`, est désactivé par `bootstrap/install.ps1` s'il existe déjà.
 
 Installation :
@@ -1054,7 +1054,7 @@ curl.exe -N "http://localhost:8000/jarvis/stream?message=bonjour"
 Tester le web sans navigateur via FastAPI TestClient :
 
 ```powershell
-python -c "from fastapi.testclient import TestClient; from api.server import app; r=TestClient(app).get('/web/'); print(r.status_code)"
+python -c "from fastapi.testclient import TestClient; from interface_morphique.server import app; r=TestClient(app).get('/web/'); print(r.status_code)"
 ```
 
 Tester les signatures dynamiques :

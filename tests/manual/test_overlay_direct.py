@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import time
 import threading
-from core.voice_state import VoiceState, _set_voice_state
-from core.voice_overlay import VoiceOverlay
+from jarvis.voice_state import VoiceState, _set_voice_state
+from jarvis.voice_overlay import VoiceOverlay
 
 def test_overlay_direct():
     """Test direct de l'overlay sans uvicorn."""

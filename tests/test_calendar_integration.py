@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-import capabilities.calendar_integration as calendar_integration
+import taskflow.calendar_integration as calendar_integration
 
 
 class TestCalendarIntegration(unittest.TestCase):
@@ -53,7 +53,7 @@ class TestCalendarIntegration(unittest.TestCase):
     def test_obtenir_evenements_calendrier_returns_list_on_error(self):
         """Test that obtenir_evenements_calendrier returns list on error."""
         # Mock subprocess to raise an exception
-        with patch('capabilities.calendar_integration.subprocess.run', side_effect=Exception("Test error")):
+        with patch('taskflow.calendar_integration.subprocess.run', side_effect=Exception("Test error")):
             result = calendar_integration.obtenir_evenements_calendrier(7)
             # Should return empty list, not error dict
             self.assertIsInstance(result, list)
@@ -95,7 +95,7 @@ class TestCalendarIntegration(unittest.TestCase):
         mock_result.returncode = 0
         mock_result.stdout = "Rappel créé avec succès"
 
-        with patch('capabilities.calendar_integration.subprocess.run', return_value=mock_result):
+        with patch('taskflow.calendar_integration.subprocess.run', return_value=mock_result):
             result = calendar_integration.creer_rappel_calendrier(
                 "Test Meeting",
                 "2024-12-25 14:30",
@@ -110,7 +110,7 @@ class TestCalendarIntegration(unittest.TestCase):
         mock_result.returncode = 0
         mock_result.stdout = "Rappel créé avec succès"
 
-        with patch('capabilities.calendar_integration.subprocess.run', return_value=mock_result):
+        with patch('taskflow.calendar_integration.subprocess.run', return_value=mock_result):
             # Test with characters that could be used for injection
             result = calendar_integration.creer_rappel_calendrier(
                 'Test"; Write-Host "Injected',

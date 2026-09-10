@@ -15,16 +15,16 @@ except ImportError:
     pytest = _PytestStub()  # type: ignore[assignment]
 
 import jarvis
-from core.error_classification import classifier_erreur_systeme, extraire_code_erreur, resultat_erreur
-from core.memory import (
+from datashield.error_classification import classifier_erreur_systeme, extraire_code_erreur, resultat_erreur
+from context_engine.memory import (
     charger_memoire,
     journaliser_erreur_systeme,
     normaliser_memoire,
     signalement_erreurs_autre_recurrentes,
 )
-from core.paths import MEMORY_PATH
-from core.stark_parser import parser_objectif_stark
-from core.stark_session import STARK_ACTIF_PATH
+from core_intellect.paths import MEMORY_PATH
+from taskflow.stark_parser import parser_objectif_stark
+from taskflow.stark_session import STARK_ACTIF_PATH
 
 
 class FakeWinError(Exception):
@@ -501,7 +501,7 @@ class ErrorClassificationTests(unittest.TestCase):
         self.assertIn("3 fois", signalement)
 
     def test_stark_reasoning_captured_and_emitted(self):
-        from core.intellect import _construire_prompt_interpretation, _parser_reponse_intellect
+        from core_intellect.intellect import _construire_prompt_interpretation, _parser_reponse_intellect
         
         # 1. Vérifier que le prompt Stark intègre les règles tri-phase et le champ raisonnement
         prompt = _construire_prompt_interpretation({}, mode_stark=True, message_actuel="test")
@@ -553,7 +553,7 @@ class ErrorClassificationTests(unittest.TestCase):
         self.assertIn("2. réussi", rapport)
 
     def test_stark_is_clean_from_memory_and_chat_history_pollution(self):
-        from core.intellect import _construire_prompt_interpretation, interpreter_objectif
+        from core_intellect.intellect import _construire_prompt_interpretation, interpreter_objectif
         
         memoire_avec_bribes = {
             "notes": [{"contenu": "Note personnelle : acheter des oeufs"}],
@@ -578,10 +578,10 @@ class ErrorClassificationTests(unittest.TestCase):
             {"role": "assistant", "content": "Bonjour Sir, que puis-je faire ?"},
         ]
         appels_llm = []
-        import core.intellect
-        old_appeler_llm = core.intellect._appeler_llm_avec_retry
+        import core_intellect.intellect
+        old_appeler_llm = core_intellect.intellect._appeler_llm_avec_retry
         try:
-            core.intellect._appeler_llm_avec_retry = lambda msgs, mem, **kw: appels_llm.append(msgs) or {
+            core_intellect.intellect._appeler_llm_avec_retry = lambda msgs, mem, **kw: appels_llm.append(msgs) or {
                 "message": {"content": '{"objectif": "test", "type": "action", "actions": [{"outil": "terminer_tache", "args": {}}], "reponse": "ok"}'}
             }
             interpreter_objectif("micro-objectif stark", historique_bavardage, memoire_avec_bribes, mode_stark=True)
@@ -594,7 +594,7 @@ class ErrorClassificationTests(unittest.TestCase):
             self.assertEqual("user", messages_envoyes[1]["role"])
             self.assertEqual("micro-objectif stark", messages_envoyes[1]["content"])
         finally:
-            core.intellect._appeler_llm_avec_retry = old_appeler_llm
+            core_intellect.intellect._appeler_llm_avec_retry = old_appeler_llm
 
 
 if __name__ == "__main__":

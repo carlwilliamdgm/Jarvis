@@ -10,7 +10,7 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 - `api/server.py` : point d'entree serveur FastAPI local, API REST, SSE et fichiers web statiques.
 - `gui/app.py` : interface graphique Tkinter, cliente du flux SSE.
 - `gui/web/index.html` : interface web autonome servie par `/web`.
-- `JarvisAgent` : tâche planifiée Windows qui lance `uvicorn api.server:app` dans la session utilisateur.
+- `JarvisAgent` : tâche planifiée Windows qui lance `uvicorn interface_morphique.server:app` dans la session utilisateur.
 
 ## Flux principal
 
@@ -343,7 +343,7 @@ La tâche planifiée `JarvisAgent` est le mécanisme de démarrage de référenc
 Il lance :
 
 ```text
-python -m uvicorn api.server:app --host 0.0.0.0 --port 8000
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 ```
 
 Elle s'exécute sous le compte Windows connecté : CLI, web et Tkinter disposent donc du même profil et des mêmes permissions. `bootstrap/install.ps1` crée ou met à jour cette tâche et désactive le service historique `JarvisService` lorsqu'il existe.
@@ -391,7 +391,7 @@ Le Mode Stark est une fonctionnalité volontairement autonome :
 Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
 
 - Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
-- Elle lance `uvicorn api.server:app --host 0.0.0.0 --port 8000`.
+- Elle lance `uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000`.
 - Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
 - `bootstrap/install.ps1` configure `JarvisAgent` et désactive `JarvisService` s'il existe.
 
