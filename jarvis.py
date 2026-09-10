@@ -96,6 +96,11 @@ register_event_emitter(event_bus.emit)
 # surfaces (CLI, API et voix) passent donc par ce verrou process-level.
 INTERACTION_LOCK = threading.Lock()
 
+# Verrou TTS : empêche deux lectures vocales simultanées sans bloquer le pipeline.
+# Acquis avec blocking=False — si le TTS est déjà en cours, la nouvelle synthèse
+# est simplement ignorée plutôt que mise en file d'attente.
+_TTS_LOCK = threading.Lock()
+
 OS = platform.system()
 HOME = Path.home()
 
@@ -1279,7 +1284,11 @@ def executer_interaction_utilisateur(
     ignorer_si_occupe: bool = False,
     origine_vocale: bool = False,
 ) -> tuple[str, bool] | None:
-    """Exécute et journalise une interaction, avec TTS réservé aux sources vocales."""
+    """Exécute et journalise une interaction, avec TTS réservé aux sources vocales.
+
+    Le TTS est lancé dans un thread daemon après la libération de INTERACTION_LOCK,
+    de sorte que le pipeline n'est plus sérialisé par la durée de la lecture audio.
+    """
     acquired = INTERACTION_LOCK.acquire(blocking=not ignorer_si_occupe)
     if not acquired:
         return None
@@ -1292,10 +1301,29 @@ def executer_interaction_utilisateur(
         result = texte, intention_action
     finally:
         INTERACTION_LOCK.release()
-    if origine_vocale:
-        from capabilities.voice_output import parler_a_voix_haute
 
-        parler_a_voix_haute(result[0])
+    if origine_vocale:
+        # Décharger la synthèse vocale dans un thread daemon pour ne pas bloquer
+        # le pipeline principal. _TTS_LOCK (non-bloquant) empêche les lectures
+        # simultanées : si une lecture est en cours, la nouvelle est ignorée.
+        def _tts_worker(texte_a_lire: str) -> None:
+            from capabilities.voice_output import parler_a_voix_haute
+            acquired_tts = _TTS_LOCK.acquire(blocking=False)
+            if not acquired_tts:
+                # Un TTS est déjà en cours ; on abandonne silencieusement.
+                return
+            try:
+                parler_a_voix_haute(texte_a_lire)
+            finally:
+                _TTS_LOCK.release()
+
+        threading.Thread(
+            target=_tts_worker,
+            args=(result[0],),
+            name="tts-worker",
+            daemon=True,
+        ).start()
+
     return result
 
 

@@ -84,8 +84,9 @@ def interpreter_objectif(
                 if msg["role"] in ["user", "assistant"]:
                     messages.append(msg)
 
-        # Ajouter le message actuel
-        messages.append({"role": "user", "content": message})
+        # Ajouter le message actuel uniquement s'il n'est pas déjà le dernier élément
+        if not messages or messages[-1].get("content") != message:
+            messages.append({"role": "user", "content": message})
 
         # Appel LLM avec retry
         reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature, on_event=on_event)

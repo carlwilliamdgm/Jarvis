@@ -116,6 +116,8 @@ async def lifespan(app: FastAPI):
             print(f"Warning: Could not start browser overlay: {e}")
 
         print("Jarvis API server started successfully")
+        # Démarrer le thread de sampling CPU non-bloquant pour /jarvis/status
+        _demarrer_cpu_sampler()
     except Exception as e:
         print(f"Error initializing agent: {e}")
         raise
@@ -247,6 +249,35 @@ alerts_queue: deque = deque(maxlen=50)
 
 # Activity tracking
 last_activity_time = datetime.now()
+
+# Cache CPU pour éviter de bloquer l'event-loop asyncio dans /jarvis/status.
+# Un thread de fond le rafraîchit toutes les 5 secondes avec interval=None
+# (lecture instantanée du dernier échantillon psutil, pas de sleep bloquant).
+_cpu_percent_cache: float = 0.0
+_cpu_cache_lock = threading.Lock()
+
+
+def _cpu_sampler_loop() -> None:
+    """Thread de fond qui pré-chauffe et rafraîchit le cache CPU toutes les 5s."""
+    global _cpu_percent_cache
+    # Premier appel avec interval=1 pour initialiser les compteurs psutil,
+    # mais exécuté dans ce thread dédié — pas dans la boucle asyncio.
+    psutil.cpu_percent(interval=1)
+    while True:
+        try:
+            sample = psutil.cpu_percent(interval=None)
+            with _cpu_cache_lock:
+                _cpu_percent_cache = sample
+        except Exception:
+            pass
+        import time as _time
+        _time.sleep(5)
+
+
+def _demarrer_cpu_sampler() -> None:
+    """Démarre le thread de sampling CPU en arrière-plan (daemon)."""
+    t = threading.Thread(target=_cpu_sampler_loop, name="cpu-sampler", daemon=True)
+    t.start()
 
 
 def traiter_message(message: str) -> Dict:
@@ -387,12 +418,17 @@ def stream_jarvis(
 
 @app.get("/jarvis/status")
 async def get_status(_auth: bool = Depends(verify_api_key)) -> Dict:
-    """Get system status: CPU, RAM, and activity."""
+    """Get system status: CPU, RAM, and activity.
+
+    cpu est lu depuis un cache rafraîchi en arrière-plan toutes les 5s.
+    Cet endpoint ne bloque plus l'event-loop asyncio.
+    """
     try:
-        cpu_percent = psutil.cpu_percent(interval=0.5)
+        with _cpu_cache_lock:
+            cpu_percent = _cpu_percent_cache
         ram_percent = psutil.virtual_memory().percent
         active = detect_activity()
-        
+
         return {
             "cpu": cpu_percent,
             "ram": ram_percent,

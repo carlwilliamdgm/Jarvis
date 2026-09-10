@@ -1,8 +1,13 @@
-﻿__pycache__/
+__pycache__/
 .venv/
+venv/
+venv_isolated/
+env/
 models/
 *.py[cod]
 memory.json
+memory.db
+memory.db*
 gui/targets.json
 
 .aider*
@@ -15,6 +20,19 @@ stark_actif.json
 logs/
 build/
 dist/
+.dist/
 *.spec
 .pytest_cache/
 voice_state.json
+browser_sessions.json
+browser_sessions_state.json
+browser_overlay_state.json
+
+# Temporary & Audit
+*.tmp
+requirements_temp.txt
+audit_results/
+pandoc/
+pandoc_tmp/
+.agents/
+.devin/

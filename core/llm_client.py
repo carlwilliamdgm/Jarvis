@@ -33,6 +33,14 @@ MODELE_LOCAL = "qwen2.5:7b"
 
 _EVENT_EMITTER: Optional[Callable[[str, dict], None]] = None
 
+# Console Rich singleton — instanciée une seule fois pour éviter les allocations
+# répétées lors d'appels LLM fréquents (generate_with_fallback).
+try:
+    from rich.console import Console as _RichConsole
+    _CONSOLE = _RichConsole()
+except ImportError:
+    _CONSOLE = None  # type: ignore[assignment]
+
 
 def register_event_emitter(emitter: Callable[[str, dict], None]) -> None:
     """Enregistre un émetteur d'événements global (ex: event_bus.emit)."""
@@ -344,7 +352,7 @@ class JarvisGCProvider(BaseLLMProvider):
             "temperature": cfg.temperature,
             "top_p": 0.9,
             "num_thread": int(os.environ.get("JARVIS_GC_THREADS", 4)),
-            "num_ctx": 2048,
+            "num_ctx": int(os.environ.get("JARVIS_GC_NUM_CTX", 4096)),
         }
         options.update(cfg.extra_options)
 
@@ -456,10 +464,14 @@ class LLMClient:
         2. Modèle Souverain The Great Corporation (Jarvis-GC) en Fallback Hors-Ligne #1 si le cloud est inaccessible.
         3. Modèle local standard (Ollama fallback) en dernier recours.
         """
-        from rich.console import Console
-        console = Console()
         cfg = config or LLMConfig()
         mem = memoire or {}
+        # Utiliser le singleton module-level ; recréer uniquement si absent (import optionnel).
+        if _CONSOLE is not None:
+            console = _CONSOLE
+        else:
+            from rich.console import Console
+            console = Console()
 
         # 1. CASCADE CLOUD ULTRA-RAPIDE (Priorité #1 - Fast-Track)
         for tentative in range(max_tentatives):
