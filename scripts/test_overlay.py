@@ -8,8 +8,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.voice_state import VoiceState, _set_voice_state, get_voice_state
-from core.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
+from jarvis.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
 
 def main():
     """Teste l'overlay en simulant les différents états vocaux."""

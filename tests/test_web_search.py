@@ -52,6 +52,7 @@ class TestWebSearchEngine(unittest.TestCase):
         # Le deuxième appel devrait prendre plus de temps à cause du rate limiting
         self.assertGreaterEqual(second_duration, 0.9)  # Allow small margin
     
+    @pytest.mark.integration
     def test_search_duckduckgo(self):
         """Test la recherche DuckDuckGo."""
         engine = WebSearchEngine()
@@ -77,6 +78,7 @@ class TestWebSearchEngine(unittest.TestCase):
         normal_url = "https://example.com"
         self.assertEqual(engine._clean_duckduckgo_url(normal_url), normal_url)
     
+    @pytest.mark.integration
     def test_fetch_page_content(self):
         """Test la récupération de contenu de page."""
         engine = WebSearchEngine()
@@ -97,6 +99,7 @@ class TestWebSearchEngine(unittest.TestCase):
 class TestWebSearchFunctions(unittest.TestCase):
     """Tests pour les fonctions de recherche web."""
     
+    @pytest.mark.integration
     def test_rechercher_web(self):
         """Test la fonction de recherche web."""
         result = rechercher_web("Python programming", nombre_resultats=3)
@@ -104,6 +107,7 @@ class TestWebSearchFunctions(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertTrue("RÉSULTATS DE RECHERCHE" in result or "Erreur" in result)
     
+    @pytest.mark.integration
     def test_analyser_page_web(self):
         """Test l'analyse de page web."""
         result = analyser_page_web("https://example.com")
@@ -111,6 +115,7 @@ class TestWebSearchFunctions(unittest.TestCase):
         self.assertIsInstance(result, str)
         self.assertTrue("ANALYSE DE LA PAGE" in result or "Erreur" in result)
     
+    @pytest.mark.integration
     def test_rechercher_et_analyser(self):
         """Test la recherche combinée avec analyse."""
         result = rechercher_et_analyser("Python", nombre_pages=1)

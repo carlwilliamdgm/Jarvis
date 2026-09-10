@@ -290,7 +290,7 @@ def lancer_process_overlay():
             startupinfo.wShowWindow = subprocess.SW_HIDE
             
             _overlay_process = subprocess.Popen(
-                [sys.executable, "-m", "core.voice_overlay", "--standalone"],
+                [sys.executable, "-m", "jarvis.voice_overlay", "--standalone"],
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 startupinfo=startupinfo,
                 cwd=str(Path(__file__).parent.parent)

@@ -7,6 +7,8 @@ import json
 import unittest
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from taskflow.browser_automation import (
     BrowserAutomation,
     BrowserType,
@@ -215,6 +217,7 @@ class TestBrowserAutomationFunctionsMocked(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 @requires_playwright
+@pytest.mark.integration
 class TestBrowserAutomationIntegration(unittest.TestCase):
 
     def tearDown(self):

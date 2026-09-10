@@ -30,7 +30,7 @@ Le contrat actuel de Core Intellect est :
         |
 3. jarvis.py intercepte les commandes (!a, !S, mode action)
         |
-4. core.intellect.interpreter_objectif()
+4. core_intellect.intellect.interpreter_objectif()
         |
 5. Appel modele cloud disponible, sinon modele local
         |
@@ -143,7 +143,7 @@ Les appels LLM ont deux tentatives. Les outils fonctionnent avec n'importe quel 
 
 ## Parsing et validation
 
-`core.intellect` extrait un unique objet JSON de decision. Si le JSON est invalide ou incomplet, Jarvis retombe sur une reponse conversationnelle d'erreur. Les actions sont ensuite filtrees :
+`core_intellect.intellect` extrait un unique objet JSON de decision. Si le JSON est invalide ou incomplet, Jarvis retombe sur une reponse conversationnelle d'erreur. Les actions sont ensuite filtrees :
 
 - chaque action doit etre un dictionnaire;
 - `outil` doit exister dans `tools.OUTILS`;
@@ -163,13 +163,13 @@ La politique actuelle est basee sur la confirmation ciblee.
 - Ecriture dans `JARVIS_DIR` ou une zone systeme Windows : confirmation.
 - Mode Stark : aucune confirmation interactive.
 - Les chemins sont normalises par `chemin_autorise()`.
-- Les automatisations refusent les outils declares non automatisables dans `capabilities.scheduler.OUTILS_AUTOMATISATION_INTERDITS`.
+- Les automatisations refusent les outils declares non automatisables dans `taskflow.scheduler.OUTILS_AUTOMATISATION_INTERDITS`.
 
 `action_bloquee()` et certains alias historiques existent encore pour compatibilite, mais la logique actuelle ne bloque pas par zone : elle demande confirmation quand c'est necessaire.
 
 ## Outils disponibles
 
-La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core.tool_signatures.documenter_signatures_outils()` pour obtenir l'inventaire exact du registre courant.
+La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.tool_signatures.documenter_signatures_outils()` pour obtenir l'inventaire exact du registre courant.
 
 ### Fichiers
 

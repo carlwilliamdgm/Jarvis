@@ -80,7 +80,7 @@ Sans duckduckgo-search ni clé API Brave, Jarvis utilisera DuckDuckGo classique 
 ## Test de la configuration
 
 ```python
-from capabilities.web_search import WebSearchEngine
+from taskflow.web_search import WebSearchEngine
 
 engine = WebSearchEngine()
 print("Provider actuel:", engine.preferred_provider)

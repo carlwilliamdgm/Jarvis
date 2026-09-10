@@ -165,7 +165,7 @@ class JarvisGCProvider(BaseLLMProvider):
 ### Appel direct
 
 ```python
-from core.llm_client import chat_with_jarvis_gc
+from core_intellect.llm_client import chat_with_jarvis_gc
 
 response = chat_with_jarvis_gc(
     modele="jarvis-gc:latest",
@@ -180,7 +180,7 @@ response = chat_with_jarvis_gc(
 ### Via l'orchestrateur
 
 ```python
-from core.llm_client import get_llm_client
+from core_intellect.llm_client import get_llm_client
 
 client = get_llm_client()
 response = client.generate_with_fallback(

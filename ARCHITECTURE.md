@@ -17,7 +17,7 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 1. La console appelle directement `executer_interaction_utilisateur()`; Tkinter et le web l'appellent via l'API.
 2. Cette fonction applique la même préparation de message, appelle `executer_agent()` et journalise l'échange.
 3. `detecter_commande_mode()` intercepte les commandes (`!a`, `!S <objectif>`, activation/desactivation du mode action).
-4. Hors commande spéciale, `parler()` appelle `core.intellect.interpreter_objectif()`.
+4. Hors commande spéciale, `parler()` appelle `core_intellect.intellect.interpreter_objectif()`.
 5. Core Intellect renvoie une structure normalisee : objectif, type, actions et reponse naturelle.
 6. `jarvis.py` execute les actions listées via `tools.OUTILS`, puis assemble la reponse finale.
 
@@ -446,7 +446,7 @@ Le PAT GitHub est manipule de maniere a minimiser son exposition :
 ## Memoire et proactivite
 
 - `memory.json` stocke notes, preferences, contexte, automatisations, surveillances, journal d'actions et journal conversationnel.
-- `core.memory.normaliser_memoire()` maintient le schema attendu.
+- `context_engine.memory.normaliser_memoire()` maintient le schema attendu.
 - L'agent autonome dans `jarvis.py` observe periodiquement stockage, rappels, automatisations et surveillances, puis affiche uniquement les signaux utiles.
 - La proactivite reste discrete : elle suggere ou notifie, mais les actions de rangement/suppression passent par les outils et leurs garde-fous.
 

@@ -9,7 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from jarvis.clap_input import arreter_ecoute_clap, demarrer_ecoute_clap
 from jarvis.voice_input import arreter_ecoute_vocale, demarrer_ecoute_vocale
-from core.voice_state import get_voice_state
+from jarvis.voice_state import get_voice_state
 
 
 def main() -> None:

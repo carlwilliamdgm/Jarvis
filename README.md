@@ -753,7 +753,7 @@ Comportement :
 
 ### Mode normal
 
-Le message est transmis à `core.intellect.interpreter_objectif()`. Core Intellect renvoie :
+Le message est transmis à `core_intellect.intellect.interpreter_objectif()`. Core Intellect renvoie :
 
 ```json
 {
@@ -804,7 +804,7 @@ Grammaire :
 
 Le Mode Stark :
 
-- active `core.safety.activer_mode_stark()`;
+- active `datashield.safety.activer_mode_stark()`;
 - court-circuite les confirmations interactives;
 - exécute des micro-objectifs avec budget limité;
 - produit un rapport final;
@@ -990,7 +990,7 @@ La politique actuelle est une confirmation ciblée :
 - En Mode Stark, les confirmations sont désactivées pour éviter un blocage interactif.
 - Les automatisations refusent certains outils sensibles ou bloquants.
 
-Les chemins passent par `core.safety.chemin_autorise()` lorsque l'outil manipule le système de fichiers.
+Les chemins passent par `datashield.safety.chemin_autorise()` lorsque l'outil manipule le système de fichiers.
 
 ## Tests et validation
 
