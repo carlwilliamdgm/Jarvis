@@ -16,7 +16,43 @@ DOSSIERS_ORGANISATION = {
 }
 
 
+FICHIERS_PROTEGES = {
+    "memory.json",
+    "memory.db",
+    "goals.json",
+    "voice_state.json",
+    "stark_actif.json",
+    "browser_overlay_state.json",
+    "browser_sessions_state.json",
+    "browser_sessions.json",
+    "requirements.txt",
+    "pytest.ini",
+    "greatos.py",
+    "jarvis.cmd",
+    "jarvis_hidden.ps1",
+    "monitor.py",
+    "install_web_search.py",
+    "update_scheduled_task.ps1",
+    "ARCHITECTURE.md",
+    "README.md",
+    "JARVIS_GC.md",
+    "PREMIER_LANCEMENT.md",
+    "WEB_SEARCH_CONFIG.md",
+}
+
+
+def est_fichier_protege(path: Path) -> bool:
+    """Empêche le déplacement des fichiers vitaux du système GreatOS."""
+    if path.name.lower() in {f.lower() for f in FICHIERS_PROTEGES}:
+        return True
+    if path.suffix.lower() == ".gos":
+        return True
+    return False
+
+
 def categorie_fichier(path: Path) -> str:
+    if est_fichier_protege(path):
+        return "Protege"
     extension = path.suffix.lower()
     for categorie, extensions in DOSSIERS_ORGANISATION.items():
         if extension in extensions:
@@ -37,6 +73,9 @@ def analyser_organisation(chemin: str) -> str:
                 ignores += 1
                 continue
             categorie = categorie_fichier(item)
+            if categorie == "Protege":
+                ignores += 1
+                continue
             categories[categorie] = categories.get(categorie, 0) + 1
 
         if not categories:
@@ -74,6 +113,8 @@ def organiser_dossier_direct(chemin: str) -> str:
         if not item.is_file():
             continue
         categorie = categorie_fichier(item)
+        if categorie == "Protege":
+            continue
         cible_dir = dossier / categorie
         cible_dir.mkdir(exist_ok=True)
         cible = chemin_unique(cible_dir / item.name)

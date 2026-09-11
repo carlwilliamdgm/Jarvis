@@ -1108,6 +1108,112 @@ def decouvrir_appareils_tailscale() -> str:
     except Exception as e:
         return resultat_erreur(f"Erreur lors de la détection Tailscale: {str(e)}", e)
 
+def obtenir_niveau_defcon() -> str:
+    """Retourne le niveau DEFCON actuel et sa signification."""
+    from datashield.defcon import defcon
+    lvl = defcon.current_level
+    descriptions = {
+        5: "Nominal / standard",
+        4: "Vigilance accrue",
+        3: "Sécurisé (confirmation obligatoire pour commandes)",
+        2: "Alerte haute (actions destructives bloquées)",
+        1: "Confinement critique (verrouillage complet)",
+    }
+    desc = descriptions.get(lvl.value, "Inconnu")
+    return f"Niveau DEFCON actuel : {lvl.name} ({lvl.value}) - {desc}"
+
+
+def changer_niveau_defcon(niveau: int) -> str:
+    """Modifie le niveau de sécurité DEFCON (1 à 5)."""
+    from datashield.defcon import defcon, DefconLevel
+    try:
+        val = int(niveau)
+        if val not in {1, 2, 3, 4, 5}:
+            return f"Niveau DEFCON invalide ({niveau}). Choisissez une valeur entre 1 et 5."
+        nouveau = DefconLevel(val)
+        defcon.set_level(nouveau)
+        return f"Niveau DEFCON mis à jour avec succès : {nouveau.name} ({nouveau.value})"
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors du changement DEFCON : {e}", e)
+
+
+def creer_objectif_tool(id_obj: str, titre: str, description: str = "", cible: float = 100.0, unite: str = "%") -> str:
+    """Crée un nouvel objectif personnel ou professionnel dans le Progress Tracker."""
+    try:
+        from progress_tracker.goals import goal_manager
+        g = goal_manager.creer_objectif(id_obj=id_obj, titre=titre, description=description, cible=cible, unite=unite)
+        return f"Objectif créé avec succès : [{g.id}] {g.titre} (Cible : {g.cible_valeur} {g.unite})"
+    except Exception as e:
+        return resultat_erreur(f"Erreur création objectif : {e}", e)
+
+
+def lister_objectifs_tool() -> str:
+    """Liste tous les objectifs suivis dans GreatOS avec leur progression."""
+    try:
+        from progress_tracker.goals import goal_manager
+        objectifs = goal_manager.lister_objectifs()
+        if not objectifs:
+            return "Aucun objectif enregistré pour le moment."
+        lignes = ["=== OBJECTIFS GREATOS ==="]
+        for g in objectifs:
+            lignes.append(f"- [{g.status.value.upper()}] {g.titre} ({g.id}) : {g.valeur_actuelle}/{g.cible_valeur} {g.unite} ({g.progression_pourcentage:.1f}%)")
+        return "\n".join(lignes)
+    except Exception as e:
+        return resultat_erreur(f"Erreur liste objectifs : {e}", e)
+
+
+def mettre_a_jour_objectif_tool(id_obj: str, nouvelle_valeur: float) -> str:
+    """Met à jour la valeur actuelle d'un objectif pour recalculer sa progression."""
+    try:
+        from progress_tracker.goals import goal_manager
+        g = goal_manager.mettre_a_jour_progression(id_obj, float(nouvelle_valeur))
+        if not g:
+            return f"Objectif introuvable : {id_obj}"
+        return f"Objectif [{g.id}] mis à jour : {g.valeur_actuelle}/{g.cible_valeur} {g.unite} ({g.progression_pourcentage:.1f}%) - Statut : {g.status.value}"
+    except Exception as e:
+        return resultat_erreur(f"Erreur mise à jour objectif : {e}", e)
+
+
+def stats_objectifs_tool() -> str:
+    """Calcule et affiche les statistiques globales des objectifs suivis."""
+    try:
+        from progress_tracker.analytics import calculer_statistiques_globales
+        stats = calculer_statistiques_globales()
+        return (
+            f"=== STATISTIQUES PROGRESS TRACKER ===\n"
+            f"Total : {stats['total']} | Actifs : {stats['actifs']} | Terminés : {stats['termines']}\n"
+            f"Taux de complétion : {stats['taux_completion']}%\n"
+            f"Progression moyenne : {stats['progression_moyenne']}%"
+        )
+    except Exception as e:
+        return resultat_erreur(f"Erreur calcul statistiques objectifs : {e}", e)
+
+
+def creer_snapshot_systeme_tool(nom: str = "") -> str:
+    """Crée une archive de sauvegarde locale (.gos) de l'état système GreatOS."""
+    try:
+        from syncsphere.snapshot import snapshot_manager
+        chemin = snapshot_manager.creer_snapshot(nom=nom if nom else None)
+        return f"Snapshot GreatOS créé avec succès : {chemin.name} ({chemin})"
+    except Exception as e:
+        return resultat_erreur(f"Erreur création snapshot : {e}", e)
+
+
+def lister_snapshots_systeme_tool() -> str:
+    """Liste tous les snapshots d'état locaux (.gos) disponibles dans SyncSphere."""
+    try:
+        from syncsphere.snapshot import snapshot_manager
+        snaps = snapshot_manager.lister_snapshots()
+        if not snaps:
+            return "Aucun snapshot disponible."
+        lignes = ["=== SNAPSHOTS SYNCHSPHERE ==="]
+        for s in snaps:
+            taille_ko = round(s['taille_octets'] / 1024, 1)
+            lignes.append(f"- {s['nom']} ({taille_ko} Ko)")
+        return "\n".join(lignes)
+    except Exception as e:
+        return resultat_erreur(f"Erreur liste snapshots : {e}", e)
+
 
 OUTILS = {
     "creer_dossier": creer_dossier,
@@ -1195,4 +1301,12 @@ OUTILS = {
     "lister_sessions": lister_sessions,
     "obtenir_etat_session": obtenir_etat_session,
     "decouvrir_appareils_tailscale": decouvrir_appareils_tailscale,
+    "obtenir_niveau_defcon": obtenir_niveau_defcon,
+    "changer_niveau_defcon": changer_niveau_defcon,
+    "creer_objectif": creer_objectif_tool,
+    "lister_objectifs": lister_objectifs_tool,
+    "mettre_a_jour_objectif": mettre_a_jour_objectif_tool,
+    "stats_objectifs": stats_objectifs_tool,
+    "creer_snapshot_systeme": creer_snapshot_systeme_tool,
+    "lister_snapshots_systeme": lister_snapshots_systeme_tool,
 }

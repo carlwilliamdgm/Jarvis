@@ -1,4 +1,4 @@
-﻿# progress_tracker/goals.py
+# progress_tracker/goals.py
 """Module Progress Tracker pour GreatOS - Modèles et suivi des objectifs.
 
 Conforme au Cahier des Charges GreatOS (Section 4.5) :

@@ -47,7 +47,7 @@ En streaming SSE (`GET /jarvis/stream?message=...`), les interfaces recoivent au
 
 ## Transport API et interfaces
 
-Le transport HTTP vit dans `api/server.py`.
+Le transport HTTP vit dans `interface_morphique/server.py`.
 
 ### Endpoint final
 
@@ -84,8 +84,8 @@ Les interfaces ne doivent pas reconstituer l'etat en appelant `/jarvis/ask` en p
 
 ### Clients
 
-- `gui/app.py` consomme le SSE avec `requests.get(..., stream=True)` dans un thread separe.
-- `gui/web/index.html` consomme le SSE avec `EventSource`.
+- `interface_morphique/app.py` consomme le SSE avec `requests.get(..., stream=True)` dans un thread separe.
+- `interface_morphique/web/index.html` consomme le SSE avec `EventSource`.
 - Le terminal Rich continue d'utiliser les appels `console.print()` existants ; les evenements SSE sont emis en parallele.
 
 ## Modes d'execution
@@ -314,7 +314,7 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 
 Les fonctions suivantes ne sont pas exposées comme outils Jarvis mais sont utilisées en interne par le système :
 
-### Interface vocale (core/voice_overlay.py, capabilities/voice_input.py, capabilities/voice_output.py)
+### Interface vocale (jarvis/voice_overlay.py, jarvis/voice_input.py, jarvis/voice_output.py)
 - `activer_vocal()` - Active l'interface vocale (reconnaissance et synthèse)
 - `desactiver_vocal()` - Désactive l'interface vocale
 - `lire_etat_vocal()` - Retourne l'état vocal actuel (IDLE, LISTENING, THINKING, SPEAKING, ERROR)
@@ -363,7 +363,7 @@ Les fonctions suivantes ne sont pas exposées comme outils Jarvis mais sont util
 - `BrowserSession.screenshot_sync(path)` - Capture synchrone bloquante
 - `BrowserSession.screenshot(path)` - Capture asynchrone non-bloquante
 
-### Client LLM (core/llm_client.py)
+### Client LLM (core_intellect/llm_client.py)
 - `get_llm_client()` - Retourne l'instance globale du client LLM
 - `modele_souverain_disponible()` - Vérifie si le modèle Jarvis-GC est disponible
 - `chat_with_jarvis_gc(modele, messages, temperature)` - Appel direct au modèle souverain
@@ -454,12 +454,12 @@ jarvis.py
 ├── executer_agent()
 └── AutonomousAgent
 
-core/intellect.py
+core_intellect/intellect.py
 ├── interpreter_objectif()
 ├── _parser_reponse_intellect()
 └── _appeler_llm_avec_retry()
 
-core/llm_client.py
+core_intellect/llm_client.py
 ├── LLMClient (orchestrateur cascade)
 ├── JarvisGCProvider (modèle souverain)
 ├── GroqProvider (cloud ultra-rapide)
@@ -467,12 +467,12 @@ core/llm_client.py
 ├── OllamaProvider (fallback local)
 └── generate_with_fallback()
 
-core/voice_state.py
+jarvis/voice_state.py
 ├── get_voice_state()
 ├── _set_voice_state()
 └── _write_state_to_file()
 
-core/voice_overlay.py
+jarvis/voice_overlay.py
 ├── VoiceOverlay class
 ├── _read_state_from_file()
 ├── _update_visuals()
@@ -529,7 +529,7 @@ core/personality.py
 tools.py
 └── OUTILS
 
-capabilities/
+taskflow/
 ├── voice_input.py
 ├── voice_output.py
 ├── clap_input.py
@@ -537,7 +537,16 @@ capabilities/
 ├── browser_automation.py
 ├── browser_sessions.py
 └── execution concrete des outils
-```
+### Outils GreatOS (DataShield, Progress Tracker, SyncSphere)
+
+- `obtenir_niveau_defcon()` : Consulte le niveau de sécurité DEFCON actuel du système.
+- `changer_niveau_defcon(niveau)` : Ajuste le niveau DEFCON de 1 (confinement) à 5 (nominal).
+- `creer_objectif(id_obj, titre, description, cible, unite)` : Enregistre un nouvel objectif dans le Progress Tracker.
+- `lister_objectifs()` : Affiche les objectifs actifs, terminés ou en pause avec leur progression.
+- `mettre_a_jour_objectif(id_obj, nouvelle_valeur)` : Met à jour la valeur et le pourcentage de complétion d'un objectif.
+- `stats_objectifs()` : Calcule les statistiques globales du Progress Tracker (taux de complétion, etc.).
+- `creer_snapshot_systeme(nom)` : Génère une archive locale de sauvegarde (.gos) via SyncSphere.
+- `lister_snapshots_systeme()` : Liste l'ensemble des sauvegardes locales disponibles.
 
 ## Principes a conserver
 

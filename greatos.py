@@ -1,4 +1,4 @@
-﻿# greatos.py
+# greatos.py
 """Point d'entrée unifié et Noyau (Kernel) de GreatOS.
 
 Orchestre les 8 modules fondamentaux du Cahier des Charges GreatOS :
@@ -33,7 +33,7 @@ class GreatOSKernel:
     """Noyau central de GreatOS unifiant les 8 modules."""
 
     def __init__(self):
-        self.version = "1.0-alpha (PersonalOS V3)"
+        self.version = "GreatOS 1.0-alpha (PersonalOS V3)"
         self.defcon = defcon
         self.goals = goal_manager
         self.sync = snapshot_manager

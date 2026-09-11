@@ -8,3 +8,5 @@ HOME = Path.home()
 JARVIS_DIR = Path(__file__).resolve().parent.parent
 MEMORY_PATH = JARVIS_DIR / "memory.json"
 MEMORY_DB_PATH = JARVIS_DIR / "memory.db"
+GOALS_PATH = JARVIS_DIR / "goals.json"
+SNAPSHOTS_DIR = JARVIS_DIR / "snapshots"

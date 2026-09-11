@@ -1,4 +1,4 @@
-﻿# datashield/defcon.py
+# datashield/defcon.py
 """Gestionnaire d'état de sécurité DEFCON pour DataShield (GreatOS).
 
 Définit les 5 niveaux de sécurité conformément au Cahier des Charges GreatOS :

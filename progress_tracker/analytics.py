@@ -1,4 +1,4 @@
-﻿# progress_tracker/analytics.py
+# progress_tracker/analytics.py
 """Module d'analyse et calcul de métriques pour Progress Tracker (GreatOS)."""
 
 from typing import Dict

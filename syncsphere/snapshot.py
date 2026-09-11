@@ -1,4 +1,4 @@
-﻿# syncsphere/snapshot.py
+# syncsphere/snapshot.py
 """Module SyncSphere pour GreatOS - Sauvegarde et synchronisation locale chiffrée.
 
 Conforme au Cahier des Charges GreatOS (Section 4.7) :

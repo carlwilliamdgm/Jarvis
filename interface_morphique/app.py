@@ -19,7 +19,7 @@ if sys.stderr.encoding != 'utf-8':
 HEADER_BG = "#0a0a0f"
 TARGETS_FILE = os.path.join(os.path.dirname(__file__), "targets.json")
 LOCAL_INSTANCE_ID = "local"
-LOCAL_INSTANCE = {"id": LOCAL_INSTANCE_ID, "nom": "Local", "url": "http://localhost:8001"}
+LOCAL_INSTANCE = {"id": LOCAL_INSTANCE_ID, "nom": "Local", "url": "http://localhost:8000"}
 
 
 THEMES = {

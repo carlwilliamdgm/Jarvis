@@ -1,10 +1,12 @@
-# Jarvis - Assistant IA local
+# GreatOS (PersonalOS V3) - Architecture unifiée à 8 modules
+
+GreatOS intègre **Jarvis** comme module d'interaction conversationnelle et vocale.
 
 Jarvis est un assistant IA local-first en Python, développé par Carl-William DJEGUEMA pour agir comme compagnon cognitif personnel et agent d'exécution local. Il peut discuter, mémoriser du contexte, exécuter des actions concrètes sur la machine, lancer des boucles agentiques structurées avec le Mode Stark, exposer une API FastAPI et servir des interfaces Tkinter ou web.
 
 Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
 
-> **État vérifié le 18 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 69 tests passants (57 tests rapides + 12 tests lents). Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
+> **État vérifié le 18 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 182 tests passants. Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
 
 ## Vue d'ensemble
 
@@ -227,8 +229,8 @@ arreter_overlay_navigation()
 - Mode action one-shot avec `!a`.
 - API FastAPI sur le port `8000`.
 - Streaming SSE pour afficher les événements intermédiaires en direct.
-- Interface Tkinter locale dans `gui/app.py`.
-- Interface web multi-device servie par FastAPI dans `gui/web/index.html`.
+- Interface Tkinter locale dans `interface_morphique/app.py`.
+- Interface web multi-device servie par FastAPI dans `interface_morphique/web/index.html`.
 - Tâche planifiée `JarvisAgent` capable de lancer automatiquement `uvicorn interface_morphique.server:app` dans la session utilisateur.
 - Mémoire, rappels, automatisations, surveillance de dossiers, stockage, commandes shell/PowerShell et commandes personnalisées.
 - **Interface vocale** : reconnaissance vocale via wake word ("Hey Jarvis") ou double-clap, synthèse vocale (TTS) pour les réponses.
@@ -249,9 +251,9 @@ arreter_overlay_navigation()
 | Surface | Fichier | Usage |
 | --- | --- | --- |
 | Console Rich | `jarvis.py` | Utilisation terminal complète |
-| API FastAPI | `api/server.py` | Intégration locale, web, multi-device |
-| Interface Tkinter | `gui/app.py` | Client desktop local consommant le SSE |
-| Interface web | `gui/web/index.html` | Client navigateur servi sur `/web` |
+| API FastAPI | `interface_morphique/server.py` | Intégration locale, web, multi-device |
+| Interface Tkinter | `interface_morphique/app.py` | Client desktop local consommant le SSE |
+| Interface web | `interface_morphique/web/index.html` | Client navigateur servi sur `/web` |
 | Tâche planifiée Windows | `JarvisAgent` | Démarrage automatique de l'API dans la session utilisateur |
 
 ## Prérequis
@@ -402,7 +404,7 @@ Elle consomme :
 L'interface web est un fichier unique :
 
 ```text
-gui/web/index.html
+interface_morphique/web/index.html
 ```
 
 Elle est servie par FastAPI grâce au mount :
@@ -504,7 +506,7 @@ Start-ScheduledTask -TaskName JarvisAgent
 Point d'entrée :
 
 ```text
-api/server.py
+interface_morphique/server.py
 ```
 
 Application :
@@ -582,7 +584,7 @@ data: {"type":"done"}
 
 Implémentation technique :
 
-- `api/server.py` crée une queue SSE par connexion.
+- `interface_morphique/server.py` crée une queue SSE par connexion.
 - `jarvis.event_bus` lie la queue au thread de travail.
 - `executer_interaction_utilisateur()` est le pipeline commun console/API : préparation, exécution et journalisation; `executer_agent()` émet les événements.
 - Le générateur SSE sérialise chaque événement avec `json.dumps(..., ensure_ascii=False)`.
@@ -709,7 +711,7 @@ Chaque étape continue même si la précédente échoue. Aucune erreur n'est ret
 Fichier :
 
 ```text
-gui/app.py
+interface_morphique/app.py
 ```
 
 Comportement :
@@ -729,7 +731,7 @@ Comportement :
 Fichier :
 
 ```text
-gui/web/index.html
+interface_morphique/web/index.html
 ```
 
 Contraintes :
@@ -856,7 +858,7 @@ jarvis.py
 ├── executer_mode_stark()
 └── AutonomousAgent
 
-api/server.py
+interface_morphique/server.py
 ├── FastAPI app
 ├── /jarvis/ask
 ├── /jarvis/stream
@@ -888,7 +890,7 @@ core/
 tools.py
 └── OUTILS
 
-capabilities/
+taskflow/
 ├── files.py
 ├── storage.py
 ├── commands.py
@@ -908,18 +910,18 @@ capabilities/
 
 ### Responsabilités
 
-- `core/intellect.py` : seul composant qui raisonne.
+- `core_intellect/intellect.py` : seul composant qui raisonne.
 - `jarvis.py` : orchestration, modes, exécution, EventBus, agent autonome.
 - `tools.py` : façade publique des outils.
-- `capabilities/` : exécution déterministe.
-- `api/server.py` : transport HTTP/SSE et fichiers statiques.
-- `gui/app.py` et `gui/web/index.html` : présentation.
+- `taskflow/` : exécution déterministe.
+- `interface_morphique/server.py` : transport HTTP/SSE et fichiers statiques.
+- `interface_morphique/app.py` et `interface_morphique/web/index.html` : présentation.
 - `JarvisAgent` : tâche planifiée Windows exécutée dans la session utilisateur.
 
 ### Nouveaux modules core
 
-- `core/voice_state.py` : Gestion de l'état vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partagé pour l'overlay
-- `core/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'état vocal en temps réel avec style HUD
+- `jarvis/voice_state.py` : Gestion de l'état vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partagé pour l'overlay
+- `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'état vocal en temps réel avec style HUD
 - `core/autodestruct.py` : Auto-destruction complète de Jarvis (service, tâches planifiées, variables d'environnement, dossier)
 - `core/contextual_suggestions.py` : Génération de suggestions intelligentes basées sur patterns, état système, contexte utilisateur et automatisations potentielles
 - `core/decision_analyzer.py` : Auto-réflexion sur les décisions, détection de patterns d'erreur, apprentissage des solutions réussies
@@ -1083,8 +1085,8 @@ Ou arrêter puis relancer le serveur manuel `uvicorn`.
 Vérifier :
 
 - le serveur FastAPI est lancé;
-- `api/server.py` contient bien le mount `/web`;
-- le fichier `gui/web/index.html` existe;
+- `interface_morphique/server.py` contient bien le mount `/web`;
+- le fichier `interface_morphique/web/index.html` existe;
 - l'URL utilisée est `/web` ou `/web/`.
 
 ### L'interface Tkinter affiche Jarvis hors ligne
@@ -1130,14 +1132,14 @@ Vérifier :
 
 ## Règles pour ajouter une capacité
 
-1. Créer ou modifier une fonction déterministe dans `capabilities/`.
+1. Créer ou modifier une fonction déterministe dans `taskflow/`.
 2. Ajouter un wrapper dans `tools.py` si une confirmation, normalisation ou journalisation est nécessaire.
 3. Exposer l'outil dans `tools.OUTILS`.
 4. Vérifier que `lire_capacites()` affiche la nouvelle signature.
 5. Ajouter ou adapter les tests.
 6. Mettre à jour la documentation métier si l'outil ajoute un nouveau domaine fonctionnel.
 
-Ne pas appeler directement un LLM depuis `capabilities/`.
+Ne pas appeler directement un LLM depuis `taskflow/`.
 
 ## Modules futurs
 
