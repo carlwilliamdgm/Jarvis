@@ -364,12 +364,23 @@ Sur Windows, `jarvis.cmd` peut aussi servir de raccourci (il utilise le chemin d
 
 Le serveur expose l'API, le streaming SSE et l'interface web.
 
+**Méthode recommandée (avec environnement virtuel)** :
+
 ```powershell
 cd %USERPROFILE%\Jarvis
-python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
+.\jarvis.cmd
 ```
 
-Avec le Python explicite :
+Ce script utilise automatiquement l'environnement virtuel `.venv` et lance le serveur FastAPI.
+
+**Méthode directe** :
+
+```powershell
+cd %USERPROFILE%\Jarvis
+.\.venv\Scripts\python.exe -m interface_morphique.server
+```
+
+Avec le Python explicite (si nécessaire) :
 
 ```powershell
 cd %USERPROFILE%\Jarvis
