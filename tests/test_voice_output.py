@@ -1,10 +1,11 @@
 import sys
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 from jarvis import voice_input
-from jarvis.voice_output import _is_stop_command, _lire_avec_interruption, parler_a_voix_haute
+from jarvis.voice_output import demander_arret_tts, _is_stop_command, _lire_avec_interruption, parler_a_voix_haute
 from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
@@ -84,14 +85,16 @@ class VoiceOutputTests(unittest.TestCase):
         _set_voice_state(VoiceState.SPEAKING)
         stopped = []
         fake_sounddevice = SimpleNamespace(
-            RawInputStream=lambda **_kwargs: FakeStream(),
             play=lambda *_args, **_kwargs: None,
             get_stream=lambda: FakePlayback(),
             stop=lambda: stopped.append(True),
         )
+        timer = threading.Timer(0.01, demander_arret_tts)
+        timer.start()
         with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
              patch.object(voice_input, "_new_recognizer", return_value=FakeStopRecognizer()):
             _lire_avec_interruption(object(), 22_050)
+        timer.join()
 
         self.assertEqual([True], stopped)
         self.assertEqual(VoiceState.LISTENING, get_voice_state())

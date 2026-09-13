@@ -17,6 +17,7 @@ import logging
 import os
 from pathlib import Path
 import random
+import queue
 import threading
 import time
 from typing import Any
@@ -121,6 +122,12 @@ def _jouer_phrase_reveil() -> None:
         import sounddevice as sd
         sd.play(audio, sample_rate, blocking=True)
 
+        try:
+            from jarvis.audio_capture import get_audio_capture_engine
+            get_audio_capture_engine().drainer_et_ignorer_garde(350)
+        except Exception:
+            pass
+
         LOGGER.info("Phrase de réveil terminée")
     except Exception:
         LOGGER.exception("Échec de la phrase de réveil")
@@ -132,9 +139,8 @@ WAKE_WORD_FRAME_LENGTH = 1_280
 # Seuil conservateur utilisé sans calibration locale ; configurable au démarrage.
 DEFAULT_WAKE_WORD_DETECTION_THRESHOLD = 0.5
 WAKE_WORD_DETECTION_THRESHOLD = DEFAULT_WAKE_WORD_DETECTION_THRESHOLD
-TRANSCRIPTION_TIMEOUT_SECONDS = 8.0
-SILENCE_TIMEOUT_SECONDS = 0.6
-SPEECH_AMPLITUDE_THRESHOLD = 1_200
+TRANSCRIPTION_TIMEOUT_SECONDS = 10.0
+SILENCE_TIMEOUT_SECONDS = 1.2
 _MODEL_NAMES = {
     "fr": "vosk-model-small-fr-0.22",
     "en": "vosk-model-small-en-us-0.15",
@@ -199,7 +205,7 @@ def _new_recognizer() -> Any:
     return KaldiRecognizer(get_vosk_model(), SAMPLE_RATE)
 
 
-def transcrire_flux(audio_stream: Any, initial_pcm: bytes | None = None) -> str | None:
+def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) -> str | None:
     """Transcrit un flux sounddevice avec latence minimale jusqu'au silence post-parole.
 
     ``initial_pcm`` réinjecte la trame qui a déclenché la VAD, pour ne pas
@@ -212,28 +218,38 @@ def transcrire_flux(audio_stream: Any, initial_pcm: bytes | None = None) -> str 
         last_partial = ""
         had_speech = False
         fragments: list[str] = []
+        has_vad = hasattr(audio_stream, "last_speech")
         pending = [initial_pcm] if initial_pcm else []
         while time.monotonic() - started_at < TRANSCRIPTION_TIMEOUT_SECONDS:
             if pending:
                 raw = pending.pop(0)
+                speech = bool(getattr(audio_stream, "last_speech", False))
             else:
                 data, _overflowed = audio_stream.read(WAKE_WORD_FRAME_LENGTH)
                 raw = bytes(data)
+                speech = bool(getattr(audio_stream, "last_speech", False))
+                if getattr(audio_stream, "discontinuity", False):
+                    LOGGER.warning("Trou audio pendant la transcription ; énoncé abandonné")
+                    return None
+            if speech:
+                had_speech = True
+                last_speech_at = time.monotonic()
             if recognizer.AcceptWaveform(raw):
                 text = json.loads(recognizer.Result()).get("text", "").strip()
                 if text:
                     fragments.append(text)
-                    had_speech = True
-                    last_speech_at = time.monotonic()
                     last_partial = ""
                     _set_voice_transcript(" ".join(fragments))
             else:
                 partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
                 if partial:
-                    had_speech = True
                     if partial != last_partial:
                         last_partial = partial
-                        last_speech_at = time.monotonic()
+                        # Compatibilité des sources historiques sans VAD ; le
+                        # moteur unique, lui, s'appuie exclusivement sur l'énergie.
+                        if not has_vad:
+                            had_speech = True
+                            last_speech_at = time.monotonic()
                         prefix = " ".join(fragments)
                         _set_voice_transcript(f"{prefix} {partial}".strip())
 
@@ -348,32 +364,94 @@ def get_input_device() -> int | None:
     return None
 
 
-def _vider_tampon_entree(stream: Any, frames: int = 3) -> None:
-    """Jette toutes les trames accumulées dans le buffer pour éliminer l'écho."""
-    try:
-        read_avail = getattr(stream, "read_available", 0)
-        while read_avail > 0:
-            to_read = min(read_avail, WAKE_WORD_FRAME_LENGTH)
-            stream.read(to_read)
-            read_avail = getattr(stream, "read_available", 0)
-    except Exception:
-        pass
-    for _ in range(frames):
+
+
+class _EngineStream:
+    """Adaptateur de flux pour transcrire_flux à partir de l'AudioCaptureEngine."""
+
+    def __init__(self, engine: Any, queue_name: str = "transcription"):
+        self.engine = engine
+        self.queue_name = queue_name
+        self.last_speech: bool = False
+        self.discontinuity: bool = False
+        self.last_seq: int | None = None
+
+    def read(self, size: int = WAKE_WORD_FRAME_LENGTH) -> tuple[bytes, bool]:
+        if hasattr(self.engine, "lire_depuis_queue"):
+            frame = self.engine.lire_depuis_queue(self.queue_name, timeout=0.2)
+        elif hasattr(self.engine, "subscribe"):
+            q = getattr(self.engine, f"_cached_{self.queue_name}_queue", None)
+            if q is None:
+                q = self.engine.subscribe(self.queue_name)
+                setattr(self.engine, f"_cached_{self.queue_name}_queue", q)
+            try:
+                frame = q.get(timeout=0.2)
+            except Exception:
+                frame = None
+        elif hasattr(self.engine, "read"):
+            return self.engine.read(size)
+        else:
+            frame = None
+
+        if frame is None:
+            self.last_speech = False
+            return bytes(np.zeros(size, dtype=np.int16)), False
+
+        seq = getattr(frame, "seq", 0)
+        if self.last_seq is not None and seq != self.last_seq + 1:
+            self.discontinuity = True
+        else:
+            self.discontinuity = False
+        self.last_seq = seq
+
+        self.last_speech = bool(getattr(frame, "is_speech", False))
+        samples = getattr(frame, "samples", frame)
+        return bytes(samples), False
+
+
+def _lire_trame_engine(engine: Any, queue_name: str = "wake", timeout: float = 0.1) -> Any:
+    """Lit une trame depuis l'engine (supporte lire_depuis_queue et subscribe)."""
+    if hasattr(engine, "lire_depuis_queue"):
+        return engine.lire_depuis_queue(queue_name, timeout=timeout)
+    if hasattr(engine, "subscribe"):
+        q = getattr(engine, f"_cached_{queue_name}_queue", None)
+        if q is None:
+            q = engine.subscribe(queue_name)
+            setattr(engine, f"_cached_{queue_name}_queue", q)
         try:
-            stream.read(WAKE_WORD_FRAME_LENGTH)
+            return q.get(timeout=timeout)
         except Exception:
-            return
+            return None
+    return None
 
 
-def _demarrer_fenetre_ecoute(stream: Any | None = None) -> None:
-    """Passe en LISTENING et arme le délai de 30s."""
+def _demarrer_fenetre_ecoute(engine=None) -> None:
+    """Passe en LISTENING et arme le délai de 30s.
+
+    Si ``engine`` est fourni, applique une courte garde anti-écho (100 ms)
+    pour les transitions extérieures sans TTS préalable.
+    Le drainage post-TTS (350 ms) est géré par ``_jouer_phrase_reveil``.
+    """
     global _LISTENING_TIMEOUT_START
-    if stream is not None:
-        _vider_tampon_entree(stream)
+    if engine is not None and hasattr(engine, "drainer_et_ignorer_garde"):
+        try:
+            engine.drainer_et_ignorer_garde(100)
+        except Exception:
+            pass
     _LISTENING_TIMEOUT_START = time.monotonic()
     _set_voice_transcript("")
     _set_voice_state(VoiceState.LISTENING)
     LOGGER.info("Fenêtre d'écoute 30s ouverte")
+
+
+def _flush_oww_state(model, n: int = 5) -> None:
+    """Injecte des trames silencieuses pour réinitialiser l'état temporel d'OWW après un trou."""
+    silent = np.zeros(WAKE_WORD_FRAME_LENGTH, dtype=np.int16)
+    for _ in range(n):
+        try:
+            model.predict(silent)
+        except Exception:
+            break
 
 
 def _fenetre_ecoute_expiree() -> bool:
@@ -388,7 +466,7 @@ def _fenetre_ecoute_expiree() -> bool:
 def écouter_et_transcrire() -> str | None:
     """Boucle principale d'écoute vocale avec cycle complet d'états."""
     try:
-        import sounddevice as sd
+        from jarvis.audio_capture import get_audio_capture_engine
         model = _new_wake_word_model()
     except ImportError:
         LOGGER.warning("Dépendances de l'écoute vocale indisponibles - mode vocal désactivé")
@@ -396,68 +474,82 @@ def écouter_et_transcrire() -> str | None:
         return None
 
     last_submitted: str | None = None
-    device_in = get_input_device()
-    try:
-        stream_ctx = sd.RawInputStream(
-            device=device_in, samplerate=SAMPLE_RATE,
-            blocksize=WAKE_WORD_FRAME_LENGTH, dtype="int16", channels=1
-        )
-    except Exception:
-        LOGGER.warning("Impossible d'ouvrir le flux audio (micro indisponible) — retry dans 3s")
+    engine = get_audio_capture_engine(get_input_device())
+    if not engine.ouvrir():
+        LOGGER.warning("Impossible d'ouvrir le flux audio natif — retry dans 3s")
         _set_voice_state(VoiceState.IDLE)
         time.sleep(3)
         return last_submitted
 
-    try:
-        with stream_ctx as stream:
-            global _LISTENING_TIMEOUT_START
-            previous_state = get_voice_state()
-            # Si au démarrage l'état est déjà LISTENING (crash précédent), armer le timer
-            if previous_state is VoiceState.LISTENING and _LISTENING_TIMEOUT_START is None:
-                _LISTENING_TIMEOUT_START = time.monotonic()
-            while not _STOP_EVENT.is_set():
-                pcm, _overflowed = stream.read(WAKE_WORD_FRAME_LENGTH)
-                raw = bytes(pcm)
-                samples = np.frombuffer(raw, dtype=np.int16)
-                current_state = get_voice_state()
-                entered_listening = (
-                    current_state is VoiceState.LISTENING
-                    and previous_state is not VoiceState.LISTENING
-                    and previous_state is not VoiceState.WAKING_UP
-                )
-                previous_state = current_state
-                if entered_listening:
-                    _demarrer_fenetre_ecoute(stream)
-                    continue
+    last_seq: int | None = None
 
+    try:
+        global _LISTENING_TIMEOUT_START
+        previous_state = get_voice_state()
+        if previous_state is VoiceState.LISTENING and _LISTENING_TIMEOUT_START is None:
+            _LISTENING_TIMEOUT_START = time.monotonic()
+
+        while not _STOP_EVENT.is_set():
+            frame = _lire_trame_engine(engine, "wake", timeout=0.1)
+            if frame is None:
+                # Pas de trame disponible : vérifier les timeouts tout de même
                 if _fenetre_ecoute_expiree():
                     LOGGER.info("Timeout écoute 30s - repasse en IDLE")
                     reset_listening_timer()
                     _set_voice_state(VoiceState.IDLE)
-                    previous_state = VoiceState.IDLE
+                continue
+
+            # Détection de trou : flush état temporel OWW pour ne pas présenter
+            # une séquence audio disjointe au modèle.
+            seq = getattr(frame, "seq", 0)
+            if last_seq is not None and seq != last_seq + 1:
+                gap = seq - last_seq - 1
+                LOGGER.warning("Trou audio wake word: %d trames — flush OWW", gap)
+                _flush_oww_state(model)
+            last_seq = seq
+
+            current_state = get_voice_state()
+            entered_listening = (
+                current_state is VoiceState.LISTENING
+                and previous_state is not VoiceState.LISTENING
+                and previous_state is not VoiceState.WAKING_UP
+            )
+            previous_state = current_state
+
+            if entered_listening:
+                _demarrer_fenetre_ecoute(engine)
+                continue
+
+            if _fenetre_ecoute_expiree():
+                LOGGER.info("Timeout écoute 30s - repasse en IDLE")
+                reset_listening_timer()
+                _set_voice_state(VoiceState.IDLE)
+                previous_state = VoiceState.IDLE
+                continue
+
+            samples = getattr(frame, "samples", frame)
+            if current_state in (VoiceState.IDLE, VoiceState.LISTENING):
+                scores = model.predict(samples)
+                if scores.get("hey_jarvis", 0.0) >= WAKE_WORD_DETECTION_THRESHOLD:
+                    if current_state is VoiceState.IDLE:
+                        _set_voice_state(VoiceState.WAKING_UP)
+                        _jouer_phrase_reveil()  # inclut drainer_et_ignorer_garde(350)
+                    else:
+                        # Réarmement en LISTENING : pas de phrase de réveil
+                        LOGGER.info("Wake word en LISTENING — réarmement 30s")
+                    _demarrer_fenetre_ecoute()  # sans drain supplémentaire
+                    previous_state = VoiceState.LISTENING
                     continue
 
-                if current_state is VoiceState.IDLE:
-                    scores = model.predict(samples)
-                    if scores.get("hey_jarvis", 0.0) >= WAKE_WORD_DETECTION_THRESHOLD:
-                        _set_voice_state(VoiceState.WAKING_UP)
-                        _jouer_phrase_reveil()
-                        _demarrer_fenetre_ecoute(stream)
-                        previous_state = VoiceState.LISTENING
-                        continue
-
-                elif current_state is VoiceState.LISTENING:
-                    if _LISTENING_TIMEOUT_START is None:
-                        _demarrer_fenetre_ecoute()
-
-                    amplitude = int(np.max(np.abs(samples))) if samples.size else 0
-                    if amplitude > SPEECH_AMPLITUDE_THRESHOLD:
-                        LOGGER.info("Parole détectée")
-                        submitted = transcrire_et_soumettre(stream, initial_pcm=raw)
-                        if submitted:
-                            last_submitted = submitted
-                            previous_state = get_voice_state()
-                        continue
+            if current_state is VoiceState.LISTENING:
+                if _LISTENING_TIMEOUT_START is None:
+                    _demarrer_fenetre_ecoute(engine)
+                if getattr(frame, "is_speech", False):
+                    LOGGER.info("Parole détectée (VAD)")
+                    submitted = transcrire_et_soumettre(_EngineStream(engine), initial_pcm=None)
+                    if submitted:
+                        last_submitted = submitted
+                        previous_state = get_voice_state()
 
     except Exception:
         LOGGER.exception("Échec de l'écoute wake word")
@@ -503,10 +595,15 @@ def reset_listening_timer() -> None:
 
 
 def arreter_ecoute_vocale() -> None:
-    """Demande l'arrêt du listener et attend sa fin brièvement."""
+    """Demande l'arrêt du listener et ferme le moteur audio."""
     global _LISTENING_TIMEOUT_START
     _LISTENING_TIMEOUT_START = None
     _STOP_EVENT.set()
-    _set_voice_state(VoiceState.IDLE)  # Force reset to IDLE on stop
+    _set_voice_state(VoiceState.IDLE)
     if _LISTENER_THREAD and _LISTENER_THREAD.is_alive():
         _LISTENER_THREAD.join(timeout=2)
+    try:
+        from jarvis.audio_capture import get_audio_capture_engine
+        get_audio_capture_engine().fermer()
+    except Exception:
+        pass

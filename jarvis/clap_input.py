@@ -1,23 +1,28 @@
-"""Déclencheur déterministe de double-clap utilisant uniquement l'amplitude audio."""
+"""Déclencheur déterministe de double-clap utilisant uniquement l'amplitude audio.
+
+Le détecteur lit depuis la queue ``wake`` du moteur de capture unique
+(``AudioCaptureEngine``) : aucun ``sd.RawInputStream`` supplémentaire
+n'est ouvert — évite la contention de périphérique avec voice_input.
+"""
 
 from __future__ import annotations
 
 import logging
 import threading
 import time
-from typing import Any
 
-from jarvis.voice_input import SAMPLE_RATE, _jouer_phrase_reveil, get_input_device, transcrire_et_soumettre
+import numpy as np
+
+from jarvis.voice_input import WAKE_WORD_FRAME_LENGTH, _jouer_phrase_reveil, get_input_device, transcrire_et_soumettre
 from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 LOGGER = logging.getLogger(__name__)
-# À calibrer sur le microphone réel : amplitude int16 absolue minimale d'un clap.
+# Amplitude int16 absolue minimale d'un clap.
 CLAP_AMPLITUDE_THRESHOLD = 3_000
-# Les deux pics doivent être espacés de cette fenêtre (en secondes).
+# Les deux pics doivent être espacés dans cette fenêtre (en secondes).
 DOUBLE_CLAP_MIN_INTERVAL_SECONDS = 0.20
 DOUBLE_CLAP_MAX_INTERVAL_SECONDS = 0.80
-CLAP_BLOCK_SIZE = 800
 _STOP_EVENT = threading.Event()
 _LISTENER_THREAD: threading.Thread | None = None
 
@@ -41,28 +46,35 @@ class DoubleClapDetector:
         return DOUBLE_CLAP_MIN_INTERVAL_SECONDS <= interval <= DOUBLE_CLAP_MAX_INTERVAL_SECONDS
 
 
-def _maximum_amplitude(data: bytes) -> int:
+def _maximum_amplitude(data: bytes | np.ndarray) -> int:
+    if isinstance(data, np.ndarray):
+        return int(np.max(np.abs(data))) if data.size else 0
     samples = memoryview(data).cast("h")
     return max((abs(sample) for sample in samples), default=0)
 
 
 def _listener_loop() -> None:
     try:
-        import sounddevice as sd
+        from jarvis.audio_capture import get_audio_capture_engine
         detector = DoubleClapDetector()
-        device_in = get_input_device()
-        with sd.RawInputStream(device=device_in, samplerate=SAMPLE_RATE, blocksize=CLAP_BLOCK_SIZE,
-                               dtype="int16", channels=1) as stream:
-            while not _STOP_EVENT.is_set():
-                data, _overflowed = stream.read(CLAP_BLOCK_SIZE)
-                if get_voice_state() is not VoiceState.IDLE:
-                    continue
-                if not detector.process_peak(_maximum_amplitude(bytes(data)), time.monotonic()):
-                    continue
-                _set_voice_state(VoiceState.WAKING_UP)
-                _jouer_phrase_reveil()
-                _set_voice_state(VoiceState.LISTENING)
-                transcrire_et_soumettre(stream)
+        engine = get_audio_capture_engine(get_input_device())
+        if not engine.ouvrir():
+            LOGGER.warning("[ClapInput] Impossible d'ouvrir le moteur audio")
+            return
+        LOGGER.info("[ClapInput] Démarré sur queue wake du moteur unique")
+        while not _STOP_EVENT.is_set():
+            frame = engine.lire_depuis_queue("wake", timeout=0.1)
+            if frame is None:
+                continue
+            if get_voice_state() is not VoiceState.IDLE:
+                continue
+            amplitude = int(np.max(np.abs(frame.samples))) if frame.samples.size else 0
+            if not detector.process_peak(amplitude, time.monotonic()):
+                continue
+            _set_voice_state(VoiceState.WAKING_UP)
+            _jouer_phrase_reveil()
+            _set_voice_state(VoiceState.LISTENING)
+            transcrire_et_soumettre(engine)
     except Exception:
         LOGGER.exception("Échec de l'écoute double-clap")
         _set_voice_state(VoiceState.ERROR)
@@ -82,6 +94,6 @@ def demarrer_ecoute_clap() -> None:
 def arreter_ecoute_clap() -> None:
     """Demande l'arrêt du listener double-clap et attend sa fin brièvement."""
     _STOP_EVENT.set()
-    _set_voice_state(VoiceState.IDLE)  # Force reset to IDLE on stop
+    _set_voice_state(VoiceState.IDLE)
     if _LISTENER_THREAD and _LISTENER_THREAD.is_alive():
         _LISTENER_THREAD.join(timeout=2)

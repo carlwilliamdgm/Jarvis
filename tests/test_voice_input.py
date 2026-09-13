@@ -1,10 +1,14 @@
 import unittest
 import sys
+import queue
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 import jarvis.agent as jarvis
 from jarvis import voice_input
+from jarvis.audio_capture import AudioFrame
 from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
@@ -56,7 +60,8 @@ class FakeWakeWordModel:
     def predict(self, _samples):
         if self.stop_event:
             self.stop_event.set()
-        return {"hey_jarvis": self.score}
+        score = self.score.pop(0) if isinstance(self.score, list) else self.score
+        return {"hey_jarvis": score}
 
 
 class VoiceInputTests(unittest.TestCase):
@@ -98,27 +103,32 @@ class VoiceInputTests(unittest.TestCase):
         self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
     def test_openwakeword_detection_starts_shared_transcription_path(self):
-        stream = LoudAfterListenStream()
-        fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
+        frames = queue.Queue()
+        frames.put(AudioFrame(1, np.zeros(1280, dtype=np.int16), False))
+        frames.put(AudioFrame(2, np.full(1280, 300, dtype=np.int16), True))
+        engine = SimpleNamespace(ouvrir=lambda: True, subscribe=lambda *_args, **_kwargs: frames,
+                                 unsubscribe=lambda *_args: None)
 
         def transcribe(_stream, initial_pcm=None):
             voice_input._STOP_EVENT.set()
             return "bonjour"
 
-        with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
-             patch.object(voice_input, "_new_wake_word_model", return_value=FakeWakeWordModel(0.8)), \
+        with patch("jarvis.audio_capture.get_audio_capture_engine", return_value=engine), \
+             patch.object(voice_input, "_new_wake_word_model", return_value=FakeWakeWordModel([0.8, 0.0])), \
              patch.object(voice_input, "_jouer_phrase_reveil"), \
              patch.object(voice_input, "transcrire_et_soumettre", side_effect=transcribe) as transcribe_mock:
             text = voice_input.écouter_et_transcrire()
 
         self.assertEqual("bonjour", text)
         transcribe_mock.assert_called_once()
-        self.assertIs(stream, transcribe_mock.call_args.args[0])
+        self.assertIsInstance(transcribe_mock.call_args.args[0], voice_input._EngineStream)
 
     def test_openwakeword_below_threshold_does_not_transcribe(self):
-        stream = LoudAfterListenStream()
-        fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
-        with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
+        frames = queue.Queue()
+        frames.put(AudioFrame(1, np.zeros(1280, dtype=np.int16), False))
+        engine = SimpleNamespace(ouvrir=lambda: True, subscribe=lambda *_args, **_kwargs: frames,
+                                 unsubscribe=lambda *_args: None)
+        with patch("jarvis.audio_capture.get_audio_capture_engine", return_value=engine), \
              patch.object(
                  voice_input,
                  "_new_wake_word_model",

@@ -41,6 +41,12 @@ _PIPER_MODELS = {
 }
 _PIPER_LOCK = threading.Lock()
 _PIPER_VOICE: Any | None = None
+_TTS_STOP_EVENT = threading.Event()
+
+
+def demander_arret_tts() -> None:
+    """Signalé par le listener unique lorsqu'une commande locale d'arrêt est entendue."""
+    _TTS_STOP_EVENT.set()
 
 
 def _piper_language() -> str:
@@ -93,58 +99,82 @@ def _synthesise(voice: Any, texte: str) -> tuple[np.ndarray, int]:
 
 
 def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
-    """Joue le PCM Piper et interrompt la lecture à une commande stop locale."""
-    import sounddevice as sd
-    from jarvis.voice_input import SAMPLE_RATE, get_input_device, _new_recognizer
+    """Joue le PCM Piper via sounddevice et interrompt sur commande stop locale.
 
+    Pendant la lecture :
+    - Le moteur audio passe en mode SPEAKING (seule la queue stop est alimentée).
+    - On lit les trames de la queue stop pour détecter la commande vocale d'arrêt.
+    - Après la lecture (interrompue ou naturelle), on revient en NORMAL et on
+      applique la garde anti-écho (450 ms) pour éliminer la résonance des haut-parleurs.
+    """
+    import sounddevice as sd
+    from jarvis.audio_capture import get_audio_capture_engine, CaptureMode
+    from jarvis.voice_input import _new_recognizer
+
+    engine = get_audio_capture_engine()
     recognizer = None
     try:
         recognizer = _new_recognizer()
         LOGGER.debug("Reconnaissance d'interruption activée")
-    except Exception as e:
-        LOGGER.debug(f"Reconnaissance d'interruption indisponible: {e}")
+    except Exception as exc:
+        LOGGER.debug("Reconnaissance d'interruption indisponible: %s", exc)
+
+    # Passer en mode SPEAKING : seule la queue stop est alimentée
+    engine.set_mode(CaptureMode.SPEAKING)
 
     try:
         sd.play(audio, sample_rate, blocking=False)
         LOGGER.debug("Lecture audio démarrée")
     except Exception:
         LOGGER.exception("Erreur lors de la lecture audio")
+        engine.set_mode(CaptureMode.NORMAL)
+        engine.drainer_et_ignorer_garde(450)
         _revenir_en_ecoute()
         return
 
-    device_in = get_input_device()
     interrupted = False
     try:
-        with sd.RawInputStream(device=device_in, samplerate=SAMPLE_RATE, blocksize=1600, dtype="int16", channels=1) as stream:
-            while True:
-                playback = sd.get_stream()
-                if playback is None or not getattr(playback, "active", False):
-                    LOGGER.debug("Lecture terminée naturellement")
+        while True:
+            if _TTS_STOP_EVENT.is_set():
+                LOGGER.info("Lecture Piper interrompue par événement stop")
+                sd.stop()
+                interrupted = True
+                break
+            playback = sd.get_stream()
+            if playback is None or not getattr(playback, "active", False):
+                LOGGER.debug("Lecture terminée naturellement")
+                break
+            frame = engine.lire_depuis_queue("stop", timeout=0.05)
+            if frame is None:
+                continue
+            if recognizer is not None:
+                raw = bytes(frame.samples)
+                text = _recognizer_text(recognizer, raw)
+                if text and _is_stop_command(text):
+                    LOGGER.info("Lecture Piper interrompue par commande: '%s'", text)
+                    sd.stop()
+                    interrupted = True
                     break
-                data, _overflowed = stream.read(1600)
-                if recognizer is not None and data:
-                    text = _recognizer_text(recognizer, bytes(data))
-                    if text and _is_stop_command(text):
-                        LOGGER.info(f"Lecture Piper interrompue par commande: '{text}'")
-                        sd.stop()
-                        _revenir_en_ecoute()
-                        interrupted = True
-                        return
-    except Exception as e:
-        LOGGER.debug(f"Fin du flux d'écoute pour interruption TTS : {e}")
+    except Exception as exc:
+        LOGGER.debug("Fin du flux d'écoute pour interruption TTS: %s", exc)
     finally:
+        _TTS_STOP_EVENT.clear()
+        # Attendre la fin propre si pas interrompu
         try:
             playback = sd.get_stream()
             if playback is not None and getattr(playback, "active", False):
-                LOGGER.debug("Attente fin de lecture")
                 sd.wait()
         except Exception:
             pass
+        # Revenir en mode normal + garde anti-écho post-haut-parleur
+        engine.set_mode(CaptureMode.NORMAL)
+        engine.drainer_et_ignorer_garde(450)
         LOGGER.debug("Fin de _lire_avec_interruption")
-        if not interrupted:
-            _revenir_en_ecoute()
+        _revenir_en_ecoute()
+        if interrupted:
+            LOGGER.info("Lecture interrompue - retour en écoute")
+        else:
             LOGGER.info("Parole terminée - début écoute 30s")
-
 
 def _nettoyer_markdown(texte: str) -> str:
     """Nettoie le texte pour la synthèse vocale en supprimant le markdown."""
