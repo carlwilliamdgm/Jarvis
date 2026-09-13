@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import json
 import os
+import threading
 from typing import Any, Callable, Dict, List, Optional
 import urllib.request
 
@@ -54,19 +55,19 @@ MODELE_SOUVERAIN_JARVIS = "jarvis-gc:latest"
 MODELES_JARVIS_GC = ["jarvis-gc:latest", "qwen2.5:3b", "qwen2.5:7b"]
 MODELES_GROQ = ["openai/gpt-oss-120b"]
 MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
-MODELE_LOCAL = "qwen2.5:7b"
+MODELE_LOCAL = "qwen2.5:3b"
 
 
 def get_modele_local() -> str:
     """Retourne le meilleur modèle Ollama disponible localement.
     
     Vérifie en priorité JARVIS_LOCAL_MODEL, puis cherche parmi les modèles
-    Ollama installés le plus performant disponible, avec fallback sur MODELE_LOCAL.
+    Ollama installés le plus performant disponible, avec repli prioritaire sur 3b/1.5b.
     """
     pref = os.environ.get("JARVIS_LOCAL_MODEL")
     if pref:
         return pref
-    candidates = ["qwen2.5:7b", "qwen2.5:3b", "qwen2.5:1.5b", "qwen2.5:0.5b", "jarvis-gc:latest"]
+    candidates = ["qwen2.5:3b", "qwen2.5:1.5b", "qwen2.5:0.5b", "jarvis-gc:latest", "qwen2.5:7b"]
     try:
         if ollama is not None:
             models_list = ollama.list()
@@ -80,6 +81,21 @@ def get_modele_local() -> str:
     except Exception:
         pass
     return MODELE_LOCAL
+
+
+def prechauffer_modele_local(modele: Optional[str] = None) -> None:
+    """Pré-charge le modèle local en RAM/VRAM en tâche de fond pour éliminer le cold start."""
+    nom = modele or get_modele_local()
+
+    def _worker():
+        try:
+            if ollama is not None:
+                ollama.generate(model=nom, prompt="", keep_alive="5m")
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_worker, daemon=True, name="OllamaPrewarm")
+    t.start()
 
 
 _EVENT_EMITTER: Optional[Callable[[str, dict], None]] = None
@@ -157,19 +173,21 @@ class BaseLLMProvider:
         modele: str,
         messages: list[dict],
         config: Optional[LLMConfig] = None,
+        **kwargs,
     ) -> LLMResponse:
         raise NotImplementedError
 
 
 class GroqProvider(BaseLLMProvider):
-    """Fournisseur Groq avec support multi-clés et bascule automatique sur 429."""
+    """Fournisseur Groq avec support multi-clés, timeout strict de 5s par clé et rotation sur erreur/429."""
 
-    def __init__(self, modeles: Optional[list[str]] = None):
+    def __init__(self, modeles: Optional[list[str]] = None, timeout_per_key: float = 5.0):
         super().__init__(
             nom="Groq",
             modeles=modeles or MODELES_GROQ,
             niveau="simple",
         )
+        self.timeout_per_key = timeout_per_key
 
     def get_clients(self) -> list:
         if GroqClient is None:
@@ -180,10 +198,10 @@ class GroqProvider(BaseLLMProvider):
             key = os.environ.get(f"GROQ_API_KEY_{i}")
             if not key:
                 break
-            clients.append(GroqClient(api_key=key))
+            clients.append(GroqClient(api_key=key, timeout=self.timeout_per_key))
             i += 1
         if not clients and os.environ.get("GROQ_API_KEY"):
-            clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY")))
+            clients.append(GroqClient(api_key=os.environ.get("GROQ_API_KEY"), timeout=self.timeout_per_key))
         return clients
 
     def is_available(self) -> bool:
@@ -194,6 +212,8 @@ class GroqProvider(BaseLLMProvider):
         modele: str,
         messages: list[dict],
         config: Optional[LLMConfig] = None,
+        on_key_failure: Optional[Callable[[str, Exception], None]] = None,
+        **kwargs,
     ) -> LLMResponse:
         cfg = config or LLMConfig()
         clients = self.get_clients()
@@ -209,21 +229,22 @@ class GroqProvider(BaseLLMProvider):
         modele_raisonnement = "gpt-oss" in (modele or "")
         budget = max(int(cfg.max_tokens or 1024), 4096 if modele_raisonnement else 1024)
 
-        for client in clients:
+        for idx, client in enumerate(clients):
             try:
-                kwargs = {
+                call_kwargs = {
                     "model": modele,
                     "messages": groq_messages,
                     "max_tokens": budget,
                     "temperature": cfg.temperature,
+                    "timeout": self.timeout_per_key,
                 }
                 if modele_raisonnement:
-                    kwargs["reasoning_effort"] = "low"
+                    call_kwargs["reasoning_effort"] = "low"
                 try:
-                    response = client.chat.completions.create(**kwargs)
+                    response = client.chat.completions.create(**call_kwargs)
                 except TypeError:
-                    kwargs.pop("reasoning_effort", None)
-                    response = client.chat.completions.create(**kwargs)
+                    call_kwargs.pop("reasoning_effort", None)
+                    response = client.chat.completions.create(**call_kwargs)
                 msg = response.choices[0].message
                 contenu = _extraire_texte_message_llm(msg)
                 if not str(contenu or "").strip():
@@ -239,7 +260,12 @@ class GroqProvider(BaseLLMProvider):
                 )
             except Exception as e:
                 derniere_erreur = e
+                if on_key_failure is not None:
+                    on_key_failure(f"Groq (clé {idx + 1})", e)
                 if "429" in str(e):
+                    continue
+                # Si plusieurs clés configurées et que ce n'est pas la dernière, tester la suivante
+                if len(clients) > 1 and idx < len(clients) - 1:
                     continue
                 raise RuntimeError(f"Groq error: {e}") from e
 
@@ -247,27 +273,43 @@ class GroqProvider(BaseLLMProvider):
 
 
 class OpenRouterProvider(BaseLLMProvider):
-    """Fournisseur OpenRouter avec injection de prompt système et appel HTTP."""
+    """Fournisseur OpenRouter avec injection de prompt système, rotation multi-clés et timeout maximal de 10s."""
 
-    def __init__(self, modeles: Optional[list[str]] = None):
+    def __init__(self, modeles: Optional[list[str]] = None, timeout: float = 10.0):
         super().__init__(
             nom="OpenRouter",
             modeles=modeles or MODELES_OPENROUTER,
             niveau="simple",
         )
+        self.default_timeout = timeout
+
+    def get_api_keys(self) -> list[str]:
+        keys = []
+        i = 1
+        while True:
+            k = os.environ.get(f"OPENROUTER_API_KEY_{i}")
+            if not k:
+                break
+            keys.append(k)
+            i += 1
+        if not keys and os.environ.get("OPENROUTER_API_KEY"):
+            keys.append(os.environ.get("OPENROUTER_API_KEY"))
+        return keys
 
     def is_available(self) -> bool:
-        return bool(os.environ.get("OPENROUTER_API_KEY"))
+        return len(self.get_api_keys()) > 0
 
     def generate(
         self,
         modele: str,
         messages: list[dict],
         config: Optional[LLMConfig] = None,
+        on_key_failure: Optional[Callable[[str, Exception], None]] = None,
+        **kwargs,
     ) -> LLMResponse:
         cfg = config or LLMConfig(max_tokens=2048)
-        api_key = os.environ.get("OPENROUTER_API_KEY")
-        if not api_key:
+        api_keys = self.get_api_keys()
+        if not api_keys:
             raise RuntimeError("OPENROUTER_API_KEY absente.")
 
         systeme = next((m["content"] for m in messages if m["role"] == "system"), "")
@@ -294,41 +336,54 @@ class OpenRouterProvider(BaseLLMProvider):
             "temperature": cfg.temperature,
         }).encode("utf-8")
 
-        request = urllib.request.Request(
-            "https://openrouter.ai/api/v1/chat/completions",
-            data=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://localhost/jarvis",
-                "X-Title": "Jarvis Local",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            contenu = data["choices"][0]["message"]["content"]
-            return LLMResponse(
-                content=contenu,
-                provider=self.nom,
-                model=modele,
-                raw=data,
+        # 5s par clé si plusieurs clés, sinon plafond demandé de 10s
+        timeout_req = 5.0 if len(api_keys) > 1 else self.default_timeout
+        derniere_erreur = None
+
+        for idx, key in enumerate(api_keys):
+            request = urllib.request.Request(
+                "https://openrouter.ai/api/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://localhost/jarvis",
+                    "X-Title": "Jarvis Local",
+                },
+                method="POST",
             )
-        except Exception as e:
-            raise RuntimeError(f"OpenRouter error: {e}") from e
+            try:
+                with urllib.request.urlopen(request, timeout=timeout_req) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                contenu = data["choices"][0]["message"]["content"]
+                return LLMResponse(
+                    content=contenu,
+                    provider=self.nom,
+                    model=modele,
+                    raw=data,
+                )
+            except Exception as e:
+                derniere_erreur = e
+                if on_key_failure is not None:
+                    on_key_failure(f"OpenRouter (clé {idx + 1})", e)
+                if len(api_keys) > 1 and idx < len(api_keys) - 1:
+                    continue
+                raise RuntimeError(f"OpenRouter error: {e}") from e
+
+        raise RuntimeError(f"OpenRouter error (toutes clés épuisées): {derniere_erreur}")
 
 
 class OllamaProvider(BaseLLMProvider):
-    """Fournisseur Ollama local avec auto-détection du meilleur modèle installé."""
+    """Fournisseur Ollama local avec auto-détection du modèle et timeout protecteur anti-freeze."""
 
-    def __init__(self, modele: Optional[str] = None):
+    def __init__(self, modele: Optional[str] = None, timeout: float = 25.0):
         nom_modele = modele or get_modele_local()
         super().__init__(
             nom="Ollama",
             modeles=[nom_modele],
             niveau="local",
         )
+        self.timeout = timeout
 
     def is_available(self) -> bool:
         return ollama is not None
@@ -338,18 +393,27 @@ class OllamaProvider(BaseLLMProvider):
         modele: str,
         messages: list[dict],
         config: Optional[LLMConfig] = None,
+        **kwargs,
     ) -> LLMResponse:
         if ollama is None:
             raise RuntimeError("Module ollama non disponible.")
         cfg = config or LLMConfig()
         options = {"think": False, "temperature": cfg.temperature}
         options.update(cfg.extra_options)
-        try:
-            response = ollama.chat(
+
+        def _call_ollama():
+            return ollama.chat(
                 model=modele,
                 messages=messages,
                 options=options,
             )
+
+        timeout_val = cfg.timeout or self.timeout
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_call_ollama)
+                response = future.result(timeout=timeout_val)
+
             # Ollama peut retourner un dict ou un objet
             if isinstance(response, dict):
                 content = response.get("message", {}).get("content", "")
@@ -361,6 +425,8 @@ class OllamaProvider(BaseLLMProvider):
                 model=modele,
                 raw=response,
             )
+        except concurrent.futures.TimeoutError:
+            raise RuntimeError(f"Ollama a dépassé le délai de {timeout_val}s pour générer.")
         except Exception as e:
             raise RuntimeError(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.") from e
 
@@ -542,6 +608,23 @@ class LLMClient:
             from rich.console import Console
             console = Console()
 
+        # Modèle local prévu pour le secours
+        modele_local = self.local_provider.modeles[0] if (self.local_provider and getattr(self.local_provider, "modeles", None)) else get_modele_local()
+
+        # Compteur d'échecs pour déclenchement anticipé du pré-chargement en mémoire vive
+        echecs_cloud = 0
+        prewarm_lance = False
+
+        def notifier_echec_cle(source: str = "Cloud", err: Optional[Exception] = None):
+            nonlocal echecs_cloud, prewarm_lance
+            echecs_cloud += 1
+            if echecs_cloud >= 3 and not prewarm_lance:
+                prewarm_lance = True
+                console.print(f"[dim yellow]⚡ 3 échecs de clés/providers cloud ({source}) -> Pré-chargement anticipé en RAM de {modele_local}...[/dim yellow]")
+                if on_event is not None:
+                    on_event("thinking", {"message": f"Pré-chargement du modèle de secours ({modele_local})..."})
+                prechauffer_modele_local(modele_local)
+
         # 1. CASCADE CLOUD ULTRA-RAPIDE (Priorité #1 - Fast-Track)
         for tentative in range(max_tentatives):
             available_clouds = self.get_available_cloud_providers()
@@ -557,7 +640,10 @@ class LLMClient:
                     nom = provider.nom
                     modele = provider.modeles[0]
                     try:
-                        resp = provider.generate(modele, messages, config=cfg)
+                        try:
+                            resp = provider.generate(modele, messages, config=cfg, on_key_failure=notifier_echec_cle)
+                        except TypeError:
+                            resp = provider.generate(modele, messages, config=cfg)
                         if not str(getattr(resp, "content", "") or "").strip():
                             raise RuntimeError(f"{nom} {modele} a renvoyé une réponse vide")
                         if require_json and "{" not in str(resp.content):
@@ -568,6 +654,7 @@ class LLMClient:
                         self.memoriser_provider_cloud(nom)
                         return resp.to_dict()
                     except Exception as e:
+                        notifier_echec_cle(nom, e)
                         console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
                         continue
 

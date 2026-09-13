@@ -124,6 +124,70 @@ class LLMClientTests(unittest.TestCase):
             providers = providers_cloud_disponibles()
             self.assertTrue(any(p["nom"] == "Groq" for p in providers))
 
+    def test_default_local_model_is_3b(self):
+        from core_intellect.llm_client import MODELE_LOCAL
+        self.assertEqual(MODELE_LOCAL, "qwen2.5:3b")
+
+    def test_groq_timeout_per_key(self):
+        provider = GroqProvider()
+        self.assertEqual(provider.timeout_per_key, 5.0)
+
+    def test_openrouter_timeout_default_is_10s(self):
+        provider = OpenRouterProvider()
+        self.assertEqual(provider.default_timeout, 10.0)
+
+    @patch("core_intellect.llm_client.ollama")
+    def test_prechauffer_modele_local_invokes_ollama(self, mock_ollama):
+        from core_intellect.llm_client import prechauffer_modele_local
+        import time
+        prechauffer_modele_local("qwen2.5:3b")
+        time.sleep(0.1)
+        mock_ollama.generate.assert_called_once_with(model="qwen2.5:3b", prompt="", keep_alive="5m")
+
+    @patch("core_intellect.llm_client.prechauffer_modele_local")
+    def test_prewarm_triggered_after_three_cloud_failures(self, mock_prewarm):
+        cloud_p1 = MagicMock(spec=BaseLLMProvider)
+        cloud_p1.nom = "Cloud1"
+        cloud_p1.modeles = ["m1"]
+        cloud_p1.niveau = "simple"
+        cloud_p1.is_available.return_value = True
+
+        def fail_with_two_keys(modele, msgs, config=None, on_key_failure=None, **kwargs):
+            if on_key_failure:
+                on_key_failure("Cloud1 Clé 1", Exception("err1"))
+                on_key_failure("Cloud1 Clé 2", Exception("err2"))
+            raise RuntimeError("Cloud1 out")
+        cloud_p1.generate.side_effect = fail_with_two_keys
+
+        cloud_p2 = MagicMock(spec=BaseLLMProvider)
+        cloud_p2.nom = "Cloud2"
+        cloud_p2.modeles = ["m2"]
+        cloud_p2.niveau = "simple"
+        cloud_p2.is_available.return_value = True
+
+        def fail_on_third_key(modele, msgs, config=None, on_key_failure=None, **kwargs):
+            if on_key_failure:
+                on_key_failure("Cloud2 Clé 1", Exception("err3"))
+            raise RuntimeError("Cloud2 out")
+        cloud_p2.generate.side_effect = fail_on_third_key
+
+        fake_local = MagicMock(spec=BaseLLMProvider)
+        fake_local.nom = "Ollama"
+        fake_local.modeles = ["qwen2.5:3b"]
+        fake_local.niveau = "local"
+        fake_local.is_available.return_value = True
+        fake_local.generate.return_value = LLMResponse(content="OK", provider="Ollama", model="qwen2.5:3b")
+
+        client = LLMClient(
+            cloud_providers=[cloud_p1, cloud_p2],
+            local_provider=fake_local,
+            sovereign_provider=None,
+        )
+
+        res = client.generate_with_fallback([{"role": "user", "content": "test"}], max_tentatives=1)
+        self.assertIsNotNone(res)
+        mock_prewarm.assert_called_once_with("qwen2.5:3b")
+
 
 if __name__ == "__main__":
     unittest.main()
