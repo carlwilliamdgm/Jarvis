@@ -50,12 +50,23 @@ class JsonMemoryStore(BaseMemoryStore):
 
     def load(self) -> dict:
         with _GLOBAL_MEMORY_LOCK:
-            try:
-                with open(self.file_path, "r", encoding="utf-8") as f:
-                    contenu = f.read().strip()
-                    return json.loads(contenu) if contenu else {}
-            except (FileNotFoundError, JSONDecodeError):
-                return {}
+            for tentative in range(5):
+                try:
+                    with open(self.file_path, "r", encoding="utf-8") as f:
+                        contenu = f.read().strip()
+                        return json.loads(contenu) if contenu else {}
+                except FileNotFoundError:
+                    return {}
+                except (JSONDecodeError, UnicodeDecodeError):
+                    time.sleep(0.05 * (tentative + 1))
+                    continue
+                except OSError as e:
+                    winerror = getattr(e, "winerror", None)
+                    if winerror in (5, 32) or getattr(e, "errno", None) in (5, 13, 16, 32):
+                        time.sleep(0.05 * (tentative + 1))
+                        continue
+                    return {}
+            return {}
 
     def save(self, data: dict) -> None:
         with _GLOBAL_MEMORY_LOCK:
