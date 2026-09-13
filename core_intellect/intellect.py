@@ -1,4 +1,4 @@
-#core/intellect.py
+#core_intellect/intellect.py
 
 """Core Intellect - Le cerveau de Jarvis.
 
@@ -401,6 +401,8 @@ def _extraire_json_unique(contenu: str) -> dict | None:
     """
     Extrait le premier objet JSON valide du contenu.
     """
+    if not isinstance(contenu, str) or not contenu.strip():
+        return None
     try:
         return json.loads(contenu.strip())
     except JSONDecodeError:
@@ -453,5 +455,6 @@ def _appeler_llm_avec_retry(
         memoire=memoire,
         config=LLMConfig(temperature=temperature),
         on_event=on_event,
+        require_json=True,
     )
 

@@ -48,6 +48,7 @@ Concurrency:
 - This ensures data consistency while allowing autonomous observation
 """
 
+import logging
 import secrets
 import psutil
 from fastapi import FastAPI, HTTPException, Request, Depends, status
@@ -57,6 +58,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
+
+logger = logging.getLogger("jarvis.server")
 
 # Force UTF-8 encoding to avoid charmap errors on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -72,6 +75,8 @@ from jarvis.agent import (
     initialiser,
 )
 from jarvis.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
+from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale
+from jarvis.clap_input import demarrer_ecoute_clap, arreter_ecoute_clap
 from core_intellect.prompt import construire_prompt_action
 from datashield.autodestruct import schedule_autodestruction
 from datashield.confirmations import (
@@ -107,19 +112,33 @@ async def lifespan(app: FastAPI):
         # Démarrer l'overlay visuel vocal
         demarrer_overlay_vocal()
 
+        # Démarrer l'écoute vocale (wake word)
+        try:
+            demarrer_ecoute_vocale()
+            logger.info("Voice listener started successfully")
+        except Exception as e:
+            logger.warning("Could not start voice listener: %s", e)
+
+        # Démarrer l'écoute double-clap
+        try:
+            demarrer_ecoute_clap()
+            logger.info("Double-clap listener started successfully")
+        except Exception as e:
+            logger.warning("Could not start double-clap listener: %s", e)
+
         # Démarrer l'overlay visuel de navigation
         try:
             from interface_morphique.browser_overlay import start_browser_overlay
             start_browser_overlay()
-            print("Browser overlay started successfully")
+            logger.info("Browser overlay started successfully")
         except Exception as e:
-            print(f"Warning: Could not start browser overlay: {e}")
+            logger.warning("Could not start browser overlay: %s", e)
 
-        print("Jarvis API server started successfully")
+        logger.info("Jarvis API server started successfully")
         # Démarrer le thread de sampling CPU non-bloquant pour /jarvis/status
         _demarrer_cpu_sampler()
     except Exception as e:
-        print(f"Error initializing agent: {e}")
+        logger.error("Error initializing agent: %s", e)
         raise
 
     yield
@@ -128,13 +147,25 @@ async def lifespan(app: FastAPI):
         agent_stop_event.set()
     # Arrêter l'overlay visuel vocal
     arreter_overlay_vocal()
+    # Arrêter l'écoute vocale
+    try:
+        arreter_ecoute_vocale()
+        logger.info("Voice listener stopped successfully")
+    except Exception as e:
+        logger.warning("Could not stop voice listener: %s", e)
+    # Arrêter l'écoute double-clap
+    try:
+        arreter_ecoute_clap()
+        logger.info("Double-clap listener stopped successfully")
+    except Exception as e:
+        logger.warning("Could not stop double-clap listener: %s", e)
     # Arrêter l'overlay visuel de navigation
     try:
         from interface_morphique.browser_overlay import stop_browser_overlay
         stop_browser_overlay()
-        print("Browser overlay stopped successfully")
+        logger.info("Browser overlay stopped successfully")
     except Exception as e:
-        print(f"Warning: Could not stop browser overlay: {e}")
+        logger.warning("Could not stop browser overlay: %s", e)
 
 
 app = FastAPI(title="Jarvis API", version="1.0.0", lifespan=lifespan)

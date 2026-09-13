@@ -7,8 +7,8 @@ import threading
 import time
 from typing import Any
 
-from jarvis.voice_state import VoiceState, _set_voice_state
-from jarvis.voice_input import SAMPLE_RATE, get_input_device, transcrire_et_soumettre
+from jarvis.voice_input import SAMPLE_RATE, _jouer_phrase_reveil, get_input_device, transcrire_et_soumettre
+from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
 LOGGER = logging.getLogger(__name__)
@@ -55,10 +55,13 @@ def _listener_loop() -> None:
                                dtype="int16", channels=1) as stream:
             while not _STOP_EVENT.is_set():
                 data, _overflowed = stream.read(CLAP_BLOCK_SIZE)
+                if get_voice_state() is not VoiceState.IDLE:
+                    continue
                 if not detector.process_peak(_maximum_amplitude(bytes(data)), time.monotonic()):
                     continue
-                if not _set_voice_state(VoiceState.LISTENING):
-                    continue
+                _set_voice_state(VoiceState.WAKING_UP)
+                _jouer_phrase_reveil()
+                _set_voice_state(VoiceState.LISTENING)
                 transcrire_et_soumettre(stream)
     except Exception:
         LOGGER.exception("Échec de l'écoute double-clap")
@@ -79,5 +82,6 @@ def demarrer_ecoute_clap() -> None:
 def arreter_ecoute_clap() -> None:
     """Demande l'arrêt du listener double-clap et attend sa fin brièvement."""
     _STOP_EVENT.set()
+    _set_voice_state(VoiceState.IDLE)  # Force reset to IDLE on stop
     if _LISTENER_THREAD and _LISTENER_THREAD.is_alive():
         _LISTENER_THREAD.join(timeout=2)

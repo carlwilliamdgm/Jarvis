@@ -49,7 +49,7 @@ class VoiceOutputTests(unittest.TestCase):
     def tearDown(self):
         _set_voice_state(VoiceState.IDLE)
 
-    def test_reads_text_and_returns_to_idle(self):
+    def test_reads_text_and_returns_to_listening(self):
         voice = FakeEngine()
         _set_voice_state(VoiceState.THINKING)
         with patch("jarvis.voice_output.get_piper_voice", return_value=voice), \
@@ -59,20 +59,21 @@ class VoiceOutputTests(unittest.TestCase):
 
         synthesize.assert_called_once_with(voice, "Bonjour")
         read.assert_called_once()
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
-    def test_tts_failure_is_contained_and_returns_to_idle(self):
+    def test_tts_failure_is_contained_and_returns_to_listening(self):
         _set_voice_state(VoiceState.THINKING)
         with patch("jarvis.voice_output.get_piper_voice", side_effect=RuntimeError("audio")):
             parler_a_voix_haute("Bonjour")
 
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
     def test_refuses_to_speak_when_not_thinking(self):
+        _set_voice_state(VoiceState.LISTENING)
         with patch("jarvis.voice_output.get_piper_voice", side_effect=self.fail):
             parler_a_voix_haute("Bonjour")
 
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
     def test_stop_command_is_accent_insensitive(self):
         self.assertTrue(_is_stop_command("Arrête Jarvis"))
@@ -93,5 +94,10 @@ class VoiceOutputTests(unittest.TestCase):
             _lire_avec_interruption(object(), 22_050)
 
         self.assertEqual([True], stopped)
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
+
+    def test_empty_text_in_thinking_goes_to_listening(self):
+        _set_voice_state(VoiceState.THINKING)
+        parler_a_voix_haute("")
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 

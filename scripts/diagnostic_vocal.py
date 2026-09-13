@@ -35,8 +35,8 @@ def test_dependencies():
         return False
     
     try:
-        import piper_tts
-        print("✓ piper-tts installé")
+        import piper
+        print("✓ piper-tts (piper) installé")
     except ImportError as e:
         print(f"✗ piper-tts manquant: {e}")
         return False

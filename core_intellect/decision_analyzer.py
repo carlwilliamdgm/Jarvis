@@ -1,3 +1,5 @@
+#core_intellect/decision_analyser.py
+
 """Decision Analyzer - Auto-réflexion et analyse des décisions."""
 
 from collections import Counter, defaultdict

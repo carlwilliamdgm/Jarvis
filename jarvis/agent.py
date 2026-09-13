@@ -1303,6 +1303,10 @@ def executer_interaction_utilisateur(
         INTERACTION_LOCK.release()
 
     if origine_vocale:
+        if intention_action:
+            from jarvis.voice_state import VoiceState, _set_voice_state
+            _set_voice_state(VoiceState.ACTION)
+
         # Décharger la synthèse vocale dans un thread daemon pour ne pas bloquer
         # le pipeline principal. _TTS_LOCK (non-bloquant) empêche les lectures
         # simultanées : si une lecture est en cours, la nouvelle est ignorée.
@@ -1313,7 +1317,9 @@ def executer_interaction_utilisateur(
                 # Un TTS est déjà en cours ; on abandonne silencieusement.
                 return
             try:
-                parler_a_voix_haute(texte_a_lire)
+                # Toujours appeler parler_a_voix_haute, même avec texte vide
+                # pour gérer la transition THINKING -> LISTENING
+                parler_a_voix_haute(texte_a_lire or "")
             finally:
                 _TTS_LOCK.release()
 

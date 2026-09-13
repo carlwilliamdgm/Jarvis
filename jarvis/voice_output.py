@@ -100,54 +100,102 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
     recognizer = None
     try:
         recognizer = _new_recognizer()
-    except Exception:
-        LOGGER.debug("Reconnaissance d'interruption indisponible")
+        LOGGER.debug("Reconnaissance d'interruption activée")
+    except Exception as e:
+        LOGGER.debug(f"Reconnaissance d'interruption indisponible: {e}")
 
     try:
         sd.play(audio, sample_rate, blocking=False)
+        LOGGER.debug("Lecture audio démarrée")
     except Exception:
         LOGGER.exception("Erreur lors de la lecture audio")
-        _set_voice_state(VoiceState.IDLE)
+        _revenir_en_ecoute()
         return
 
     device_in = get_input_device()
+    interrupted = False
     try:
         with sd.RawInputStream(device=device_in, samplerate=SAMPLE_RATE, blocksize=1600, dtype="int16", channels=1) as stream:
             while True:
                 playback = sd.get_stream()
                 if playback is None or not getattr(playback, "active", False):
+                    LOGGER.debug("Lecture terminée naturellement")
                     break
                 data, _overflowed = stream.read(1600)
                 if recognizer is not None and data:
                     text = _recognizer_text(recognizer, bytes(data))
                     if text and _is_stop_command(text):
-                        LOGGER.info("Lecture Piper interrompue par commande utilisateur")
+                        LOGGER.info(f"Lecture Piper interrompue par commande: '{text}'")
                         sd.stop()
-                        _set_voice_state(VoiceState.IDLE)
+                        _revenir_en_ecoute()
+                        interrupted = True
                         return
     except Exception as e:
-        LOGGER.debug("Fin du flux d'écoute pour interruption TTS : %s", e)
+        LOGGER.debug(f"Fin du flux d'écoute pour interruption TTS : {e}")
     finally:
         try:
             playback = sd.get_stream()
             if playback is not None and getattr(playback, "active", False):
+                LOGGER.debug("Attente fin de lecture")
                 sd.wait()
         except Exception:
             pass
-        _set_voice_state(VoiceState.IDLE)
+        LOGGER.debug("Fin de _lire_avec_interruption")
+        if not interrupted:
+            _revenir_en_ecoute()
+            LOGGER.info("Parole terminée - début écoute 30s")
+
+
+def _nettoyer_markdown(texte: str) -> str:
+    """Nettoie le texte pour la synthèse vocale en supprimant le markdown."""
+    import re
+    # Supprimer les caractères markdown courants
+    texte = re.sub(r'\*+', '', texte)  # Supprimer ** et *
+    texte = re.sub(r'_+', '', texte)   # Supprimer __ et _
+    texte = re.sub(r'#+', '', texte)   # Supprimer #
+    texte = re.sub(r'`+', '', texte)   # Supprimer ` et ```
+    texte = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', texte)  # Remplacer [text](url) par text
+    texte = re.sub(r'\[([^\]]+)\]', r'\1', texte)  # Remplacer [text] par text
+    texte = re.sub(r'\s+', ' ', texte)  # Nettoyer les espaces multiples
+    return texte.strip()
+
+
+def _revenir_en_ecoute() -> None:
+    """Parole/réflexion terminée → nouvelle fenêtre d'écoute 30s."""
+    from jarvis.voice_input import reset_listening_timer
+
+    reset_listening_timer()
+    _set_voice_state(VoiceState.LISTENING)
 
 
 def parler_a_voix_haute(texte: str) -> None:
     """Lit ``texte`` avec Piper sans laisser une erreur TTS remonter au pipeline."""
-    if not texte or get_voice_state() is not VoiceState.THINKING:
+    LOGGER.info(f"parler_a_voix_haute appelé avec texte: '{texte}', état actuel: {get_voice_state()}")
+
+    if not texte and get_voice_state() in (VoiceState.THINKING, VoiceState.ACTION):
+        LOGGER.info("Texte vide - transition directe vers LISTENING")
+        _revenir_en_ecoute()
+        return
+
+    if get_voice_state() not in (VoiceState.THINKING, VoiceState.ACTION):
+        LOGGER.warning(f"parler_a_voix_haute ignoré - mauvais état: {get_voice_state()}")
+        if get_voice_state() is not VoiceState.IDLE:
+            _revenir_en_ecoute()
         return
 
     try:
+        texte_nettoye = _nettoyer_markdown(texte)
+        LOGGER.info(f"Texte nettoyé: '{texte_nettoye}'")
+
+        LOGGER.info("Transition THINKING -> SPEAKING")
         _set_voice_state(VoiceState.SPEAKING)
-        audio, sample_rate = _synthesise(get_piper_voice(), texte)
+        audio, sample_rate = _synthesise(get_piper_voice(), texte_nettoye)
+        LOGGER.info("Audio synthétisé, début lecture")
         _lire_avec_interruption(audio, sample_rate)
-        _set_voice_state(VoiceState.IDLE)
+        if get_voice_state() is VoiceState.SPEAKING:
+            _revenir_en_ecoute()
+        LOGGER.info("Lecture terminée")
     except Exception:
         LOGGER.exception("Échec de la synthèse vocale Piper")
         _set_voice_state(VoiceState.ERROR)
-        _set_voice_state(VoiceState.IDLE)
+        _revenir_en_ecoute()

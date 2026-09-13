@@ -6,6 +6,7 @@ similaires aux capacités de Claude dans Chrome, avec analyse et synthèse
 des résultats.
 """
 
+import logging
 import re
 import json
 import time
@@ -13,6 +14,8 @@ import os
 from typing import List, Dict, Optional, Any
 from urllib.parse import urlencode, quote_plus, urlparse
 import requests
+
+logger = logging.getLogger(__name__)
 
 # Tentative d'import de duckduckgo-search (bibliothèque maintenue par la communauté)
 try:
@@ -338,7 +341,8 @@ class WebSearchEngine:
                     end = len(url)
                 import urllib.parse
                 return urllib.parse.unquote(url[start:end])
-            except:
+            except Exception as e:
+                logger.debug("Échec nettoyage URL DuckDuckGo '%s': %s", url, e)
                 return url
         return url
     

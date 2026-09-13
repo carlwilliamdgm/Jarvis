@@ -263,7 +263,7 @@ class BrowserOverlay:
         self.running = False
         if self.root:
             self.root.destroy()
-        if self.thread:
+        if self.thread and threading.current_thread() != self.thread:
             self.thread.join(timeout=2)
     
     def is_running(self) -> bool:

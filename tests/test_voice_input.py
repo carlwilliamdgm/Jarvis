@@ -31,7 +31,7 @@ class FakeStream:
         return b"audio", False
 
 
-class FakeWakeWordStream:
+class LoudAfterListenStream:
     def __init__(self):
         self.reads = 0
 
@@ -41,9 +41,11 @@ class FakeWakeWordStream:
     def __exit__(self, *_args):
         return False
 
-    def read(self, _size):
+    def read(self, size):
         self.reads += 1
-        return b"\x00\x00" * _size, False
+        if get_voice_state() is VoiceState.LISTENING:
+            return b"\xff\x7f" * size, False
+        return b"\x00\x00" * size, False
 
 
 class FakeWakeWordModel:
@@ -76,12 +78,13 @@ class VoiceInputTests(unittest.TestCase):
         self.assertEqual("bonjour jarvis", text)
         submit.assert_called_once_with("bonjour jarvis")
 
-    def test_transcription_failure_returns_idle(self):
+    def test_transcription_failure_stays_listening(self):
+        _set_voice_state(VoiceState.LISTENING)
         with patch.object(voice_input, "transcrire_flux", return_value=None):
             text = voice_input.transcrire_et_soumettre(FakeStream())
 
         self.assertIsNone(text)
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
     def test_busy_pipeline_is_ignored_without_waiting(self):
         self.assertTrue(jarvis.INTERACTION_LOCK.acquire(blocking=False))
@@ -92,21 +95,28 @@ class VoiceInputTests(unittest.TestCase):
         finally:
             jarvis.INTERACTION_LOCK.release()
 
-        self.assertEqual(VoiceState.IDLE, get_voice_state())
+        self.assertEqual(VoiceState.LISTENING, get_voice_state())
 
     def test_openwakeword_detection_starts_shared_transcription_path(self):
-        stream = FakeWakeWordStream()
+        stream = LoudAfterListenStream()
         fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
+
+        def transcribe(_stream, initial_pcm=None):
+            voice_input._STOP_EVENT.set()
+            return "bonjour"
+
         with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
              patch.object(voice_input, "_new_wake_word_model", return_value=FakeWakeWordModel(0.8)), \
-             patch.object(voice_input, "transcrire_et_soumettre", return_value="bonjour") as transcribe:
+             patch.object(voice_input, "_jouer_phrase_reveil"), \
+             patch.object(voice_input, "transcrire_et_soumettre", side_effect=transcribe) as transcribe_mock:
             text = voice_input.écouter_et_transcrire()
 
         self.assertEqual("bonjour", text)
-        transcribe.assert_called_once_with(stream)
+        transcribe_mock.assert_called_once()
+        self.assertIs(stream, transcribe_mock.call_args.args[0])
 
     def test_openwakeword_below_threshold_does_not_transcribe(self):
-        stream = FakeWakeWordStream()
+        stream = LoudAfterListenStream()
         fake_sounddevice = SimpleNamespace(RawInputStream=lambda **_kwargs: stream)
         with patch.dict(sys.modules, {"sounddevice": fake_sounddevice}), \
              patch.object(
@@ -155,3 +165,35 @@ class VoiceInputTests(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True), \
              patch.dict(sys.modules, {"sounddevice": fake_sd}):
             self.assertEqual(2, voice_input.get_input_device())
+
+    def test_listen_timeout_ignored_while_thinking(self):
+        voice_input.reset_listening_timer()
+        voice_input._LISTENING_TIMEOUT_START = 0.0
+        _set_voice_state(VoiceState.THINKING)
+        self.assertFalse(voice_input._fenetre_ecoute_expiree())
+        _set_voice_state(VoiceState.LISTENING)
+        self.assertTrue(voice_input._fenetre_ecoute_expiree())
+
+    def test_transcrire_flux_fast_cut_on_partial_speech(self):
+        class PartialThenSilentRecognizer:
+            def __init__(self):
+                self.calls = 0
+
+            def AcceptWaveform(self, _data):
+                self.calls += 1
+                return False
+
+            def PartialResult(self):
+                return '{"partial": "bonjour"}'
+
+            def FinalResult(self):
+                return '{"text": "bonjour jarvis"}'
+
+        import time
+        start = time.monotonic()
+        with patch.object(voice_input, "_new_recognizer", return_value=PartialThenSilentRecognizer()):
+            result = voice_input.transcrire_flux(FakeStream())
+        elapsed = time.monotonic() - start
+
+        self.assertEqual("bonjour jarvis", result)
+        self.assertLess(elapsed, 2.0)

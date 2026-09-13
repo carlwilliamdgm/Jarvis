@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sys
 import threading
@@ -8,6 +9,9 @@ from urllib.parse import quote
 import requests
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
+
+# Configuration du logger
+logger = logging.getLogger(__name__)
 
 # Force UTF-8 encoding to avoid charmap errors on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -628,8 +632,8 @@ class JarvisGUI:
             response = requests.get(f"{self.api_base}/jarvis/status", timeout=5)
             if not response.ok:
                 pass  # Could add visual error indicator here
-        except:
-            pass  # Could add visual error indicator here
+        except Exception as e:
+            logger.debug("Erreur rafraîchissement statut: %s", e)
 
 
 class InstanceManager:
@@ -835,7 +839,8 @@ class InstanceManager:
             if parsed.scheme not in ("http", "https"):
                 messagebox.showerror("Erreur", "URL invalide (doit commencer par http:// ou https://)")
                 return
-        except:
+        except Exception as e:
+            logger.warning("Erreur validation URL: %s", e)
             messagebox.showerror("Erreur", "URL invalide")
             return
         
@@ -862,7 +867,8 @@ class InstanceManager:
             if parsed.scheme not in ("http", "https"):
                 messagebox.showerror("Erreur", "URL invalide (doit commencer par http:// ou https://)")
                 return
-        except:
+        except Exception as e:
+            logger.warning("Erreur validation URL: %s", e)
             messagebox.showerror("Erreur", "URL invalide")
             return
         
@@ -987,7 +993,7 @@ class InstanceManager:
                 try:
                     test_resp = requests.get(f"{jarvis_url}/jarvis/status", timeout=3)
                     is_online = test_resp.ok
-                except:
+                except Exception:
                     is_online = False
                 
                 status.config(

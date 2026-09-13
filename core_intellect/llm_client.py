@@ -1,4 +1,4 @@
-# core/llm_client.py
+# core_intellect/llm_client.py
 
 import concurrent.futures
 from dataclasses import dataclass, field
@@ -24,12 +24,63 @@ from context_engine.memory import (
     sauvegarder_memoire,
 )
 
+
+def _extraire_texte_message_llm(msg) -> str:
+    """Récupère le texte utile d'un message provider, y compris les champs reasoning."""
+    contenu = getattr(msg, "content", None)
+    if isinstance(contenu, str) and contenu.strip():
+        return contenu
+    if isinstance(contenu, list):
+        fragments = []
+        for part in contenu:
+            if isinstance(part, str):
+                fragments.append(part)
+            elif isinstance(part, dict):
+                fragments.append(str(part.get("text") or part.get("content") or ""))
+            else:
+                fragments.append(str(getattr(part, "text", "") or ""))
+        joint = "".join(fragments)
+        if joint.strip():
+            return joint
+    for attr in ("reasoning", "reasoning_content"):
+        val = getattr(msg, attr, None)
+        if isinstance(val, str) and "{" in val:
+            return val
+    return ""
+
+
 # Modèles par défaut
 MODELE_SOUVERAIN_JARVIS = "jarvis-gc:latest"
 MODELES_JARVIS_GC = ["jarvis-gc:latest", "qwen2.5:3b", "qwen2.5:7b"]
 MODELES_GROQ = ["openai/gpt-oss-120b"]
 MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
 MODELE_LOCAL = "qwen2.5:7b"
+
+
+def get_modele_local() -> str:
+    """Retourne le meilleur modèle Ollama disponible localement.
+    
+    Vérifie en priorité JARVIS_LOCAL_MODEL, puis cherche parmi les modèles
+    Ollama installés le plus performant disponible, avec fallback sur MODELE_LOCAL.
+    """
+    pref = os.environ.get("JARVIS_LOCAL_MODEL")
+    if pref:
+        return pref
+    candidates = ["qwen2.5:7b", "qwen2.5:3b", "qwen2.5:1.5b", "qwen2.5:0.5b", "jarvis-gc:latest"]
+    try:
+        if ollama is not None:
+            models_list = ollama.list()
+            raw = models_list.get("models", []) if isinstance(models_list, dict) else getattr(models_list, "models", [])
+            installed = [m.get("model", m.get("name", "")) if isinstance(m, dict) else getattr(m, "model", getattr(m, "name", "")) for m in raw]
+            installed = [m for m in installed if m]
+            for c in candidates:
+                for inst in installed:
+                    if c == inst or inst.startswith(c + ":") or inst == f"{c}:latest":
+                        return inst
+    except Exception:
+        pass
+    return MODELE_LOCAL
+
 
 _EVENT_EMITTER: Optional[Callable[[str, dict], None]] = None
 
@@ -155,15 +206,31 @@ class GroqProvider(BaseLLMProvider):
         ]
         derniere_erreur = None
 
+        modele_raisonnement = "gpt-oss" in (modele or "")
+        budget = max(int(cfg.max_tokens or 1024), 4096 if modele_raisonnement else 1024)
+
         for client in clients:
             try:
-                response = client.chat.completions.create(
-                    model=modele,
-                    messages=groq_messages,
-                    max_tokens=cfg.max_tokens,
-                    temperature=cfg.temperature,
-                )
-                contenu = response.choices[0].message.content
+                kwargs = {
+                    "model": modele,
+                    "messages": groq_messages,
+                    "max_tokens": budget,
+                    "temperature": cfg.temperature,
+                }
+                if modele_raisonnement:
+                    kwargs["reasoning_effort"] = "low"
+                try:
+                    response = client.chat.completions.create(**kwargs)
+                except TypeError:
+                    kwargs.pop("reasoning_effort", None)
+                    response = client.chat.completions.create(**kwargs)
+                msg = response.choices[0].message
+                contenu = _extraire_texte_message_llm(msg)
+                if not str(contenu or "").strip():
+                    raise RuntimeError(
+                        f"Groq {modele} a renvoyé un contenu vide "
+                        f"(finish_reason={getattr(response.choices[0], 'finish_reason', None)})."
+                    )
                 return LLMResponse(
                     content=contenu,
                     provider=self.nom,
@@ -253,12 +320,13 @@ class OpenRouterProvider(BaseLLMProvider):
 
 
 class OllamaProvider(BaseLLMProvider):
-    """Fournisseur Ollama local."""
+    """Fournisseur Ollama local avec auto-détection du meilleur modèle installé."""
 
-    def __init__(self, modele: str = MODELE_LOCAL):
+    def __init__(self, modele: Optional[str] = None):
+        nom_modele = modele or get_modele_local()
         super().__init__(
             nom="Ollama",
-            modeles=[modele],
+            modeles=[nom_modele],
             niveau="local",
         )
 
@@ -457,6 +525,7 @@ class LLMClient:
         config: Optional[LLMConfig] = None,
         on_event: Optional[Callable[[str, dict], None]] = None,
         max_tentatives: int = 2,
+        require_json: bool = False,
     ) -> Optional[dict]:
         """
         Génère une réponse avec cascade de haute performance :
@@ -489,6 +558,10 @@ class LLMClient:
                     modele = provider.modeles[0]
                     try:
                         resp = provider.generate(modele, messages, config=cfg)
+                        if not str(getattr(resp, "content", "") or "").strip():
+                            raise RuntimeError(f"{nom} {modele} a renvoyé une réponse vide")
+                        if require_json and "{" not in str(resp.content):
+                            raise RuntimeError(f"{nom} {modele} a renvoyé une réponse sans JSON")
                         console.print(f"[dim green]✓ {nom} réussi : {modele}[/dim green]")
                         if on_event is not None:
                             on_event("provider", {"provider": nom, "model": modele})
@@ -504,6 +577,10 @@ class LLMClient:
                 try:
                     console.print(f"[dim cyan]-> Mode Hors-Ligne : Modèle Souverain The Great Corporation actif ({modele_souverain})...[/dim cyan]")
                     resp = self.sovereign_provider.generate(modele_souverain, messages, config=cfg)
+                    if not str(getattr(resp, "content", "") or "").strip():
+                        raise RuntimeError("Jarvis-GC a renvoyé une réponse vide")
+                    if require_json and "{" not in str(resp.content):
+                        raise RuntimeError("Jarvis-GC a renvoyé une réponse sans JSON")
                     console.print(f"[dim green]✓ {self.sovereign_provider.nom} réussi : {modele_souverain}[/dim green]")
                     if on_event is not None:
                         on_event("provider", {"provider": self.sovereign_provider.nom, "model": modele_souverain})
@@ -512,12 +589,17 @@ class LLMClient:
                     console.print(f"[dim yellow]✗ {self.sovereign_provider.nom} indisponible ({str(e)[:100]}) -> Fallback local standard[/dim yellow]")
 
             # 3. FALLBACK LOCAL STANDARD
+            modele_local = self.local_provider.modeles[0] if (self.local_provider and getattr(self.local_provider, "modeles", None)) else get_modele_local()
             if tentative == 0:
-                console.print(f"[dim]-> Utilisation du modèle local : {MODELE_LOCAL}[/dim]")
+                console.print(f"[dim]-> Utilisation du modèle local : {modele_local}[/dim]")
             try:
-                resp = self.local_provider.generate(MODELE_LOCAL, messages, config=cfg)
+                resp = self.local_provider.generate(modele_local, messages, config=cfg)
+                if not str(getattr(resp, "content", "") or "").strip():
+                    raise RuntimeError("Ollama a renvoyé une réponse vide")
+                if require_json and "{" not in str(resp.content):
+                    raise RuntimeError("Ollama a renvoyé une réponse sans JSON")
                 if on_event is not None:
-                    on_event("provider", {"provider": self.local_provider.nom, "model": MODELE_LOCAL})
+                    on_event("provider", {"provider": self.local_provider.nom, "model": modele_local})
                 return resp.to_dict()
             except Exception as e:
                 console.print(f"[red]✗ Erreur modèle local : {e}[/red]")

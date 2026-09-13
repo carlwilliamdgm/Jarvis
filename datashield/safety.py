@@ -169,21 +169,22 @@ try:
             continue
 
     # Second pass: only check open_files for SYSTEM processes (risky operation)
+    # NOTE: print("1")/("0") is the IPC stdout channel for the parent subprocess.run.
     for pid in system_pids:
         try:
             proc = psutil.Process(pid)
             for opened in proc.open_files():
                 opened_path = Path(opened.path).resolve(strict=False)
                 if opened_path == target_path or opened_path.is_relative_to(target_path):
-                    print("1")
+                    print("1")  # IPC: held by system process
                     sys.exit(0)
         except (OSError, psutil.Error):
             continue
 
-    print("0")
+    print("0")  # IPC: not held
     sys.exit(0)
 except Exception:
-    print("0")
+    print("0")  # IPC: error fallback
     sys.exit(1)
 """
 
