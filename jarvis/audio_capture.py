@@ -176,35 +176,49 @@ class _DropOldestQueue:
 class _TranscriptionQueue:
     """Queue a signal de saturation (pas de drop silencieux).
 
-    Lorsque pleine, leve ``overflow_event`` : le consommateur Vosk doit
-    detecter cet evenement, abandonner l'enonce courant et reinitialiser
-    son recognizer. Taille reduite (~1.3 s) pour reveler vite les problemes
-    de performance plutot que creer une latence cachee.
+    Lorsque pleine pendant une transcription active, leve ``overflow_event`` :
+    le consommateur Vosk doit detecter cet evenement, abandonner l'enonce
+    courant et reinitialiser son recognizer. Taille reduite (~1.3 s).
+    En veille (aucun consommateur actif), elle conserve un tampon glissant
+    des dernieres trames fraiches sans lever d'alerte de saturation.
     """
 
-    def __init__(self, maxsize: int = 16) -> None:
+    def __init__(self, maxsize: int = 16, active_consumer: bool = True) -> None:
         self._q: queue.Queue[AudioFrame] = queue.Queue(maxsize=maxsize)
         self.overflow_event = threading.Event()
         self.drops = 0
+        self.active_consumer = active_consumer
 
     def put(self, frame: AudioFrame) -> bool:
-        """Insere ; si pleine, signale la surcharge sans drop silencieux."""
+        """Insere ; si pleine, signale la surcharge uniquement si un consommateur est actif."""
         try:
             self._q.put_nowait(frame)
             return False
         except queue.Full:
+            if not self.active_consumer:
+                try:
+                    self._q.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self._q.put_nowait(frame)
+                except queue.Full:
+                    pass
+                return False
             self.overflow_event.set()
             self.drops += 1
             LOGGER.warning("[TranscriptionQueue] Saturation -- surcharge signalee")
             return True
 
     def get(self, timeout: float = 0.1) -> Optional[AudioFrame]:
+        self.active_consumer = True
         try:
             return self._q.get(timeout=timeout)
         except queue.Empty:
             return None
 
     def drain(self) -> int:
+        self.active_consumer = False
         self.overflow_event.clear()
         drained = 0
         while True:
@@ -268,7 +282,8 @@ class AudioCaptureEngine:
 
         # Queues par consommateur
         self._q_wake          = _DropOldestQueue(maxsize=4)
-        self._q_transcription = _TranscriptionQueue(maxsize=16)
+        self._q_clap          = _DropOldestQueue(maxsize=4)
+        self._q_transcription = _TranscriptionQueue(maxsize=16, active_consumer=False)
         self._q_stop          = _DropOldestQueue(maxsize=4)
 
         # Mode courant
@@ -392,8 +407,8 @@ class AudioCaptureEngine:
         if mode == CaptureMode.SPEAKING:
             self._q_stop.put(frame)
         elif mode == CaptureMode.NORMAL:
-            # Les deux consommateurs recoivent la meme trame (meme seq)
             self._q_wake.put(frame)
+            self._q_clap.put(frame)
             self._q_transcription.put(frame)
         # CaptureMode.PAUSED : rien
 
@@ -502,6 +517,7 @@ class AudioCaptureEngine:
                 self._stream = None
             self._accumulation_buffer = np.array([], dtype=np.int16)
             self._q_wake.drain()
+            self._q_clap.drain()
             self._q_transcription.drain()
             self._q_stop.drain()
         if self._capture_thread and self._capture_thread.is_alive():
@@ -524,12 +540,13 @@ class AudioCaptureEngine:
         """
         self._garde_jusqu_a = time.monotonic() + duree_ms / 1000.0
         w = self._q_wake.drain()
+        c = self._q_clap.drain()
         t = self._q_transcription.drain()
         s = self._q_stop.drain()
         self._accumulation_buffer = np.array([], dtype=np.int16)
         LOGGER.debug(
-            "[AudioCaptureEngine] Garde %dms wake:%d transcription:%d stop:%d",
-            duree_ms, w, t, s,
+            "[AudioCaptureEngine] Garde %dms wake:%d clap:%d transcription:%d stop:%d",
+            duree_ms, w, c, t, s,
         )
 
     def est_en_periode_garde(self) -> bool:
@@ -538,9 +555,11 @@ class AudioCaptureEngine:
     def lire_depuis_queue(
         self, nom: str, timeout: float = 0.1
     ) -> Optional[AudioFrame]:
-        """Lecture bloquante depuis une queue nommee (wake | transcription | stop)."""
+        """Lecture bloquante depuis une queue nommee (wake | clap | transcription | stop)."""
         if nom == "wake":
             return self._q_wake.get(timeout=timeout)
+        if nom == "clap":
+            return self._q_clap.get(timeout=timeout)
         if nom == "transcription":
             return self._q_transcription.get(timeout=timeout)
         if nom == "stop":
@@ -561,6 +580,8 @@ class AudioCaptureEngine:
         """Abonnement direct à la queue sous-jacente."""
         if nom == "wake":
             return self._q_wake._q
+        if nom == "clap":
+            return self._q_clap._q
         if nom == "transcription":
             return self._q_transcription._q
         if nom == "stop":

@@ -169,19 +169,22 @@ class AudioCaptureTests(unittest.TestCase):
 
         frame = AudioFrame(1, np.zeros(FRAME_SIZE, dtype=np.int16), False)
 
-        # Mode NORMAL : wake et transcription alimentés
+        # Mode NORMAL : wake, clap et transcription alimentés
         engine.set_mode(CaptureMode.NORMAL)
         engine._distribute_frame(frame)
         self.assertEqual(1, engine._q_wake.qsize)
+        self.assertEqual(1, engine._q_clap.qsize)
         self.assertEqual(1, engine._q_transcription.qsize)
         self.assertEqual(0, engine._q_stop.qsize)
         engine._q_wake.drain()
+        engine._q_clap.drain()
         engine._q_transcription.drain()
 
         # Mode SPEAKING : seul stop est alimenté
         engine.set_mode(CaptureMode.SPEAKING)
         engine._distribute_frame(frame)
         self.assertEqual(0, engine._q_wake.qsize)
+        self.assertEqual(0, engine._q_clap.qsize)
         self.assertEqual(0, engine._q_transcription.qsize)
         self.assertEqual(1, engine._q_stop.qsize)
         engine._q_stop.drain()
@@ -190,6 +193,7 @@ class AudioCaptureTests(unittest.TestCase):
         engine.set_mode(CaptureMode.PAUSED)
         engine._distribute_frame(frame)
         self.assertEqual(0, engine._q_wake.qsize)
+        self.assertEqual(0, engine._q_clap.qsize)
         self.assertEqual(0, engine._q_transcription.qsize)
         self.assertEqual(0, engine._q_stop.qsize)
 
@@ -202,4 +206,5 @@ class AudioCaptureTests(unittest.TestCase):
         frame = AudioFrame(1, np.zeros(FRAME_SIZE, dtype=np.int16), False)
         engine._distribute_frame(frame)
         self.assertEqual(0, engine._q_wake.qsize)
+        self.assertEqual(0, engine._q_clap.qsize)
         self.assertEqual(0, engine._q_transcription.qsize)

@@ -61,9 +61,9 @@ def _listener_loop() -> None:
         if not engine.ouvrir():
             LOGGER.warning("[ClapInput] Impossible d'ouvrir le moteur audio")
             return
-        LOGGER.info("[ClapInput] Démarré sur queue wake du moteur unique")
+        LOGGER.info("[ClapInput] Démarré sur queue clap du moteur unique")
         while not _STOP_EVENT.is_set():
-            frame = engine.lire_depuis_queue("wake", timeout=0.1)
+            frame = engine.lire_depuis_queue("clap", timeout=0.1)
             if frame is None:
                 continue
             if get_voice_state() is not VoiceState.IDLE:
