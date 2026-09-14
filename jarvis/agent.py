@@ -279,23 +279,41 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
     if "utilisateur" not in memoire:
-        console.print(Panel(
-            "Bienvenue. Je suis Jarvis, votre assistant local et compagnon cognitif.\nJe vais apprendre à vous connaître et à vous assister.",
-            style="bold cyan"
-        ))
-        nom = console.input("[bold green]Comment vous appelez-vous ?[/bold green] ").strip()
-        langue = console.input("[bold green]Langue préférée ? (français/english) >[/bold green] ").strip() or "français"
+        default_nom = os.environ.get("JARVIS_USER") or os.environ.get("USERNAME") or "Carl"
+        default_lang = os.environ.get("JARVIS_LANG", "français")
+
+        is_interactive = False
+        try:
+            is_interactive = sys.stdin is not None and sys.stdin.isatty()
+        except Exception:
+            is_interactive = False
+
+        if is_interactive:
+            try:
+                console.print(Panel(
+                    "Bienvenue. Je suis Jarvis, votre assistant local et compagnon cognitif.\nJe vais apprendre à vous connaître et à vous assister.",
+                    style="bold cyan"
+                ))
+                nom = console.input("[bold green]Comment vous appelez-vous ?[/bold green] ").strip() or default_nom
+                langue = console.input("[bold green]Langue préférée ? (français/english) >[/bold green] ").strip() or default_lang
+                console.print(f"[cyan]Bonjour {nom}. Je me souviendrai de vous.[/cyan]\n")
+            except (EOFError, OSError):
+                nom = default_nom
+                langue = default_lang
+        else:
+            nom = default_nom
+            langue = default_lang
+
         memoire["utilisateur"] = {
             "nom": nom,
             "os": OS,
             "home": str(HOME),
             "langue": langue,
         }
-        memoire["notes"] = []
-        memoire["preferences"] = {}
-        memoire["historique_actions"] = []
+        memoire.setdefault("notes", [])
+        memoire.setdefault("preferences", {})
+        memoire.setdefault("historique_actions", [])
         sauvegarder_memoire(memoire)
-        console.print(f"[cyan]Bonjour {nom}. Je me souviendrai de vous.[/cyan]\n")
     sauvegarder_memoire(memoire)
     return memoire
 

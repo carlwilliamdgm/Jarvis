@@ -18,6 +18,10 @@ foreach ($file in @($logFile, $errFile)) {
     }
 }
 
+# Arrêter les anciennes instances de Jarvis / uvicorn bloquées
+Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $PID } | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
 Start-Process -FilePath $pythonExe `
     -ArgumentList "-m interface_morphique.server" `
     -WorkingDirectory $projectRoot `
