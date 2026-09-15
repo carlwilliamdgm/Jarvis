@@ -109,6 +109,26 @@ class ToolSmokeTests(unittest.TestCase):
         manquants = [nom for nom in sorted(tools.OUTILS) if nom not in prompt]
         self.assertEqual([], manquants)
 
+    def test_reversible_command_blocked_by_whitelist_requires_confirmation(self):
+        calls = []
+        old_confirm = tools.demander_confirmation
+        tools.demander_confirmation = lambda description: calls.append(description) or False
+        try:
+            result = tools.executer_commande("shutdown /r /t 0")
+        finally:
+            tools.demander_confirmation = old_confirm
+        self.assertIn("annul", str(result).lower())
+        self.assertEqual(1, len(calls))
+
+    def test_irreversible_command_remains_blocked_without_confirmation(self):
+        old_confirm = tools.demander_confirmation
+        tools.demander_confirmation = lambda description: self.fail("Une action irréversible ne doit pas être confirmable")
+        try:
+            result = tools.executer_powershell("Clear-Disk -Number 0 -RemoveData")
+        finally:
+            tools.demander_confirmation = old_confirm
+        self.assertIn("irréversible", str(result).lower())
+
     def test_notification_tool_is_callable(self):
         old_notifier = tools.storage.notifier
         calls = []

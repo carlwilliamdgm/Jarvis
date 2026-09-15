@@ -174,23 +174,22 @@ class _DropOldestQueue:
 
 
 class _TranscriptionQueue:
-    """Queue a signal de saturation (pas de drop silencieux).
+    """Tampon glissant de transcription privilégiant la continuité vocale.
 
-    Lorsque pleine pendant une transcription active, leve ``overflow_event`` :
-    le consommateur Vosk doit detecter cet evenement, abandonner l'enonce
-    courant et reinitialiser son recognizer. Taille reduite (~1.3 s).
-    En veille (aucun consommateur actif), elle conserve un tampon glissant
-    des dernieres trames fraiches sans lever d'alerte de saturation.
+    En saturation, la trame la plus ancienne est évincée. Aucun événement
+    d'abandon n'est émis : le recognizer poursuit l'énoncé avec les données les
+    plus récentes, ce qui est préférable à une annulation complète.
     """
 
-    def __init__(self, maxsize: int = 16, active_consumer: bool = True) -> None:
+    def __init__(self, maxsize: int = 64, active_consumer: bool = True) -> None:
         self._q: queue.Queue[AudioFrame] = queue.Queue(maxsize=maxsize)
         self.overflow_event = threading.Event()
         self.drops = 0
         self.active_consumer = active_consumer
+        self._last_warning = 0.0
 
     def put(self, frame: AudioFrame) -> bool:
-        """Insere ; si pleine, signale la surcharge uniquement si un consommateur est actif."""
+        """Insere ; si pleine, applique un tampon glissant et limite les alertes."""
         try:
             self._q.put_nowait(frame)
             return False
@@ -205,9 +204,19 @@ class _TranscriptionQueue:
                 except queue.Full:
                     pass
                 return False
-            self.overflow_event.set()
             self.drops += 1
-            LOGGER.warning("[TranscriptionQueue] Saturation -- surcharge signalee")
+            now = time.monotonic()
+            if now - self._last_warning >= 5.0:
+                self._last_warning = now
+                LOGGER.warning("[TranscriptionQueue] Saturation -- surcharge signalee (tampon glissant actif)")
+            try:
+                self._q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self._q.put_nowait(frame)
+            except queue.Full:
+                pass
             return True
 
     def get(self, timeout: float = 0.1) -> Optional[AudioFrame]:
@@ -283,7 +292,7 @@ class AudioCaptureEngine:
         # Queues par consommateur
         self._q_wake          = _DropOldestQueue(maxsize=4)
         self._q_clap          = _DropOldestQueue(maxsize=4)
-        self._q_transcription = _TranscriptionQueue(maxsize=16, active_consumer=False)
+        self._q_transcription = _TranscriptionQueue(maxsize=64, active_consumer=False)
         self._q_stop          = _DropOldestQueue(maxsize=4)
 
         # Mode courant

@@ -3,7 +3,13 @@
 import getpass
 from datetime import datetime, timedelta
 
-from taskflow.commands import executer_commande_direct, executer_powershell_direct
+from taskflow.commands import (
+    analyser_ast_powershell,
+    commande_irreversible,
+    executer_commande_direct,
+    executer_powershell_direct,
+    _preparer_arguments_commande,
+)
 from taskflow.custom_commands import (
     ajouter_commande_personnalisee,
     executer_commande_personnalisee,
@@ -150,19 +156,39 @@ def supprimer(chemin: str) -> str:
 
 
 def executer_commande(commande: str) -> str:
-    # DEFCON check: system command execution
+    """Exécute une commande avec confirmation si le filtre standard la refuse."""
     from datashield.defcon import defcon
-    if not defcon.is_action_allowed(is_destructive=False, is_system_call=True):
+    level = defcon.current_level.value
+    if level <= 2:
         return resultat_erreur("Action bloquée par le niveau DEFCON actuel.", categorie="defcon_blocked")
-    return executer_commande_direct(commande=commande)
+    if commande_irreversible(commande):
+        return resultat_erreur("Action irréversible bloquée par la politique de sécurité.", categorie="irreversible_blocked")
+
+    _, erreur = _preparer_arguments_commande(commande)
+    confirmation_requise = level == 3 or erreur is not None
+    if confirmation_requise and not demander_confirmation(
+        f"Exécuter la commande système avec les droits de votre compte ?\n{commande}"
+    ):
+        return resultat_erreur("Commande annulée.", categorie="action_refusee_par_confirmation")
+    return executer_commande_direct(commande=commande, confirmation_expresse=confirmation_requise)
 
 
 def executer_powershell(commande: str) -> str:
-    # DEFCON check: system command execution (PowerShell)
+    """Exécute PowerShell après confirmation lorsqu'un filtre le signale."""
     from datashield.defcon import defcon
-    if not defcon.is_action_allowed(is_destructive=False, is_system_call=True):
+    level = defcon.current_level.value
+    if level <= 2:
         return resultat_erreur("Action bloquée par le niveau DEFCON actuel.", categorie="defcon_blocked")
-    return executer_powershell_direct(commande=commande)
+    if commande_irreversible(commande):
+        return resultat_erreur("Action irréversible bloquée par la politique de sécurité.", categorie="irreversible_blocked")
+
+    valide, _ = analyser_ast_powershell(commande)
+    confirmation_requise = level == 3 or not valide
+    if confirmation_requise and not demander_confirmation(
+        f"Exécuter la commande PowerShell avec les droits de votre compte ?\n{commande}"
+    ):
+        return resultat_erreur("Commande annulée.", categorie="action_refusee_par_confirmation")
+    return executer_powershell_direct(commande=commande, confirmation_expresse=confirmation_requise)
 
 
 def vider_temp() -> str:

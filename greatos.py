@@ -37,16 +37,16 @@ class GreatOSKernel:
         self.defcon = defcon
         self.goals = goal_manager
         self.sync = snapshot_manager
+        self._historique = []
 
     def demarrer(self):
         """Initialise la mémoire et prépare le système."""
         return initialiser()
 
     def executer(self, message: str) -> str:
-        """Exécute une intention utilisateur via l'agent Jarvis."""
+        """Exécute une intention utilisateur via l'agent Jarvis avec mémoire de session."""
         memoire = charger_memoire()
-        historique = []
-        resultat = executer_interaction_utilisateur(message, historique, memoire)
+        resultat = executer_interaction_utilisateur(message, self._historique, memoire)
         if resultat:
             return resultat[0]
         return "Aucune réponse produite."
@@ -55,6 +55,14 @@ class GreatOSKernel:
         """Génère un diagnostic complet des 8 modules."""
         sys_rep = generer_rapport_systeme()
         stats_goals = self.goals.lister_objectifs()
+
+        # Sonde de disponibilité Core Intellect (LLM)
+        from core_intellect.llm_client import get_llm_client
+        client = get_llm_client()
+        clouds_dispo = [p.nom for p in client.get_available_cloud_providers()]
+        sovereign_actif = bool(client.sovereign_provider and client.sovereign_provider.is_available())
+        local_actif = bool(client.local_provider and client.local_provider.is_available())
+
         return {
             "os": "GreatOS",
             "version": self.version,
@@ -62,6 +70,11 @@ class GreatOSKernel:
             "systeme": sys_rep,
             "objectifs_actifs": len(stats_goals),
             "snapshots_disponibles": len(self.sync.lister_snapshots()),
+            "core_intellect": {
+                "clouds_actifs": clouds_dispo,
+                "sovereign_disponible": sovereign_actif,
+                "local_disponible": local_actif,
+            },
         }
 
 
@@ -83,9 +96,33 @@ def main():
             query = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else "Bonjour Jarvis"
             print(kernel.executer(query))
             return
+        elif cmd in ("repl", "interactive", "chat"):
+            pass
+        elif cmd in ("-h", "--help", "help"):
+            print(f"=== GreatOS Kernel {kernel.version} ===")
+            print("Usage: python greatos.py [status|snapshot|ask <message>|repl]")
+            return
 
-    print(f"=== GreatOS Kernel {kernel.version} ===")
-    print("Usage: python greatos.py [status|snapshot|ask <message>]")
+    # Session interactive REPL par défaut
+    print(f"=== GreatOS Kernel {kernel.version} - Session Interactive ===")
+    print("Tapez 'exit' ou 'quit' pour quitter.\n")
+    try:
+        kernel.demarrer()
+    except Exception:
+        pass
+    while True:
+        try:
+            entree = input("GreatOS > ").strip()
+            if not entree:
+                continue
+            if entree.lower() in ("exit", "quit", "q"):
+                print("Fermeture de la session GreatOS.")
+                break
+            reponse = kernel.executer(entree)
+            print(f"\nJarvis: {reponse}\n")
+        except (KeyboardInterrupt, EOFError):
+            print("\nArrêt de la session.")
+            break
 
 
 if __name__ == "__main__":

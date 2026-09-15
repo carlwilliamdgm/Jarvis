@@ -1,5 +1,7 @@
 # 📋 CAHIER DES CHARGES : GreatOS
 
+> **Statut documentaire — septembre 2026 :** ce document décrit la vision, le périmètre cible et les critères de validation de GreatOS. Il ne constitue pas un inventaire des fonctionnalités déjà livrées. Pour l'état vérifié du dépôt, consulter [ETAT_DES_LIEUX.md](../ETAT_DES_LIEUX.md).
+
 **Projet :** GreatOS – Système d’Exploitation Intelligent Adaptatif  
 **Version :** 1.0  
 **Date initiale :** 30 Novembre 2025  

@@ -148,8 +148,8 @@ class AudioCaptureTests(unittest.TestCase):
         self.assertIsNotNone(f)
         self.assertEqual(2, f.seq)
 
-    def test_transcription_queue_overflow_signal(self):
-        """_TranscriptionQueue signale l'overflow sans drop silencieux."""
+    def test_transcription_queue_keeps_latest_frames_without_abandoning_utterance(self):
+        """La saturation conserve les trames récentes sans déclencher d'abandon."""
         q = _TranscriptionQueue(maxsize=2)
         self.assertFalse(q.put(AudioFrame(1, np.zeros(10), False)))
         self.assertFalse(q.put(AudioFrame(2, np.zeros(10), False)))
@@ -158,8 +158,11 @@ class AudioCaptureTests(unittest.TestCase):
         # 3e trame : dépassement
         overflow = q.put(AudioFrame(3, np.zeros(10), False))
         self.assertTrue(overflow)
-        self.assertTrue(q.overflow_event.is_set())
+        self.assertFalse(q.overflow_event.is_set())
         self.assertEqual(1, q.drops)
+        frame = q.get(timeout=0.01)
+        self.assertIsNotNone(frame)
+        self.assertEqual(2, frame.seq)
 
     def test_capture_modes_routing(self):
         """Vérifie le routage des trames selon CaptureMode."""

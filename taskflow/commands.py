@@ -94,6 +94,27 @@ POWERSHELL_FORBIDDEN_CONSTRUCTS = [
     r"\bSet-ExecutionPolicy\b",
 ]
 
+# Ces opérations détruisent des données ou la structure de démarrage de façon
+# difficilement récupérable. Elles ne doivent jamais être débloquées par une
+# simple confirmation conversationnelle.
+IRREVERSIBLE_COMMAND_PATTERNS = (
+    "format-volume",
+    "format ",
+    "clear-disk",
+    "initialize-disk",
+    "diskpart",
+    "rm -rf",
+    "del /f /s /q",
+    "rd /s /q",
+    "bcdedit",
+)
+
+
+def commande_irreversible(commande: str) -> bool:
+    """Indique si une commande est trop destructive pour être confirmée."""
+    normalized = (commande or "").casefold()
+    return any(pattern in normalized for pattern in IRREVERSIBLE_COMMAND_PATTERNS)
+
 
 def analyser_ast_powershell(commande: str) -> Tuple[bool, str]:
     """Analyse syntaxique et sécurité AST d'une commande PowerShell.
@@ -106,9 +127,8 @@ def analyser_ast_powershell(commande: str) -> Tuple[bool, str]:
     cmd_clean = commande.strip()
 
     # 1. Vérification rapide des patterns destructifs et malveillants connus
-    patterns_destructifs = ("rm -rf", "del /f /s /q", "format", "rd /s /q")
     cmd_lower = cmd_clean.lower()
-    if any(pattern in cmd_lower for pattern in patterns_destructifs):
+    if commande_irreversible(cmd_lower):
         return False, "Commande bloquée : pattern destructif détecté."
 
     for pattern in POWERSHELL_FORBIDDEN_CONSTRUCTS:
@@ -197,14 +217,23 @@ def _preparer_arguments_commande(commande: str) -> Tuple[List[str], str | None]:
     return [], f"Commande bloquée : exécutable '{premier_token}' non autorisé par la whitelist."
 
 
-def executer_commande_direct(commande: str) -> str:
-    """Exécute une commande système via une liste d'arguments contrôlés sans shell=True."""
+def executer_commande_direct(commande: str, confirmation_expresse: bool = False) -> str:
+    """Exécute une commande sans shell.
+
+    Une commande hors liste blanche n'est admise qu'après confirmation par la
+    couche d'orchestration, et jamais si elle est irréversible.
+    """
     if not commande or not commande.strip():
         return "Commande vide."
 
     args, erreur = _preparer_arguments_commande(commande)
     if erreur:
-        return erreur
+        if not confirmation_expresse or commande_irreversible(commande):
+            return erreur
+        try:
+            args = shlex.split(commande, posix=False)
+        except ValueError as exc:
+            return f"Erreur de découpage de la commande : {exc}"
 
     try:
         resultat = subprocess.run(
@@ -224,14 +253,15 @@ def executer_commande_direct(commande: str) -> str:
         return f"Erreur : {e}"
 
 
-def executer_powershell_direct(commande: str) -> str:
-    """Exécute une commande PowerShell après validation syntaxique et analyseur AST."""
+def executer_powershell_direct(commande: str, confirmation_expresse: bool = False) -> str:
+    """Exécute une commande PowerShell, avec dérogation confirmée si récupérable."""
     if not commande or not commande.strip():
         return "Commande PowerShell vide."
 
     valide, erreur = analyser_ast_powershell(commande)
     if not valide:
-        return erreur
+        if not confirmation_expresse or commande_irreversible(commande):
+            return erreur
 
     try:
         resultat = subprocess.run(

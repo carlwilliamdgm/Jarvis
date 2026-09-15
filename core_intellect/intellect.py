@@ -388,6 +388,15 @@ def _parser_reponse_intellect(contenu: str, message_original: str) -> dict:
         return resultat
 
     except Exception:
+        texte_brut = str(contenu).strip() if contenu else ""
+        if texte_brut:
+            return {
+                "objectif": message_original[:100],
+                "type": "conversation",
+                "raisonnement": "",
+                "actions": [],
+                "reponse": texte_brut,
+            }
         return {
             "objectif": message_original[:100],
             "type": "conversation",

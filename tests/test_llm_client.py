@@ -1,4 +1,5 @@
 import os
+import json
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -136,6 +137,11 @@ class LLMClientTests(unittest.TestCase):
         provider = OpenRouterProvider()
         self.assertEqual(provider.default_timeout, 10.0)
 
+    def test_local_providers_use_interactive_timeout(self):
+        from core_intellect.llm_client import JarvisGCProvider
+        self.assertEqual(OllamaProvider().timeout, 15.0)
+        self.assertEqual(JarvisGCProvider().default_timeout, 15.0)
+
     @patch("core_intellect.llm_client.ollama")
     def test_prechauffer_modele_local_invokes_ollama(self, mock_ollama):
         from core_intellect.llm_client import prechauffer_modele_local
@@ -187,6 +193,36 @@ class LLMClientTests(unittest.TestCase):
         res = client.generate_with_fallback([{"role": "user", "content": "test"}], max_tentatives=1)
         self.assertIsNotNone(res)
         mock_prewarm.assert_called_once_with("qwen2.5:3b")
+
+    def test_cloud_plain_text_response_encapsulated_without_fallback(self):
+        cloud_p = MagicMock(spec=BaseLLMProvider)
+        cloud_p.nom = "Groq"
+        cloud_p.modeles = ["openai/gpt-oss-120b"]
+        cloud_p.niveau = "simple"
+        cloud_p.is_available.return_value = True
+        cloud_p.generate.return_value = LLMResponse(
+            content="Bonjour Sir ! Bien sûr que j'ai un mode vocal actif.",
+            provider="Groq",
+            model="openai/gpt-oss-120b"
+        )
+
+        fake_local = MagicMock(spec=BaseLLMProvider)
+        fake_local.nom = "Ollama"
+        fake_local.modeles = ["qwen2.5:3b"]
+        fake_local.is_available.return_value = True
+
+        client = LLMClient(
+            cloud_providers=[cloud_p],
+            local_provider=fake_local,
+            sovereign_provider=None,
+        )
+
+        res = client.generate_with_fallback([{"role": "user", "content": "test"}], require_json=True)
+        self.assertIsNotNone(res)
+        fake_local.generate.assert_not_called()
+        parsed = json.loads(res["message"]["content"])
+        self.assertEqual(parsed["type"], "conversation")
+        self.assertIn("mode vocal actif", parsed["reponse"])
 
 
 if __name__ == "__main__":

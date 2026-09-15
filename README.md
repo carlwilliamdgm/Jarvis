@@ -6,7 +6,7 @@ Jarvis est un assistant IA local-first en Python, développé par Carl-William D
 
 Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
 
-> **État vérifié le 18 août 2026.** L'API et l'interface web répondent correctement sur le port `8000`, et la suite de tests compte 182 tests passants. Avant de développer de nouvelles fonctionnalités, vérifier la disponibilité du provider LLM choisi, la mémoire disponible et l'espace disque.
+> **État du projet.** GreatOS est un prototype local-first avancé, en phase de stabilisation. Les capacités réellement disponibles, les limites connues et les critères restant avant une déclaration de production sont documentés dans [ETAT_DES_LIEUX.md](ETAT_DES_LIEUX.md). Les objectifs du cahier des charges ne doivent pas être interprétés comme des fonctionnalités déjà livrées.
 
 ## Vue d'ensemble
 
@@ -44,7 +44,7 @@ Jarvis dispose d'un modèle souverain propriétaire développé par The Great Co
 - **Base technique** : Qwen 2.5 (1.5B/3B/7B Instruct) optimisé pour CPU/AVX2
 - **Optimisation Windows** : Utilisation de 4 threads physiques pour éviter le freeze système
 - **Prompt système gravé** : Instructions gravées dans le Modelfile pour cohérence maximale
-- **Timeout stricte** : Délai configurable (45s par défaut) pour garantir réactivité
+- **Timeout strict** : délai local configurable de 15 s par défaut pour préserver la réactivité ; un calcul local expiré ne doit pas bloquer le retour à l'utilisateur.
 - **Décodage structuré** : Optimisé pour le tool calling et la prise de décision
 - **Gestion éco mémoire** : Déchargement automatique après 5min d'inactivité
 - **Fonctionnement hors-ligne** : Premier choix quand les providers cloud sont indisponibles

@@ -54,8 +54,25 @@ def _extraire_texte_message_llm(msg) -> str:
 MODELE_SOUVERAIN_JARVIS = "jarvis-gc:latest"
 MODELES_JARVIS_GC = ["jarvis-gc:latest", "qwen2.5:3b", "qwen2.5:7b"]
 MODELES_GROQ = ["openai/gpt-oss-120b"]
-MODELES_OPENROUTER = ["meta-llama/llama-3.3-70b-instruct:free"]
+# Un seul modèle est tenté par défaut : une liste de secours séquentielle peut
+# transformer une panne OpenRouter en dizaines de secondes de latence.
+MODELES_OPENROUTER = ["deepseek/deepseek-chat"]
 MODELE_LOCAL = "qwen2.5:3b"
+
+
+def get_modeles_openrouter() -> list[str]:
+    """Retourne les modèles explicitement configurés pour OpenRouter.
+
+    ``OPENROUTER_MODELS`` accepte une liste séparée par des virgules. Les
+    fallbacks multiples sont donc un choix conscient de déploiement, pas une
+    surprise dans le chemin interactif.
+    """
+    configured = os.environ.get("OPENROUTER_MODELS") or os.environ.get("OPENROUTER_MODEL")
+    if configured:
+        modeles = [modele.strip() for modele in configured.split(",") if modele.strip()]
+        if modeles:
+            return modeles
+    return list(MODELES_OPENROUTER)
 
 
 def get_modele_local() -> str:
@@ -273,12 +290,12 @@ class GroqProvider(BaseLLMProvider):
 
 
 class OpenRouterProvider(BaseLLMProvider):
-    """Fournisseur OpenRouter avec injection de prompt système, rotation multi-clés et timeout maximal de 10s."""
+    """Fournisseur OpenRouter configurable, avec un délai interactif borné."""
 
     def __init__(self, modeles: Optional[list[str]] = None, timeout: float = 10.0):
         super().__init__(
             nom="OpenRouter",
-            modeles=modeles or MODELES_OPENROUTER,
+            modeles=modeles or get_modeles_openrouter(),
             niveau="simple",
         )
         self.default_timeout = timeout
@@ -376,7 +393,7 @@ class OpenRouterProvider(BaseLLMProvider):
 class OllamaProvider(BaseLLMProvider):
     """Fournisseur Ollama local avec auto-détection du modèle et timeout protecteur anti-freeze."""
 
-    def __init__(self, modele: Optional[str] = None, timeout: float = 25.0):
+    def __init__(self, modele: Optional[str] = None, timeout: float = 15.0):
         nom_modele = modele or get_modele_local()
         super().__init__(
             nom="Ollama",
@@ -409,10 +426,11 @@ class OllamaProvider(BaseLLMProvider):
             )
 
         timeout_val = cfg.timeout or self.timeout
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_call_ollama)
-                response = future.result(timeout=timeout_val)
+            future = executor.submit(_call_ollama)
+            response = future.result(timeout=timeout_val)
+            executor.shutdown(wait=True)
 
             # Ollama peut retourner un dict ou un objet
             if isinstance(response, dict):
@@ -426,8 +444,13 @@ class OllamaProvider(BaseLLMProvider):
                 raw=response,
             )
         except concurrent.futures.TimeoutError:
+            future.cancel()
+            # Ne pas attendre l'inférence bloquée : le serveur local peut finir
+            # son calcul, mais l'interaction utilisateur reprend immédiatement.
+            executor.shutdown(wait=False, cancel_futures=True)
             raise RuntimeError(f"Ollama a dépassé le délai de {timeout_val}s pour générer.")
         except Exception as e:
+            executor.shutdown(wait=False, cancel_futures=True)
             raise RuntimeError(f"Ollama non disponible: {e}. Assurez-vous que le service est démarré.") from e
 
 
@@ -438,7 +461,7 @@ class JarvisGCProvider(BaseLLMProvider):
     Comporte une réserve de timeout stricte pour garantir la réactivité instantanée de Jarvis.
     """
 
-    def __init__(self, modeles: Optional[list[str]] = None, host: Optional[str] = None, timeout: float = 45.0):
+    def __init__(self, modeles: Optional[list[str]] = None, host: Optional[str] = None, timeout: float = 15.0):
         super().__init__(
             nom="Jarvis-GC",
             modeles=modeles or MODELES_JARVIS_GC,
@@ -501,10 +524,11 @@ class JarvisGCProvider(BaseLLMProvider):
             kwargs["keep_alive"] = "5m"
             return client.chat(**kwargs)
 
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_chat)
-                response = future.result(timeout=timeout_val)
+            future = executor.submit(_do_chat)
+            response = future.result(timeout=timeout_val)
+            executor.shutdown(wait=True)
 
             if isinstance(response, dict):
                 content = response.get("message", {}).get("content", "")
@@ -517,13 +541,19 @@ class JarvisGCProvider(BaseLLMProvider):
                 raw=response,
             )
         except concurrent.futures.TimeoutError as e:
+            future.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
             raise TimeoutError(
                 f"Délai d'inférence Jarvis-GC dépassé (> {timeout_val}s). "
                 f"Envisagez d'utiliser la variante 3B (plus légère) ou "
                 f"d'augmenter JARVIS_GC_TIMEOUT dans votre environnement."
             ) from e
         except Exception as e:
+            executor.shutdown(wait=False, cancel_futures=True)
             raise RuntimeError(f"Erreur modèle souverain Jarvis-GC ({modele}): {e}") from e
+
+
+_SENTINEL_SOVEREIGN = object()
 
 
 class LLMClient:
@@ -536,9 +566,12 @@ class LLMClient:
         self,
         cloud_providers: Optional[list[BaseLLMProvider]] = None,
         local_provider: Optional[BaseLLMProvider] = None,
-        sovereign_provider: Optional[BaseLLMProvider] = None,
+        sovereign_provider: Any = _SENTINEL_SOVEREIGN,
     ):
-        self.sovereign_provider = sovereign_provider or JarvisGCProvider()
+        if sovereign_provider is _SENTINEL_SOVEREIGN:
+            self.sovereign_provider = JarvisGCProvider()
+        else:
+            self.sovereign_provider = sovereign_provider
         self.cloud_providers = cloud_providers or [
             GroqProvider(),
             OpenRouterProvider(),
@@ -638,25 +671,36 @@ class LLMClient:
 
                 for provider in ordered_clouds:
                     nom = provider.nom
-                    modele = provider.modeles[0]
-                    try:
+                    modeles_a_tester = getattr(provider, "modeles", None) or [provider.modeles[0]]
+                    succes_provider = False
+                    for modele in modeles_a_tester:
                         try:
-                            resp = provider.generate(modele, messages, config=cfg, on_key_failure=notifier_echec_cle)
-                        except TypeError:
-                            resp = provider.generate(modele, messages, config=cfg)
-                        if not str(getattr(resp, "content", "") or "").strip():
-                            raise RuntimeError(f"{nom} {modele} a renvoyé une réponse vide")
-                        if require_json and "{" not in str(resp.content):
-                            raise RuntimeError(f"{nom} {modele} a renvoyé une réponse sans JSON")
-                        console.print(f"[dim green]✓ {nom} réussi : {modele}[/dim green]")
-                        if on_event is not None:
-                            on_event("provider", {"provider": nom, "model": modele})
-                        self.memoriser_provider_cloud(nom)
-                        return resp.to_dict()
-                    except Exception as e:
-                        notifier_echec_cle(nom, e)
-                        console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
-                        continue
+                            try:
+                                resp = provider.generate(modele, messages, config=cfg, on_key_failure=notifier_echec_cle)
+                            except TypeError:
+                                resp = provider.generate(modele, messages, config=cfg)
+                            if not str(getattr(resp, "content", "") or "").strip():
+                                raise RuntimeError(f"{nom} {modele} a renvoyé une réponse vide")
+                            if require_json and "{" not in str(resp.content):
+                                contenu_brut = str(resp.content).strip()
+                                if contenu_brut and len(contenu_brut) > 2:
+                                    resp.content = json.dumps({
+                                        "objectif": "conversation",
+                                        "type": "conversation",
+                                        "actions": [],
+                                        "reponse": contenu_brut,
+                                    }, ensure_ascii=False)
+                                else:
+                                    raise RuntimeError(f"{nom} {modele} a renvoyé une réponse sans JSON")
+                            console.print(f"[dim green]✓ {nom} réussi : {modele}[/dim green]")
+                            if on_event is not None:
+                                on_event("provider", {"provider": nom, "model": modele})
+                            self.memoriser_provider_cloud(nom)
+                            return resp.to_dict()
+                        except Exception as e:
+                            notifier_echec_cle(nom, e)
+                            console.print(f"[dim yellow]✗ {nom} {modele} indisponible : {str(e)[:100]}[/dim yellow]")
+                            continue
 
             # 2. FALLBACK SOUVERAIN HORS-LIGNE (The Great Corporation Jarvis-GC)
             if self.sovereign_provider and self.sovereign_provider.is_available():
@@ -667,7 +711,16 @@ class LLMClient:
                     if not str(getattr(resp, "content", "") or "").strip():
                         raise RuntimeError("Jarvis-GC a renvoyé une réponse vide")
                     if require_json and "{" not in str(resp.content):
-                        raise RuntimeError("Jarvis-GC a renvoyé une réponse sans JSON")
+                        contenu_brut = str(resp.content).strip()
+                        if contenu_brut and len(contenu_brut) > 2:
+                            resp.content = json.dumps({
+                                "objectif": "conversation",
+                                "type": "conversation",
+                                "actions": [],
+                                "reponse": contenu_brut,
+                            }, ensure_ascii=False)
+                        else:
+                            raise RuntimeError("Jarvis-GC a renvoyé une réponse sans JSON")
                     console.print(f"[dim green]✓ {self.sovereign_provider.nom} réussi : {modele_souverain}[/dim green]")
                     if on_event is not None:
                         on_event("provider", {"provider": self.sovereign_provider.nom, "model": modele_souverain})
@@ -684,7 +737,16 @@ class LLMClient:
                 if not str(getattr(resp, "content", "") or "").strip():
                     raise RuntimeError("Ollama a renvoyé une réponse vide")
                 if require_json and "{" not in str(resp.content):
-                    raise RuntimeError("Ollama a renvoyé une réponse sans JSON")
+                    contenu_brut = str(resp.content).strip()
+                    if contenu_brut and len(contenu_brut) > 2:
+                        resp.content = json.dumps({
+                            "objectif": "conversation",
+                            "type": "conversation",
+                            "actions": [],
+                            "reponse": contenu_brut,
+                        }, ensure_ascii=False)
+                    else:
+                        raise RuntimeError("Ollama a renvoyé une réponse sans JSON")
                 if on_event is not None:
                     on_event("provider", {"provider": self.local_provider.nom, "model": modele_local})
                 return resp.to_dict()

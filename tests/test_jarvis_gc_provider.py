@@ -115,8 +115,12 @@ class JarvisGCProviderTests(unittest.TestCase):
                 mock_client.chat.side_effect = slow_chat
                 mock_ollama.Client.return_value = mock_client
 
+                started_at = time.monotonic()
                 with self.assertRaises(TimeoutError):
                     provider.generate("jarvis-gc:latest", [{"role": "user", "content": "hi"}], config=LLMConfig(timeout=0.05))
+                # Le timeout est une limite de latence utilisateur, pas seulement
+                # une exception levée après la fin du calcul local.
+                self.assertLess(time.monotonic() - started_at, 0.15)
 
     def test_sticky_last_valid_cloud_provider(self):
         p_groq = MagicMock(spec=BaseLLMProvider)

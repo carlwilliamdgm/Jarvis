@@ -229,8 +229,7 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 raw = bytes(data)
                 speech = bool(getattr(audio_stream, "last_speech", False))
                 if getattr(audio_stream, "discontinuity", False):
-                    LOGGER.warning("Trou audio pendant la transcription ; énoncé abandonné")
-                    return None
+                    LOGGER.warning("Trou audio pendant la transcription ; poursuite avec le flux disponible")
             if speech:
                 had_speech = True
                 last_speech_at = time.monotonic()

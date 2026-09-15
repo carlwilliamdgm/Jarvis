@@ -1388,6 +1388,11 @@ class AutonomousAgent:
         }
 
     def detecter_signaux(self, etat: dict) -> list[str]:
+        # L'utilisateur a la priorité : reporter toute activité autonome tant
+        # qu'une interaction est en cours, plutôt que de lancer des alertes ou
+        # une requête LLM concurrente.
+        if INTERACTION_LOCK.locked():
+            return []
         COOLDOWN = 1800
         signaux = []
         detected = {}
