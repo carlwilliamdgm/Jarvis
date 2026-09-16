@@ -81,6 +81,9 @@ def extraire_code_erreur(exception_ou_code) -> int | None:
 def classifier_erreur_systeme(exception_ou_code) -> str:
     if isinstance(exception_ou_code, ResultatOutil) and exception_ou_code.categorie_erreur:
         return exception_ou_code.categorie_erreur
+    categorie = getattr(exception_ou_code, "error_category", None)
+    if categorie in CATEGORIES_ERREUR:
+        return categorie
     code = extraire_code_erreur(exception_ou_code)
     return TABLE_ERREURS_SYSTEME.get(code, "autre")
 

@@ -88,3 +88,32 @@ def oublier_preference(cle: str) -> str:
     sauvegarder_memoire(data)
     return f"Preference supprimee : {cle}"
 
+
+def lire_journal_agents(limite: int = 10) -> str:
+    """Lit le relais durable laissé par les agents de développement du projet."""
+    from context_engine.agent_learning import format_agent_sessions
+    try:
+        return format_agent_sessions(limite)
+    except (TypeError, ValueError):
+        return "Limite invalide pour le journal des agents."
+
+
+def lire_traces_capacites(limite: int = 10) -> str:
+    """Consulte les traces d'exécution des capacités GreatOS enregistrées dans Context Engine."""
+    from context_engine.memory import consulter_trace_capacites
+    try:
+        traces = consulter_trace_capacites(limite=limite)
+        if not traces:
+            return "Aucune trace de capacité enregistrée pour le moment."
+        lignes = []
+        for t in traces:
+            date_str = t.get("date", "")
+            owner = t.get("owner", "inconnu")
+            cap = t.get("capability", t.get("outil", ""))
+            statut = t.get("status", "")
+            duree = t.get("duree_ms", 0)
+            res = str(t.get("resultat", ""))[:100]
+            lignes.append(f"[{date_str}] {cap} ({owner}) -> {statut} ({duree}ms) : {res}")
+        return "\n".join(lignes)
+    except Exception as e:
+        return f"Erreur lors de la lecture des traces de capacités : {e}"

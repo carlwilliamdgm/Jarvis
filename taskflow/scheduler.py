@@ -166,9 +166,12 @@ def executer_action_automatisation(auto: dict, outils: dict, mettre_a_jour_proch
         resultat = f"{nom} : outil indisponible : {outil}"
     else:
         try:
-            resultat = f"{nom} : {outils[outil](**args)}"
+            from greatos_capabilities import execute_capability
+            res_cap = execute_capability(outils, outil, args)
+            resultat = f"{nom} : {res_cap.message}"
         except Exception as e:
             resultat = f"{nom} : erreur outil {outil} : {e}"
+
 
     auto["derniere_execution"] = maintenant.strftime(FORMAT_DATE_HEURE)
     if mettre_a_jour_prochaine:

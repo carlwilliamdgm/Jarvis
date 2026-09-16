@@ -6,9 +6,17 @@ from progress_tracker.goals import goal_manager, GoalStatus
 
 
 def calculer_statistiques_globales() -> Dict:
-    """Calcule le taux de complétion global et la distribution des statuts."""
+    """Calcule le taux de complétion global, la distribution des statuts et l'impact des capacités."""
     objectifs = goal_manager.lister_objectifs()
+    metriques = goal_manager.obtenir_metriques_execution()
     total = len(objectifs)
+    total_actions = metriques.get("total_actions", 0)
+    taux_succes = (
+        round((metriques.get("total_succes", 0) / total_actions) * 100.0, 1)
+        if total_actions > 0
+        else 100.0
+    )
+
     if total == 0:
         return {
             "total": 0,
@@ -16,6 +24,10 @@ def calculer_statistiques_globales() -> Dict:
             "actifs": 0,
             "taux_completion": 0.0,
             "progression_moyenne": 0.0,
+            "total_actions_capacites": total_actions,
+            "taux_succes_capacites": taux_succes,
+            "duree_totale_ms": metriques.get("duree_totale_ms", 0.0),
+            "metriques_capacites": metriques,
         }
 
     termines = sum(1 for g in objectifs if g.status == GoalStatus.COMPLETED)
@@ -28,4 +40,8 @@ def calculer_statistiques_globales() -> Dict:
         "actifs": actifs,
         "taux_completion": round((termines / total) * 100.0, 1),
         "progression_moyenne": round(progression_totale / total, 1),
+        "total_actions_capacites": total_actions,
+        "taux_succes_capacites": taux_succes,
+        "duree_totale_ms": metriques.get("duree_totale_ms", 0.0),
+        "metriques_capacites": metriques,
     }

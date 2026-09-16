@@ -38,3 +38,6 @@ pandoc/
 pandoc_tmp/
 .agents/
 .devin/
+.pytest_temp/
+tmp_cdc_render/
+.cursor/

@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from json import JSONDecodeError
 from pathlib import Path
+from typing import Any, Callable
+
 from core_intellect.llm_client import (
     MODELES_GROQ,
     MODELES_OPENROUTER,
@@ -42,6 +44,7 @@ from datashield.error_classification import resultat_erreur
 from context_engine.memory import (
     charger_memoire,
     journaliser_erreur_systeme,
+    journaliser_resultat_capacite,
     normaliser_memoire,
     sauvegarder_memoire,
     signalement_erreurs_autre_recurrentes,
@@ -53,6 +56,18 @@ from taskflow.stark_parser import StarkSegment, parser_objectif_stark
 from taskflow.stark_session import enregistrer_instance_stark, retirer_instance_stark, verifier_instances_stark
 from datashield.autodestruct import schedule_autodestruction
 from taskflow.tools import OUTILS, demander_confirmation
+from greatos_capabilities import execute_capability
+from greatos_contracts import (
+    CapabilityRequest,
+    CapabilityResult,
+    CapabilityStatus,
+    ExecutionPlan,
+    PlanStep,
+    RiskLevel,
+    SecurityDecision,
+)
+from datashield.policy import evaluate_capability
+from progress_tracker import enregistrer_impact_capacite
 
 import psutil
 
@@ -380,9 +395,11 @@ def executer_outil(reponse: str) -> str | None:
             if not isinstance(args, dict):
                 resultats.append(f"Arguments invalides pour {outil}.")
                 continue
-            resultat = OUTILS[outil](**args)
+            resultat = execute_capability(OUTILS, outil, args)
+            journaliser_resultat_capacite(resultat, arguments=args, contexte="mode_action")
+            enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
             _journaliser_resultat_si_erreur(resultat, "mode_action", "", outil, args)
-            resultats.append(str(resultat))
+            resultats.append(resultat.message)
         except TypeError as e:
             message = f"Arguments invalides pour {data.get('outil')} : {e}"
             journaliser_erreur_systeme(
@@ -408,8 +425,11 @@ def executer_outil(reponse: str) -> str | None:
     return "\n".join(resultats) if resultats else None
 
 
-def reponse_termine_tache(reponse: str) -> bool:
+def fin_de_tache_demandee(reponse: str) -> bool:
     return any(objet.get("outil") == "terminer_tache" for objet in extraire_json_objets(reponse))
+
+
+reponse_termine_tache = fin_de_tache_demandee
 
 
 def resultat_indique_erreur(resultat: str) -> bool:
@@ -418,6 +438,8 @@ def resultat_indique_erreur(resultat: str) -> bool:
 
 
 def resultat_est_erreur(resultat) -> bool:
+    if hasattr(resultat, "status"):
+        return resultat.status != CapabilityStatus.SUCCESS
     return bool(getattr(resultat, "erreur", False)) or resultat_indique_erreur(str(resultat))
 
 
@@ -854,19 +876,24 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
 
     event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "stark"})
     try:
-        resultat_outil = OUTILS[outil](**args)
-        resultat_texte = str(resultat_outil)
+        resultat_outil = execute_capability(OUTILS, outil, args)
+        journaliser_resultat_capacite(resultat_outil, arguments=args, contexte="stark")
+        enregistrer_impact_capacite(resultat_outil, goal_id=args.get("goal_id"))
+        resultat_texte = resultat_outil.message
         entree = {
             "outil": outil,
             "args": args,
             "resultat_brut": resultat_texte,
             "erreur": resultat_est_erreur(resultat_outil),
-            "categorie_erreur": getattr(resultat_outil, "categorie_erreur", None),
+            "categorie_erreur": getattr(resultat_outil, "error_category", None),
             "code_brut": getattr(resultat_outil, "code_brut", None),
         }
         etat.actions.append(entree)
         etat.derniere_action = {"outil": outil, "args": args}
         if entree["erreur"]:
+            if entree["categorie_erreur"] == "erreur_technique_outil":
+                etat.statut_erreur_technique = True
+                etat.resultat_final = resultat_texte
             etat.echecs_consecutifs += 1
             
             # Détection spécifique pour les échecs de recherche web
@@ -1206,16 +1233,20 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         if outil and outil in OUTILS:
             event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "normal"})
             try:
-                resultat = OUTILS[outil](**args)
+                resultat = execute_capability(OUTILS, outil, args)
                 contexte = "mode_action" if etait_mode_action_force else "conversation"
+                journaliser_resultat_capacite(resultat, arguments=args, contexte=contexte)
+                enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
                 _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
-                resultats_outils.append(str(resultat))
+                resultats_outils.append(resultat.message)
                 event_bus.emit(
                     "tool_failed" if resultat_est_erreur(resultat) else "tool_completed",
                     {
                         "outil": outil,
                         "args": args,
-                        "resultat": str(resultat),
+                        "resultat": resultat.message,
+                        "capability": resultat.capability,
+                        "status": resultat.status.value if hasattr(resultat.status, "value") else str(resultat.status),
                         "mode": "normal",
                     },
                 )
@@ -1256,6 +1287,191 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     historique.append({"role": "assistant", "content": reponse_finale})
     limiter_historique(historique)
     return reponse_finale, intention_action
+
+
+def orchestrer_plan(
+    plan: ExecutionPlan,
+    memoire: dict,
+    on_event: Callable[[str, dict], None] | None = None,
+) -> list[CapabilityResult]:
+    """Orchestre un plan d'exécution sans logique métier.
+
+    Jarvis ne prend aucune décision métier et n'exécute pas de commande en direct :
+    il coordonne le graphe de dépendances, interroge DataShield pour la politique,
+    délègue aux modules via execute_capability, journalise dans Context Engine
+    et mesure dans Progress Tracker.
+    """
+    emitter = on_event or event_bus.emit
+    emitter(
+        "plan_created",
+        {
+            "goal": plan.goal,
+            "total_steps": len(plan.steps),
+            "steps": [
+                {
+                    "id": s.id,
+                    "capability": s.capability,
+                    "description": s.description,
+                    "dependencies": s.dependencies,
+                    "preconditions": s.preconditions,
+                }
+                for s in plan.steps
+            ],
+        },
+    )
+
+    resultats: list[CapabilityResult] = []
+    etapes_reussies: set[str] = set()
+    etapes_echouees: set[str] = set()
+
+    for step in plan.steps:
+        # Vérification des dépendances
+        dependances_manquantes = [dep for dep in step.dependencies if dep not in etapes_reussies]
+        if dependances_manquantes:
+            msg_dep = f"Dépendances non satisfaites pour {step.id} : {', '.join(dependances_manquantes)}"
+            res_dep = CapabilityResult(
+                capability=step.capability,
+                status=CapabilityStatus.FAILED,
+                message=msg_dep,
+                error_category="dependance_non_satisfaite",
+            )
+            resultats.append(res_dep)
+            etapes_echouees.add(step.id)
+            emitter(
+                "step_failed",
+                {
+                    "step_id": step.id,
+                    "capability": step.capability,
+                    "resultat": msg_dep,
+                    "status": "failed",
+                },
+            )
+            continue
+
+        emitter(
+            "step_started",
+            {
+                "step_id": step.id,
+                "capability": step.capability,
+                "description": step.description,
+                "preconditions": step.preconditions,
+                "args": step.arguments,
+            },
+        )
+
+        # Décision sécurité DataShield
+        req = CapabilityRequest(
+            capability=step.capability,
+            arguments=step.arguments,
+            resource=str(step.arguments.get("chemin") or step.arguments.get("url") or step.id),
+        )
+        policy_decision = evaluate_capability(req)
+        emitter(
+            "policy_decision",
+            {
+                "step_id": step.id,
+                "capability": step.capability,
+                "decision": policy_decision.decision.value,
+                "reason": policy_decision.reason,
+            },
+        )
+
+        if policy_decision.decision == SecurityDecision.DENY:
+            res_deny = CapabilityResult(
+                capability=step.capability,
+                status=CapabilityStatus.DENIED,
+                message=policy_decision.reason,
+                error_category="defcon_blocked",
+            )
+            journaliser_resultat_capacite(res_deny, arguments=step.arguments, contexte="orchestrateur_plan")
+            enregistrer_impact_capacite(res_deny, goal_id=step.arguments.get("goal_id"))
+            resultats.append(res_deny)
+            etapes_echouees.add(step.id)
+            emitter(
+                "step_failed",
+                {
+                    "step_id": step.id,
+                    "capability": step.capability,
+                    "resultat": policy_decision.reason,
+                    "status": "denied",
+                },
+            )
+            continue
+
+        if policy_decision.decision == SecurityDecision.CONFIRM and not est_mode_stark_actif():
+            desc_confirm = f"Étape {step.id} ({step.capability}) : {step.description or policy_decision.reason}"
+            if not demander_confirmation(desc_confirm):
+                res_cancel = CapabilityResult(
+                    capability=step.capability,
+                    status=CapabilityStatus.CANCELLED,
+                    message="Action annulée par l'utilisateur.",
+                    error_category="action_refusee_par_confirmation",
+                )
+                journaliser_resultat_capacite(res_cancel, arguments=step.arguments, contexte="orchestrateur_plan")
+                resultats.append(res_cancel)
+                etapes_echouees.add(step.id)
+                emitter(
+                    "step_failed",
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "resultat": "Action annulée par l'utilisateur.",
+                        "status": "cancelled",
+                    },
+                )
+                continue
+
+        # Exécution souveraine via dispatcher
+        emitter(
+            "tool_started",
+            {
+                "outil": step.capability,
+                "args": step.arguments,
+                "step_id": step.id,
+                "mode": "plan",
+            },
+        )
+        res_exec = execute_capability(OUTILS, step.capability, step.arguments)
+        journaliser_resultat_capacite(res_exec, arguments=step.arguments, contexte="orchestrateur_plan")
+        enregistrer_impact_capacite(res_exec, goal_id=step.arguments.get("goal_id"))
+        resultats.append(res_exec)
+
+        if res_exec.status == CapabilityStatus.SUCCESS:
+            etapes_reussies.add(step.id)
+            emitter(
+                "step_completed",
+                {
+                    "step_id": step.id,
+                    "capability": step.capability,
+                    "resultat": res_exec.message,
+                    "status": "success",
+                },
+            )
+        else:
+            etapes_echouees.add(step.id)
+            emitter(
+                "step_failed",
+                {
+                    "step_id": step.id,
+                    "capability": step.capability,
+                    "resultat": res_exec.message,
+                    "status": res_exec.status.value,
+                },
+            )
+
+    succes_global = len(etapes_echouees) == 0 and len(resultats) == len(plan.steps)
+    emitter(
+        "plan_completed" if succes_global else "plan_interrupted",
+        {
+            "goal": plan.goal,
+            "total_steps": len(plan.steps),
+            "steps_succeeded": len(etapes_reussies),
+            "steps_failed": len(etapes_echouees),
+            "status": "completed" if succes_global else "interrupted",
+        },
+    )
+
+    return resultats
 
 
 def executer_agent(
@@ -1315,7 +1531,11 @@ def executer_interaction_utilisateur(
         message_prepare = preparer_message_utilisateur(message)
         reponse, intention_action = executer_agent(message_prepare, historique, memoire)
         texte = reponse if isinstance(reponse, str) else str(reponse)
-        OUTILS["enregistrer_echange"](message_prepare, texte)
+        execute_capability(
+            OUTILS,
+            "enregistrer_echange",
+            {"utilisateur": message_prepare, "jarvis": texte},
+        )
         result = texte, intention_action
     finally:
         INTERACTION_LOCK.release()
@@ -1422,11 +1642,13 @@ class AutonomousAgent:
             if self.signal_counts[key] >= 2 and time.time() - self.last_action_time.get(key, 0) >= COOLDOWN:
                 signaux.append(message)
 
-        rappels = self.outils["verifier_rappels"]()
+        rappels_res = execute_capability(self.outils, "verifier_rappels")
+        rappels = rappels_res.message
         if not rappels.startswith("Aucun"):
             signaux.append(f"[routine] {rappels}")
 
-        automatisations = self.outils["executer_automatisations_dues"]()
+        automatisations_res = execute_capability(self.outils, "executer_automatisations_dues")
+        automatisations = automatisations_res.message
         if not automatisations.startswith("Aucune"):
             signaux.append(f"[routine] {automatisations}")
 
@@ -1519,9 +1741,11 @@ class AutonomousAgent:
             if blocked:
                 continue
             try:
-                resultat = self.outils[outil](**args)
+                resultat = execute_capability(self.outils, outil, args)
+                journaliser_resultat_capacite(resultat, arguments=args, contexte="veille")
+                enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
                 _journaliser_resultat_si_erreur(resultat, "veille", "veille autonome", outil, args)
-                resultats.append(str(resultat))
+                resultats.append(resultat.message)
                 executed_actions.append(action)
             except TypeError as e:
                 erreur = f"Erreur outil {outil} : {e}"

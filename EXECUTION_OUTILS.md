@@ -187,6 +187,8 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 - `vider_corbeille()` - Vide la corbeille.
 - `notifier_utilisateur(titre, message, urgence=False)` - Envoie une notification systeme.
 - `bilan_proactif(force=False, niveau="normal")` - Regroupe les signaux proactifs utiles.
+- `lire_journal_agents(limite=10)` - Consulte les relais structurés laissés par les agents de développement dans le journal d'apprentissage GreatOS.
+- `lire_traces_capacites(limite=10)` - Consulte les traces d'exécution des capacités GreatOS enregistrées dans Context Engine.
 
 ### Memoire et contexte
 

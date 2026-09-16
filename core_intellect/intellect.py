@@ -467,3 +467,94 @@ def _appeler_llm_avec_retry(
         require_json=True,
     )
 
+
+def planifier_objectif(
+    objectif: str,
+    memoire: dict,
+    on_event: Callable[[str, dict], None] | None = None,
+):
+    """Génère un plan d'exécution structuré avec capacités canoniques, préconditions et dépendances.
+
+    Core Intellect conçoit le plan mais ne l'exécute jamais.
+    """
+    from greatos_contracts import ExecutionPlan, PlanStep
+    from greatos_capabilities import owner_for
+
+    signatures_outils = documenter_signatures_outils()
+    prompt_system = f"""Tu es le cerveau stratégique de Jarvis (Core Intellect).
+Ta responsabilité UNIQUE est de décomposer un objectif complexe en un plan d'exécution ordonné.
+Tu ne réalises AUCUNE exécution technique toi-même.
+
+Inventaire des capacités disponibles :
+{signatures_outils}
+
+Format JSON STRICT attendu :
+{{
+  "objectif": "description globale de l'objectif",
+  "etapes": [
+    {{
+      "id": "step_1",
+      "capacite": "nom_canonique_ou_outil",
+      "args": {{"param": "valeur"}},
+      "description": "Explication claire de l'action",
+      "preconditions": ["condition requise avant exécution"],
+      "dependencies": []
+    }},
+    {{
+      "id": "step_2",
+      "capacite": "autre_capacite",
+      "args": {{"param": "valeur"}},
+      "description": "Explication claire",
+      "preconditions": ["condition requise"],
+      "dependencies": ["step_1"]
+    }}
+  ]
+}}
+Règles strictes :
+- Spécifie chaque capacité selon son nom canonique (ex: filesystem.create_directory, system.execute_command) ou son alias valide.
+- Déclare précisément les identifiants dans 'dependencies' pour garantir l'ordre logique.
+- Si aucun outil ne correspond, retourne "etapes": [].
+"""
+    messages = [
+        {"role": "system", "content": prompt_system},
+        {"role": "user", "content": f"Objectif à planifier : {objectif}"},
+    ]
+
+    reponse = _appeler_llm_avec_retry(messages, memoire, temperature=0.2, on_event=on_event)
+    if not reponse or not reponse.get("message", {}).get("content"):
+        return ExecutionPlan(goal=objectif, steps=[], context={"status": "no_llm_response"})
+
+    contenu = reponse["message"]["content"]
+    data = _extraire_json_unique(contenu) or {}
+    etapes_brutes = data.get("etapes", [])
+    etapes_valides: list[PlanStep] = []
+
+    for i, e in enumerate(etapes_brutes, start=1):
+        if not isinstance(e, dict):
+            continue
+        step_id = str(e.get("id") or f"step_{i}")
+        cap = str(e.get("capacite") or e.get("outil") or "").strip()
+        args = e.get("args") if isinstance(e.get("args"), dict) else {}
+        desc = str(e.get("description") or f"Étape {step_id}")
+        preconditions = [str(p) for p in e.get("preconditions", []) if isinstance(p, (str, int, float))]
+        dependencies = [str(d) for d in e.get("dependencies", []) if isinstance(d, (str, int, float))]
+
+        _, canonical = owner_for(cap)
+        cap_canonique = canonical if canonical else cap
+
+        etapes_valides.append(
+            PlanStep(
+                id=step_id,
+                capability=cap_canonique,
+                arguments=args,
+                description=desc,
+                preconditions=preconditions,
+                dependencies=dependencies,
+            )
+        )
+
+    return ExecutionPlan(
+        goal=str(data.get("objectif") or objectif),
+        steps=etapes_valides,
+        context={"generated_at": datetime.now().isoformat()},
+    )

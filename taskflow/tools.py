@@ -24,13 +24,33 @@ from taskflow.files import (
 )
 from context_engine.memory_tools import (
     lire_contexte,
+    lire_journal_agents,
     lire_notes,
     lire_preferences,
+    lire_traces_capacites,
     memoriser_contexte,
     memoriser_preference,
     noter,
     oublier_contexte,
     oublier_preference,
+)
+from datashield.tools import (
+    changer_niveau_defcon,
+    obtenir_niveau_defcon,
+)
+from progress_tracker.tools import (
+    creer_objectif_tool,
+    lister_objectifs_tool,
+    mettre_a_jour_objectif_tool,
+    stats_objectifs_tool,
+)
+from syncsphere.tools import (
+    creer_snapshot_systeme_tool,
+    lister_snapshots_systeme_tool,
+)
+from interface_morphique.tools import (
+    arreter_overlay_navigation,
+    demarrer_overlay_navigation,
 )
 from taskflow.organization import analyser_organisation, organiser_dossier_direct
 from taskflow.scheduler import (
@@ -55,11 +75,13 @@ from taskflow.watchers import (
 from context_engine.memory import (
     CATEGORIES_CONTEXTE,
     charger_memoire,
+    consulter_trace_capacites,
     enregistrer_echange,
     journaliser_action,
     normaliser_memoire,
     sauvegarder_memoire,
 )
+from context_engine.agent_learning import format_agent_sessions
 from context_engine.pattern_analyzer import obtenir_patterns_actuels, detecter_automatisations_potentielles
 from context_engine.contextual_suggestions import generer_suggestions_contextuelles, formater_suggestions
 from context_engine.system_monitor import generer_rapport_systeme, obtenir_tendances_systeme
@@ -86,10 +108,12 @@ from taskflow.browser_automation import (
     reinitialiser_navigateur
 )
 from taskflow.browser_session import get_session_manager
-from interface_morphique.browser_overlay import start_browser_overlay, stop_browser_overlay, get_browser_overlay
 from datashield.error_classification import resultat_erreur
 from datashield.confirmations import request_streaming_confirmation
 from datashield.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
+from datashield.policy import evaluate_capability
+from greatos_contracts import CapabilityRequest, RiskLevel, SecurityDecision
+from greatos_capabilities import LegacyToolRegistry
 from core_intellect.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
 
@@ -110,8 +134,17 @@ def demander_confirmation(description: str) -> bool:
 
 
 def confirmer_ecriture_si_requise(path, description: str) -> bool:
-    if not action_requiert_confirmation(path):
+    request = CapabilityRequest(
+        capability="filesystem.write",
+        resource=str(path),
+        risk=RiskLevel.WRITE,
+        requires_confirmation=action_requiert_confirmation(path),
+    )
+    decision = evaluate_capability(request)
+    if decision.decision == SecurityDecision.ALLOW:
         return True
+    if decision.decision == SecurityDecision.DENY:
+        return False
     return demander_confirmation(description)
 
 
@@ -140,13 +173,17 @@ def creer_fichier(chemin: str, contenu: str = "") -> str:
 
 
 def supprimer(chemin: str) -> str:
-    # DEFCON check: destructive file operation
-    from datashield.defcon import defcon
-    if not defcon.is_action_allowed(is_destructive=True, is_system_call=False):
-        return resultat_erreur("Action bloquée par le niveau DEFCON actuel.", categorie="defcon_blocked")
     try:
         path = chemin_autorise(chemin, doit_exister=True)
-        if not confirmer_ecriture_si_requise(path, f"supprimer {path}"):
+        decision = evaluate_capability(CapabilityRequest(
+            capability="filesystem.delete",
+            resource=str(path),
+            risk=RiskLevel.DESTRUCTIVE,
+            requires_confirmation=action_requiert_confirmation(path),
+        ))
+        if decision.decision == SecurityDecision.DENY:
+            return resultat_erreur(decision.reason, categorie="defcon_blocked")
+        if decision.decision == SecurityDecision.CONFIRM and not demander_confirmation(f"supprimer {path}"):
             return resultat_erreur("Suppression annulee.", categorie="action_refusee_par_confirmation")
         return supprimer_direct(chemin=str(path))
     except OSError as e:
@@ -157,15 +194,17 @@ def supprimer(chemin: str) -> str:
 
 def executer_commande(commande: str) -> str:
     """Exécute une commande avec confirmation si le filtre standard la refuse."""
-    from datashield.defcon import defcon
-    level = defcon.current_level.value
-    if level <= 2:
-        return resultat_erreur("Action bloquée par le niveau DEFCON actuel.", categorie="defcon_blocked")
-    if commande_irreversible(commande):
-        return resultat_erreur("Action irréversible bloquée par la politique de sécurité.", categorie="irreversible_blocked")
-
     _, erreur = _preparer_arguments_commande(commande)
-    confirmation_requise = level == 3 or erreur is not None
+    decision = evaluate_capability(CapabilityRequest(
+        capability="system.execute_command",
+        arguments={"commande": commande},
+        risk=RiskLevel.SYSTEM,
+        requires_confirmation=erreur is not None,
+        irreversible=commande_irreversible(commande),
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    confirmation_requise = decision.decision == SecurityDecision.CONFIRM
     if confirmation_requise and not demander_confirmation(
         f"Exécuter la commande système avec les droits de votre compte ?\n{commande}"
     ):
@@ -175,15 +214,17 @@ def executer_commande(commande: str) -> str:
 
 def executer_powershell(commande: str) -> str:
     """Exécute PowerShell après confirmation lorsqu'un filtre le signale."""
-    from datashield.defcon import defcon
-    level = defcon.current_level.value
-    if level <= 2:
-        return resultat_erreur("Action bloquée par le niveau DEFCON actuel.", categorie="defcon_blocked")
-    if commande_irreversible(commande):
-        return resultat_erreur("Action irréversible bloquée par la politique de sécurité.", categorie="irreversible_blocked")
-
     valide, _ = analyser_ast_powershell(commande)
-    confirmation_requise = level == 3 or not valide
+    decision = evaluate_capability(CapabilityRequest(
+        capability="system.execute_powershell",
+        arguments={"commande": commande},
+        risk=RiskLevel.SYSTEM,
+        requires_confirmation=not valide,
+        irreversible=commande_irreversible(commande),
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    confirmation_requise = decision.decision == SecurityDecision.CONFIRM
     if confirmation_requise and not demander_confirmation(
         f"Exécuter la commande PowerShell avec les droits de votre compte ?\n{commande}"
     ):
@@ -192,10 +233,27 @@ def executer_powershell(commande: str) -> str:
 
 
 def vider_temp() -> str:
+    decision = evaluate_capability(CapabilityRequest(
+        capability="storage.clean_temp",
+        risk=RiskLevel.WRITE,
+        resource="temp",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     return storage.vider_temp()
 
 
 def vider_corbeille() -> str:
+    decision = evaluate_capability(CapabilityRequest(
+        capability="storage.empty_recycle_bin",
+        risk=RiskLevel.DESTRUCTIVE,
+        resource="corbeille",
+        requires_confirmation=True,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    if decision.decision == SecurityDecision.CONFIRM and not demander_confirmation("Vider la corbeille définitivement ?"):
+        return resultat_erreur("Vidage de la corbeille annulé.", categorie="action_refusee_par_confirmation")
     return storage.vider_corbeille()
 
 
@@ -215,13 +273,30 @@ def ajouter_automatisation_tool(
     recurrence: str = "quotidien",
     heure: str = "09:00",
 ) -> str:
+    decision = evaluate_capability(CapabilityRequest(
+        capability="automation.schedule",
+        arguments={"nom": nom, "outil": outil, "recurrence": recurrence, "heure": heure},
+        risk=RiskLevel.WRITE,
+        resource=outil,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     if outil in OUTILS_AUTOMATISATION_INTERDITS:
         return f"Outil non automatisable pour eviter un blocage ou une action sensible : {outil}"
     return ajouter_automatisation(nom=nom, outil=outil, args=args, recurrence=recurrence, heure=heure)
 
 
 def ajouter_surveillance_dossier_tool(chemin: str, recurrence: str = "quotidien", heure: str = "09:00") -> str:
+    decision = evaluate_capability(CapabilityRequest(
+        capability="automation.watch_directory",
+        arguments={"chemin": chemin, "recurrence": recurrence, "heure": heure},
+        risk=RiskLevel.WRITE,
+        resource=str(chemin),
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     return ajouter_surveillance_dossier(chemin=chemin, recurrence=recurrence, heure=heure)
+
 
 
 def organiser_dossier(chemin: str) -> str:
@@ -452,6 +527,13 @@ def evenements_aujourdhui() -> str:
     Returns:
         Liste des événements du jour
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="calendar.read",
+        risk=RiskLevel.READ,
+        resource="calendar",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     evenements = obtenir_evenements_aujourdhui()
     return formater_evenements(evenements)
 
@@ -463,6 +545,13 @@ def rappels_calendrier() -> str:
     Returns:
         Liste des événements avec rappels dans l'heure suivante
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="calendar.read_reminders",
+        risk=RiskLevel.READ,
+        resource="calendar",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     rappels = verifier_rappels_calendrier()
     
     if not rappels:
@@ -485,6 +574,13 @@ def resume_emails() -> str:
     Returns:
         Résumé des emails non lus, urgents et patterns
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="email.read",
+        risk=RiskLevel.READ,
+        resource="email",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     return obtenir_resume_emails()
 
 
@@ -495,6 +591,13 @@ def emails_urgents() -> str:
     Returns:
         Liste des emails marqués comme urgents
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="email.read_urgent",
+        risk=RiskLevel.READ,
+        resource="email",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     urgents = detecter_emails_urgents()
     
     if not urgents or ("erreur" in urgents[0]):
@@ -507,6 +610,7 @@ def emails_urgents() -> str:
         lignes.append(f"   Raison : {email.get('raison', 'importance')}")
     
     return "\n".join(lignes)
+
 
 
 def rapport_performance() -> str:
@@ -614,6 +718,14 @@ def rechercher_web_tool(requete: str, nombre_resultats: int = 5) -> str:
     Returns:
         Résultats de recherche formatés
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="web.search",
+        arguments={"requete": requete, "nombre_resultats": nombre_resultats},
+        risk=RiskLevel.READ,
+        resource="web",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return rechercher_web(requete, nombre_resultats)
     except Exception as e:
@@ -630,6 +742,14 @@ def analyser_page_web_tool(url: str) -> str:
     Returns:
         Contenu extrait et analysé de la page
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="web.analyze_page",
+        arguments={"url": url},
+        risk=RiskLevel.READ,
+        resource=url,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return analyser_page_web(url)
     except Exception as e:
@@ -647,10 +767,19 @@ def rechercher_et_analyser_tool(requete: str, nombre_pages: int = 3) -> str:
     Returns:
         Synthèse de la recherche avec analyse des contenus
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="web.search_and_analyze",
+        arguments={"requete": requete, "nombre_pages": nombre_pages},
+        risk=RiskLevel.READ,
+        resource="web",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return rechercher_et_analyser(requete, nombre_pages)
     except Exception as e:
         return resultat_erreur(f"Erreur lors de la recherche et analyse: {str(e)}", e)
+
 
 
 def extraire_informations_cles_tool(texte: str) -> str:
@@ -696,6 +825,14 @@ def naviguer_vers_tool(url: str, headless: bool = True) -> str:
     Returns:
         Résultat de la navigation
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.navigate",
+        arguments={"url": url, "headless": headless},
+        risk=RiskLevel.WRITE,
+        resource=url,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return naviguer_vers(url, headless)
     except Exception as e:
@@ -714,6 +851,14 @@ def cliquer_element_tool(selector: str, url: str = None, headless: bool = True) 
     Returns:
         Résultat du clic
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.click",
+        arguments={"selector": selector, "url": url, "headless": headless},
+        risk=RiskLevel.WRITE,
+        resource=selector,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return cliquer_element(selector, url, headless)
     except Exception as e:
@@ -733,10 +878,19 @@ def remplir_formulaire_tool(selector: str, valeur: str, url: str = None, headles
     Returns:
         Résultat du remplissage
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.fill",
+        arguments={"selector": selector, "valeur": valeur, "url": url, "headless": headless},
+        risk=RiskLevel.WRITE,
+        resource=selector,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return remplir_formulaire(selector, valeur, url, headless)
     except Exception as e:
         return resultat_erreur(f"Erreur lors du remplissage: {str(e)}", e)
+
 
 
 def extraire_texte_page_tool(selector: str = "body", url: str = None, headless: bool = True) -> str:
@@ -787,6 +941,14 @@ def executer_sequence_tool(actions: list, headless: bool = True) -> str:
     Returns:
         Résultats de toutes les actions
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.execute_sequence",
+        arguments={"actions": actions, "headless": headless},
+        risk=RiskLevel.WRITE,
+        resource="browser_sequence",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         return executer_sequence(actions, headless)
     except Exception as e:
@@ -836,37 +998,6 @@ def reinitialiser_navigateur_tool() -> str:
         return resultat_erreur(f"Erreur lors de la réinitialisation du navigateur: {str(e)}", e)
 
 
-def demarrer_overlay_navigation() -> str:
-    """
-    Démarre l'overlay visuel de navigation en temps réel.
-    
-    Returns:
-        Message de confirmation
-    """
-    try:
-        result = start_browser_overlay()
-        if result:
-            return "Overlay de navigation démarré avec succès"
-        else:
-            return "L'overlay de navigation est déjà en cours d'exécution"
-    except Exception as e:
-        return resultat_erreur(f"Erreur lors du démarrage de l'overlay: {str(e)}", e)
-
-
-def arreter_overlay_navigation() -> str:
-    """
-    Arrête l'overlay visuel de navigation.
-    
-    Returns:
-        Message de confirmation
-    """
-    try:
-        stop_browser_overlay()
-        return "Overlay de navigation arrêté"
-    except Exception as e:
-        return resultat_erreur(f"Erreur lors de l'arrêt de l'overlay: {str(e)}", e)
-
-
 def creer_session_navigation(session_id: str, headless: bool = True) -> str:
     """
     Crée une nouvelle session de navigation parallèle.
@@ -878,6 +1009,14 @@ def creer_session_navigation(session_id: str, headless: bool = True) -> str:
     Returns:
         Message de confirmation
     """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.create_session",
+        arguments={"session_id": session_id, "headless": headless},
+        risk=RiskLevel.WRITE,
+        resource=session_id,
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         import time
         manager = get_session_manager()
@@ -895,6 +1034,7 @@ def creer_session_navigation(session_id: str, headless: bool = True) -> str:
             
     except Exception as e:
         return resultat_erreur(f"Erreur lors de la création de session: {str(e)}", e)
+
 
 
 def naviguer_session(session_id: str, url: str) -> str:
@@ -1115,6 +1255,13 @@ def obtenir_etat_session(session_id: str) -> str:
 
 def decouvrir_appareils_tailscale() -> str:
     """Détecte et liste les appareils connectés sur le réseau privé Tailscale."""
+    decision = evaluate_capability(CapabilityRequest(
+        capability="network.tailscale.discover",
+        risk=RiskLevel.READ,
+        resource="tailscale",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         from interface_morphique.server import obtenir_infos_tailscale
         info = obtenir_infos_tailscale()
@@ -1134,114 +1281,8 @@ def decouvrir_appareils_tailscale() -> str:
     except Exception as e:
         return resultat_erreur(f"Erreur lors de la détection Tailscale: {str(e)}", e)
 
-def obtenir_niveau_defcon() -> str:
-    """Retourne le niveau DEFCON actuel et sa signification."""
-    from datashield.defcon import defcon
-    lvl = defcon.current_level
-    descriptions = {
-        5: "Nominal / standard",
-        4: "Vigilance accrue",
-        3: "Sécurisé (confirmation obligatoire pour commandes)",
-        2: "Alerte haute (actions destructives bloquées)",
-        1: "Confinement critique (verrouillage complet)",
-    }
-    desc = descriptions.get(lvl.value, "Inconnu")
-    return f"Niveau DEFCON actuel : {lvl.name} ({lvl.value}) - {desc}"
 
-
-def changer_niveau_defcon(niveau: int) -> str:
-    """Modifie le niveau de sécurité DEFCON (1 à 5)."""
-    from datashield.defcon import defcon, DefconLevel
-    try:
-        val = int(niveau)
-        if val not in {1, 2, 3, 4, 5}:
-            return f"Niveau DEFCON invalide ({niveau}). Choisissez une valeur entre 1 et 5."
-        nouveau = DefconLevel(val)
-        defcon.set_level(nouveau)
-        return f"Niveau DEFCON mis à jour avec succès : {nouveau.name} ({nouveau.value})"
-    except Exception as e:
-        return resultat_erreur(f"Erreur lors du changement DEFCON : {e}", e)
-
-
-def creer_objectif_tool(id_obj: str, titre: str, description: str = "", cible: float = 100.0, unite: str = "%") -> str:
-    """Crée un nouvel objectif personnel ou professionnel dans le Progress Tracker."""
-    try:
-        from progress_tracker.goals import goal_manager
-        g = goal_manager.creer_objectif(id_obj=id_obj, titre=titre, description=description, cible=cible, unite=unite)
-        return f"Objectif créé avec succès : [{g.id}] {g.titre} (Cible : {g.cible_valeur} {g.unite})"
-    except Exception as e:
-        return resultat_erreur(f"Erreur création objectif : {e}", e)
-
-
-def lister_objectifs_tool() -> str:
-    """Liste tous les objectifs suivis dans GreatOS avec leur progression."""
-    try:
-        from progress_tracker.goals import goal_manager
-        objectifs = goal_manager.lister_objectifs()
-        if not objectifs:
-            return "Aucun objectif enregistré pour le moment."
-        lignes = ["=== OBJECTIFS GREATOS ==="]
-        for g in objectifs:
-            lignes.append(f"- [{g.status.value.upper()}] {g.titre} ({g.id}) : {g.valeur_actuelle}/{g.cible_valeur} {g.unite} ({g.progression_pourcentage:.1f}%)")
-        return "\n".join(lignes)
-    except Exception as e:
-        return resultat_erreur(f"Erreur liste objectifs : {e}", e)
-
-
-def mettre_a_jour_objectif_tool(id_obj: str, nouvelle_valeur: float) -> str:
-    """Met à jour la valeur actuelle d'un objectif pour recalculer sa progression."""
-    try:
-        from progress_tracker.goals import goal_manager
-        g = goal_manager.mettre_a_jour_progression(id_obj, float(nouvelle_valeur))
-        if not g:
-            return f"Objectif introuvable : {id_obj}"
-        return f"Objectif [{g.id}] mis à jour : {g.valeur_actuelle}/{g.cible_valeur} {g.unite} ({g.progression_pourcentage:.1f}%) - Statut : {g.status.value}"
-    except Exception as e:
-        return resultat_erreur(f"Erreur mise à jour objectif : {e}", e)
-
-
-def stats_objectifs_tool() -> str:
-    """Calcule et affiche les statistiques globales des objectifs suivis."""
-    try:
-        from progress_tracker.analytics import calculer_statistiques_globales
-        stats = calculer_statistiques_globales()
-        return (
-            f"=== STATISTIQUES PROGRESS TRACKER ===\n"
-            f"Total : {stats['total']} | Actifs : {stats['actifs']} | Terminés : {stats['termines']}\n"
-            f"Taux de complétion : {stats['taux_completion']}%\n"
-            f"Progression moyenne : {stats['progression_moyenne']}%"
-        )
-    except Exception as e:
-        return resultat_erreur(f"Erreur calcul statistiques objectifs : {e}", e)
-
-
-def creer_snapshot_systeme_tool(nom: str = "") -> str:
-    """Crée une archive de sauvegarde locale (.gos) de l'état système GreatOS."""
-    try:
-        from syncsphere.snapshot import snapshot_manager
-        chemin = snapshot_manager.creer_snapshot(nom=nom if nom else None)
-        return f"Snapshot GreatOS créé avec succès : {chemin.name} ({chemin})"
-    except Exception as e:
-        return resultat_erreur(f"Erreur création snapshot : {e}", e)
-
-
-def lister_snapshots_systeme_tool() -> str:
-    """Liste tous les snapshots d'état locaux (.gos) disponibles dans SyncSphere."""
-    try:
-        from syncsphere.snapshot import snapshot_manager
-        snaps = snapshot_manager.lister_snapshots()
-        if not snaps:
-            return "Aucun snapshot disponible."
-        lignes = ["=== SNAPSHOTS SYNCHSPHERE ==="]
-        for s in snaps:
-            taille_ko = round(s['taille_octets'] / 1024, 1)
-            lignes.append(f"- {s['nom']} ({taille_ko} Ko)")
-        return "\n".join(lignes)
-    except Exception as e:
-        return resultat_erreur(f"Erreur liste snapshots : {e}", e)
-
-
-OUTILS = {
+OUTILS = LegacyToolRegistry({
     "creer_dossier": creer_dossier,
     "creer_fichier": creer_fichier,
     "lire_fichier": lire_fichier,
@@ -1283,6 +1324,8 @@ OUTILS = {
     "executer_surveillance_dossiers": executer_surveillance_dossiers,
     "supprimer_surveillance_dossier": supprimer_surveillance_dossier,
     "bilan_proactif": bilan_proactif,
+    "lire_journal_agents": lire_journal_agents,
+    "lire_traces_capacites": lire_traces_capacites,
     "lire_capacites": lire_capacites,
     "lire_traducteur": lire_traducteur_tool,
     "modifier_traducteur": modifier_traducteur,
@@ -1335,4 +1378,4 @@ OUTILS = {
     "stats_objectifs": stats_objectifs_tool,
     "creer_snapshot_systeme": creer_snapshot_systeme_tool,
     "lister_snapshots_systeme": lister_snapshots_systeme_tool,
-}
+})

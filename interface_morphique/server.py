@@ -398,6 +398,88 @@ async def ask_jarvis(request: AskRequest, _auth: bool = Depends(verify_api_key))
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+class PlanRequest(BaseModel):
+    goal: str
+
+
+@app.post("/jarvis/plan")
+async def create_plan(request: PlanRequest, _auth: bool = Depends(verify_api_key)) -> Dict:
+    """Génère un plan d'exécution structuré sans exécuter les étapes (Core Intellect)."""
+    try:
+        from core_intellect.intellect import planifier_objectif
+        from context_engine.memory import charger_memoire, normaliser_memoire
+        memoire = normaliser_memoire(charger_memoire())
+        plan = planifier_objectif(request.goal, memoire)
+        return {
+            "goal": plan.goal,
+            "total_steps": len(plan.steps),
+            "steps": [
+                {
+                    "id": s.id,
+                    "capability": s.capability,
+                    "arguments": s.arguments,
+                    "description": s.description,
+                    "preconditions": s.preconditions,
+                    "dependencies": s.dependencies,
+                }
+                for s in plan.steps
+            ],
+            "context": plan.context,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la planification: {str(e)}")
+
+
+@app.get("/jarvis/plan/stream")
+def stream_plan(
+    goal: str,
+    session_id: str | None = None,
+    _auth: bool = Depends(verify_api_key),
+):
+    """Stream plan generation and execution with Server-Sent Events."""
+    active_session_id = session_id or uuid4().hex
+
+    def event_stream():
+        event_queue = event_bus.subscribe()
+
+        def worker():
+            event_bus.bind(event_queue)
+            try:
+                from core_intellect.intellect import planifier_objectif
+                from jarvis.agent import orchestrer_plan
+                from context_engine.memory import charger_memoire, normaliser_memoire
+                memoire = normaliser_memoire(charger_memoire())
+                handler = StreamingConfirmationHandler(active_session_id, event_bus.emit)
+                with use_confirmation_handler(handler):
+                    plan = planifier_objectif(goal, memoire, on_event=event_bus.emit)
+                    orchestrer_plan(plan, memoire, on_event=event_bus.emit)
+            except Exception as e:
+                event_bus.emit("error", {"message": str(e)})
+            finally:
+                event_queue.put({"type": "done"})
+                event_bus.unbind()
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        try:
+            while True:
+                try:
+                    event = event_queue.get(timeout=1)
+                except queue.Empty:
+                    continue
+
+                payload = json.dumps(event, ensure_ascii=False)
+                yield f"data: {payload}\n\n".encode("utf-8")
+
+                if event.get("type") == "done":
+                    break
+        finally:
+            event_bus.unsubscribe(event_queue)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.get("/jarvis/stream")
 def stream_jarvis(
     message: str,

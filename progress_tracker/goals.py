@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class GoalType(str, Enum):
@@ -49,6 +49,7 @@ class Goal:
     jalons: List[Milestone] = field(default_factory=list)
     streak_actuel: int = 0
     streak_record: int = 0
+    capacite_cible: Optional[str] = None
 
     @property
     def progression_pourcentage(self) -> float:
@@ -64,6 +65,14 @@ class GoalManager:
     def __init__(self, storage_path: Optional[Path] = None):
         self.storage_path = storage_path or Path(__file__).resolve().parent.parent / "goals.json"
         self._goals: Dict[str, Goal] = {}
+        self._execution_metrics: Dict[str, Any] = {
+            "total_actions": 0,
+            "total_succes": 0,
+            "total_echecs": 0,
+            "duree_totale_ms": 0.0,
+            "par_capacite": {},
+            "par_module": {},
+        }
         self._load()
 
     def _load(self) -> None:
@@ -95,8 +104,27 @@ class GoalManager:
         except Exception:
             pass
 
-    def creer_objectif(self, id_obj: str, titre: str, description: str = "", type_obj: GoalType = GoalType.QUALITATIVE, cible: float = 100.0, unite: str = "%", date_echeance: Optional[str] = None) -> Goal:
-        goal = Goal(id=id_obj, titre=titre, description=description, type_objectif=type_obj, cible_valeur=cible, unite=unite, date_echeance=date_echeance)
+    def creer_objectif(
+        self,
+        id_obj: str,
+        titre: str,
+        description: str = "",
+        type_obj: GoalType = GoalType.QUALITATIVE,
+        cible: float = 100.0,
+        unite: str = "%",
+        date_echeance: Optional[str] = None,
+        capacite_cible: Optional[str] = None,
+    ) -> Goal:
+        goal = Goal(
+            id=id_obj,
+            titre=titre,
+            description=description,
+            type_objectif=type_obj,
+            cible_valeur=cible,
+            unite=unite,
+            date_echeance=date_echeance,
+            capacite_cible=capacite_cible,
+        )
         self._goals[id_obj] = goal
         self._save()
         return goal
@@ -116,5 +144,93 @@ class GoalManager:
             return [g for g in self._goals.values() if g.status == statut]
         return list(self._goals.values())
 
+    def enregistrer_impact_capacite(
+        self,
+        resultat: Any,
+        goal_id: Optional[str] = None,
+        increment: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Consomme un CapabilityResult structuré pour mesurer l'impact et mettre à jour les objectifs liés.
+
+        Règle d'architecture : Ne jamais inventer ni incrémenter de progression si aucun objectif n'est lié.
+        """
+        cap = getattr(resultat, "capability", str(resultat))
+        status = getattr(resultat, "status", None)
+        status_val = status.value if hasattr(status, "value") else str(status)
+        is_success = status_val == "success"
+
+        data = getattr(resultat, "data", {}) if isinstance(getattr(resultat, "data", {}), dict) else {}
+        owner = str(data.get("owner") or "inconnu")
+        duree_ms = float(data.get("duration_ms", 0.0) or 0.0)
+
+        # 1. Enregistrement des métriques d'exécution globales
+        self._execution_metrics["total_actions"] += 1
+        if is_success:
+            self._execution_metrics["total_succes"] += 1
+        else:
+            self._execution_metrics["total_echecs"] += 1
+        self._execution_metrics["duree_totale_ms"] += duree_ms
+
+        cap_metrics = self._execution_metrics["par_capacite"].setdefault(
+            cap, {"succes": 0, "echecs": 0, "duree_ms": 0.0}
+        )
+        if is_success:
+            cap_metrics["succes"] += 1
+        else:
+            cap_metrics["echecs"] += 1
+        cap_metrics["duree_ms"] += duree_ms
+
+        mod_metrics = self._execution_metrics["par_module"].setdefault(
+            owner, {"succes": 0, "echecs": 0, "duree_ms": 0.0}
+        )
+        if is_success:
+            mod_metrics["succes"] += 1
+        else:
+            mod_metrics["echecs"] += 1
+        mod_metrics["duree_ms"] += duree_ms
+
+        # 2. Raccordement strict aux objectifs actifs
+        objectif_concerne: Optional[Goal] = None
+        progression_appliquee = False
+
+        if goal_id and goal_id in self._goals:
+            target_goal = self._goals[goal_id]
+            if target_goal.status == GoalStatus.ACTIVE:
+                objectif_concerne = target_goal
+        elif not goal_id:
+            # Recherche d'un objectif actif ciblant explicitement cette capacité
+            for g in self._goals.values():
+                if g.status == GoalStatus.ACTIVE and g.capacite_cible == cap:
+                    objectif_concerne = g
+                    break
+
+        if objectif_concerne and is_success:
+            nouvelle_valeur = objectif_concerne.valeur_actuelle + increment
+            self.mettre_a_jour_progression(objectif_concerne.id, nouvelle_valeur)
+            progression_appliquee = True
+
+        return {
+            "capability": cap,
+            "owner": owner,
+            "status": status_val,
+            "duree_ms": duree_ms,
+            "objectif_lie": objectif_concerne.id if objectif_concerne else None,
+            "progression_appliquee": progression_appliquee,
+            "progression_pourcentage": objectif_concerne.progression_pourcentage if objectif_concerne else None,
+        }
+
+    def obtenir_metriques_execution(self) -> Dict[str, Any]:
+        """Retourne les métriques d'exécution et de coût temporel agrégées."""
+        return dict(self._execution_metrics)
+
 
 goal_manager = GoalManager()
+
+
+def enregistrer_impact_capacite(
+    resultat: Any,
+    goal_id: Optional[str] = None,
+    increment: float = 1.0,
+) -> Dict[str, Any]:
+    """Point d'entrée module pour relier un CapabilityResult aux objectifs et métriques de Progress Tracker."""
+    return goal_manager.enregistrer_impact_capacite(resultat, goal_id=goal_id, increment=increment)

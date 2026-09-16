@@ -47,6 +47,10 @@ def documenter_signatures_outils() -> str:
         "(Inventaire généré en temps réel depuis tools.OUTILS.)",
         "",
     ]
-    lignes.extend(signature.signature for signature in lister_signatures_outils())
+    from greatos_capabilities import owner_for
+
+    for signature in lister_signatures_outils():
+        owner, canonical_name = owner_for(signature.nom)
+        lignes.append(f"{signature.signature}  [capacité: {canonical_name} | propriétaire: {owner}]")
     lignes.extend(["", *REGLES_SIGNATURES])
     return "\n".join(lignes)

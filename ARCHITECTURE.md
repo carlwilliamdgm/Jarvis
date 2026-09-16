@@ -126,6 +126,29 @@ Le mode Stark est active par `!S <objectif>` et vit dans `jarvis.py`.
 
 Les modules `taskflow/` executent les actions concrètes. Ils ne decident pas de la strategie globale.
 
+### Contrat inter-modules des capacités
+
+Le refactor de souveraineté des modules introduit `greatos_contracts.py`,
+le vocabulaire du noyau partagé par les huit modules. Une demande est décrite par une capacité stable,
+ses arguments, sa ressource et son niveau de risque. DataShield renvoie ensuite
+une décision unique : `allow`, `confirm` ou `deny`. Le module propriétaire
+exécute seulement après cette décision et retourne à terme un résultat structuré
+(`success`, `failed`, `denied`, `cancelled` ou `timeout`).
+
+La première migration couvre les capacités TaskFlow `system.execute_command`,
+`system.execute_powershell`, `filesystem.write` et `filesystem.delete`.
+TaskFlow classe l'opération ; DataShield possède la politique DEFCON et la
+décision de sécurité. Les façades historiques de `taskflow/tools.py` restent
+compatibles pendant la migration des autres capacités.
+
+`greatos_capabilities.py` fait la transition entre cette façade historique et
+la cible du CDC : chaque outil est catalogué sous un nom canonique et avec son
+module propriétaire. Par exemple, `executer_commande` devient
+`system.execute_command` détenu par TaskFlow, et `creer_objectif` devient
+`goals.create` détenu par Progress Tracker. Jarvis et Core Intellect continuent
+d'utiliser les alias historiques tant que l'intégralité des appels n'a pas été
+migrée ; ils peuvent déjà voir le propriétaire dans l'inventaire dynamique.
+
 - `taskflow/files.py` : fichiers et dossiers.
 - `taskflow/storage.py` : stockage, temp, corbeille, notifications et fichiers lourds.
 - `taskflow/commands.py` : commandes shell et PowerShell.
@@ -153,7 +176,7 @@ Responsabilites principales :
 - appliquer les confirmations d'ecriture via `confirmer_ecriture_si_requise()`;
 - court-circuiter les confirmations quand Stark est actif;
 - journaliser certaines actions composees;
-- fournir `bilan_proactif()`, `terminer_tache()`, `lire_capacites()` et les outils de consultation du traducteur.
+- fournir `bilan_proactif()`, `terminer_tache()`, `lire_capacites()`, `lire_journal_agents()` et les outils de consultation du traducteur.
 
 ## Conscience des capacites
 
