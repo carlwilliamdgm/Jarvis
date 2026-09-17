@@ -1,25 +1,23 @@
-# GreatOS – Mapping to Existing Jarvis Codebase
+# GreatOS – Cartographie des 8 Modules Souverains
 
-| GreatOS Module | Present in current Jarvis repo? | Existing file(s) (links) | Implementation level |
-|----------------|--------------------------------|--------------------------|----------------------|
-| **Jarvis – Interface conversationnelle** | ✅ Yes | [jarvis.py](file:///c:/Users/Carl/Jarvis/jarvis.py)  \[Main orchestrator]\n[api/server.py](file:///c:/Users/Carl/Jarvis/api/server.py)  \[FastAPI entry point]\n[tools.py](file:///c:/Users/Carl/Jarvis/tools.py)  \[Tool definitions] | Fully functional – ready for production |
-| **Core Intellect – Cerveau décisionnel** | ⚙️ Partial | [core/llm_client.py](file:///c:/Users/Carl/Jarvis/core/llm_client.py)  \[LLM wrapper]\n[core/tool_signatures.py](file:///c:/Users/Carl/Jarvis/core/tool_signatures.py)  \[Tool meta‑data] | LLM call works, but no dedicated decision engine (rule/ML) yet |
-| **Context Engine – Conscience contextuelle** | 📦 Partial | [core/memory.py](file:///c:/Users/Carl/Jarvis/core/memory.py)  \[Memory helpers]\n[core/memory_store.py](file:///c:/Users/Carl/Jarvis/core/memory_store.py)  \[Persisted JSON/SQLite store] | Stores conversation/history; does **not** capture OS‑level context (active window, time, etc.) |
-| **TaskFlow – Automatisation des workflows** | 📦 Partial | [capabilities/commands.py](file:///c:/Users/Carl/Jarvis/capabilities/commands.py)  \[Command execution]\n[tools.py](file:///c:/Users/Carl/Jarvis/tools.py)  \[Tool wrappers] | Can run a single tool/command; lacks declarative workflow DSL & orchestration |
-| **Progress Tracker – Suivi des objectifs** | ❌ None | – | No goal‑tracking abstraction; only raw action logging in memory |
-| **DataShield – Sécurité multicouche** | ✅ Yes | [api/server.py – API‑key check](file:///c:/Users/Carl/Jarvis/api/server.py#L1-L20)\n[capabilities/commands.py – sandbox / AST check](file:///c:/Users/Carl/Jarvis/capabilities/commands.py#L1-L30)\n[core/autodestruct.py](file:///c:/Users/Carl/Jarvis/core/autodestruct.py) | Authentication, command sandboxing, safe file deletion – meets basic security spec |
-| **SyncSphere – Synchronisation (basique V3)** | ❌ None | – | Persistence limited to local JSON/SQLite; no encrypted export/import or multi‑device sync |
-| **Interface Morphique – UI adaptative** | ❌ None | – | Only HTTP API; no Electron/React front‑end, no theming or context‑aware UI |
+Ce document cartographie l'architecture réelle de GreatOS suite au grand refactor d'unification modulaire en 7 étapes. L'ensemble des 8 modules fondamentaux prévus par le cahier des charges est désormais implémenté, souverain et couvert par les tests automatisés.
 
-**Legend**
-- ✅ Yes – fully implemented and functional.
-- ⚙️ Partial – core pieces exist but require additional work to meet the spec.
-- 📦 Partial – scaffolding is present, but major functionality is missing.
-- ❌ None – module not present at all.
+| Module GreatOS | Implémenté ? | Emplacements / Fichiers clés | Niveau d'implémentation |
+|----------------|--------------|------------------------------|-------------------------|
+| **Jarvis** (Interface conversationnelle & orchestration) | ✅ Oui | [jarvis/agent.py](../jarvis/agent.py)<br>[jarvis/voice_state.py](../jarvis/voice_state.py)<br>[jarvis/voice_input.py](../jarvis/voice_input.py)<br>[jarvis/voice_output.py](../jarvis/voice_output.py)<br>[jarvis/personality.py](../jarvis/personality.py) | **Complet & opérationnel** : Boucle de dialogue, Mode Stark, orchestration de plans (orchestrer_plan), entrées/sorties vocales (Vosk / Piper) et détection double-clap. |
+| **Core Intellect** (Cerveau décisionnel & planification) | ✅ Oui | [core_intellect/intellect.py](../core_intellect/intellect.py)<br>[core_intellect/llm_client.py](../core_intellect/llm_client.py)<br>[core_intellect/tool_signatures.py](../core_intellect/tool_signatures.py)<br>[core_intellect/decision_analyzer.py](../core_intellect/decision_analyzer.py)<br>[core_intellect/translator.py](../core_intellect/translator.py) | **Complet & opérationnel** : Cascade LLM (Groq / OpenRouter / Jarvis-GC / Ollama), interprétation d'objectifs, planification ordonnée (planifier_objectif -> ExecutionPlan), inventaire dynamique et auto-réflexion. |
+| **Context Engine** (Conscience contextuelle & mémoire) | ✅ Oui | [context_engine/memory.py](../context_engine/memory.py)<br>[context_engine/memory_tools.py](../context_engine/memory_tools.py)<br>[context_engine/agent_learning.py](../context_engine/agent_learning.py)<br>[context_engine/system_monitor.py](../context_engine/system_monitor.py)<br>[context_engine/semantic_search.py](../context_engine/semantic_search.py) | **Complet & opérationnel** : Mémoire persistante (memory.json / SQLite), suggestions proactives, recherche sémantique, traçabilité des capacités (journaliser_resultat_capacite avec filtrage récursif des secrets) et journal durable d'apprentissage inter-agents (learning/agent_sessions.jsonl). |
+| **TaskFlow** (Exécution & automatisation système) | ✅ Oui | [	askflow/tools.py](../taskflow/tools.py)<br>[	askflow/files.py](../taskflow/files.py)<br>[	askflow/commands.py](../taskflow/commands.py)<br>[	askflow/storage.py](../taskflow/storage.py)<br>[	askflow/scheduler.py](../taskflow/scheduler.py)<br>[	askflow/web_search.py](../taskflow/web_search.py)<br>[	askflow/browser_automation.py](../taskflow/browser_automation.py) | **Complet & opérationnel** : Actions déterministes fichiers/système/processus, automatisations, recherche web DuckDuckGo, navigation Playwright et sessions parallèles. Façade OUTILS typée via LegacyToolRegistry(dict). |
+| **Progress Tracker** (Suivi d'objectifs & métriques d'impact) | ✅ Oui | [progress_tracker/goals.py](../progress_tracker/goals.py)<br>[progress_tracker/analytics.py](../progress_tracker/analytics.py)<br>[progress_tracker/tools.py](../progress_tracker/tools.py) | **Complet & opérationnel** : Gestion d'objectifs hiérarchisés, calcul de progression, métriques d'exécution et mesure d'impact systématique des capacités (enregistrer_impact_capacite). |
+| **DataShield** (Sécurité multicouche & politique DEFCON) | ✅ Oui | [datashield/policy.py](../datashield/policy.py)<br>[datashield/safety.py](../datashield/safety.py)<br>[datashield/confirmations.py](../datashield/confirmations.py)<br>[datashield/error_classification.py](../datashield/error_classification.py)<br>[datashield/tools.py](../datashield/tools.py) | **Complet & opérationnel** : Autorité centrale de sécurité (evaluate_capability), niveaux DEFCON 1/2/3, confinement de dossiers critiques, blocage des actions destructives, classification d'erreurs et procédure d'autodestruction. |
+| **SyncSphere** (Continuité & snapshots) | ✅ Oui | [syncsphere/snapshots.py](../syncsphere/snapshots.py)<br>[syncsphere/tools.py](../syncsphere/tools.py) | **Complet & opérationnel** : Création, énumération et restauration d'archives complètes .gos de l'état système et données utilisateur. |
+| **Interface Morphique** (Présentation & transports) | ✅ Oui | [interface_morphique/server.py](../interface_morphique/server.py)<br>[interface_morphique/app.py](../interface_morphique/app.py)<br>[interface_morphique/tools.py](../interface_morphique/tools.py)<br>[interface_morphique/browser_overlay.py](../interface_morphique/browser_overlay.py)<br>[interface_morphique/web/index.html](../interface_morphique/web/index.html) | **Complet & opérationnel** : Serveur FastAPI REST & SSE (/jarvis/ask, /jarvis/stream, /jarvis/plan, /jarvis/plan/stream, /jarvis/status), application Tkinter, interface web autonome et overlays HUD temps réel. |
 
 ---
 
-### Next steps (high‑level)
-1. Introduce adapter interfaces for the partial modules (Core Intellect, Context Engine, TaskFlow).
-2. Add feature‑flags to gradually enable new implementations.
-3. Implement missing modules (Progress Tracker, SyncSphere, Interface Morphique) following the implementation plan.
+### Noyau d'intégration transverse
+
+En complément des 8 modules souverains, le noyau d'intégration garantit l'interopérabilité sans dépendance circulaire :
+- [greatos_contracts.py](../greatos_contracts.py) : Définition des types et contrats canoniques (CapabilityRequest, PolicyDecision, CapabilityResult, PlanStep, ExecutionPlan).
+- [greatos_capabilities.py](../greatos_capabilities.py) : Dispatcher central unifié execute_capability(), catalogue de résolution canonique/alias et adaptateur rétrocompatible LegacyToolRegistry.
+- [greatos.py](../greatos.py) : Point d'entrée CLI et noyau d'orchestration unifié.

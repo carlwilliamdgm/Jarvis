@@ -4,9 +4,9 @@ Ce document decrit l'etat actuel de l'execution des outils dans Jarvis. L'ancien
 
 ## Vue d'ensemble
 
-Jarvis utilise un registre unique d'outils dans `tools.py`. Le LLM ne les execute jamais directement : il renvoie une intention structuree, puis `jarvis.py` appelle les fonctions Python correspondantes.
+Jarvis et GreatOS utilisent un registre typé d'outils dans `taskflow/tools.py` (`LegacyToolRegistry(dict)`). Le LLM ne les exécute jamais directement : il renvoie une intention ou un plan ordonné (`ExecutionPlan` / `PlanStep`), puis Jarvis délègue l'exécution au dispatcher central `execute_capability()`, validé au préalable par DataShield (`evaluate_capability`).
 
-L'inventaire des capacites est genere en temps reel depuis `tools.OUTILS` par `core/tool_signatures.py`. Les prompts et l'outil `lire_capacites()` utilisent donc l'etat courant du registre, pas une liste de documentation recopiee a la main.
+L'inventaire des capacités est généré en temps réel depuis `OUTILS` par `core_intellect/tool_signatures.py`. Les prompts et l'outil `lire_capacites()` utilisent donc l'état courant du registre, pas une liste de documentation recopiée à la main.
 
 Le contrat actuel de Core Intellect est :
 
@@ -28,19 +28,23 @@ Le contrat actuel de Core Intellect est :
         |
 2. executer_interaction_utilisateur() prépare le message et journalise l'échange
         |
-3. jarvis.py intercepte les commandes (!a, !S, mode action)
+3. jarvis/agent.py intercepte les commandes (!a, !S, mode action)
         |
-4. core_intellect.intellect.interpreter_objectif()
+4. core_intellect.intellect.interpreter_objectif() ou planifier_objectif()
         |
-5. Appel modele cloud disponible, sinon modele local
+5. Résolution de plan / actions ordonnées (ExecutionPlan / PlanStep)
         |
-6. Parsing JSON de decision et filtrage des outils inconnus
+6. Évaluation préalable DataShield (evaluate_capability -> allow | confirm | deny)
         |
-7. jarvis.py execute les actions via tools.OUTILS
+7. Dispatcher central execute_capability() invoque le module propriétaire souverain
         |
-8. Reponse naturelle + resultats d'outils
+8. CapabilityResult structuré retourné (statut, durée, résultat, erreur éventuelle)
         |
-9. Journalisation dans memory.json
+9. Traçabilité Context Engine (journaliser_resultat_capacite avec assainissement des secrets)
+        |
+10. Mesure Progress Tracker (enregistrer_impact_capacite et liaison aux objectifs)
+        |
+11. Restitution de la réponse naturelle et émission des événements
 ```
 
 En streaming SSE (`GET /jarvis/stream?message=...`), les interfaces recoivent aussi les evenements intermediaires emis pendant ce flux : reflexion, provider, cycle de vie des outils, demandes de confirmation, activation Stark, actions Stark, rapport Stark, reponse finale et erreurs.
@@ -79,6 +83,17 @@ Evenements emis :
 - `response` : reponse finale.
 - `error` : erreur.
 - `done` : fin de stream.
+
+### Endpoints de planification ordonnée
+
+- `POST /jarvis/plan` : accepte un objectif (`{"goal": "..."}`) et retourne un plan ordonné `ExecutionPlan` (`PlanStep`) conçu par Core Intellect sans l'exécuter.
+- `GET /jarvis/plan/stream?goal=...` : orchestre le plan étape par étape en streaming SSE avec évaluation de sécurité DataShield, émettant les événements :
+  - `plan_created` : plan conçu avec liste des étapes ordonnées, dépendances et préconditions.
+  - `step_started` : démarrage d'une étape spécifique.
+  - `policy_decision` : résultat du contrôle DataShield (`allow`, `confirm`, `deny`).
+  - `step_completed` : étape achevée avec son `CapabilityResult`.
+  - `plan_completed` : exécution du plan terminée avec rapport global.
+
 
 Les interfaces ne doivent pas reconstituer l'etat en appelant `/jarvis/ask` en parallele. Elles consomment le flux SSE et affichent chaque evenement dans l'ordre.
 
@@ -145,24 +160,25 @@ Les appels LLM ont deux tentatives. Les outils fonctionnent avec n'importe quel 
 
 `core_intellect.intellect` extrait un unique objet JSON de decision. Si le JSON est invalide ou incomplet, Jarvis retombe sur une reponse conversationnelle d'erreur. Les actions sont ensuite filtrees :
 
-- chaque action doit etre un dictionnaire;
-- `outil` doit exister dans `tools.OUTILS`;
-- les outils inconnus sont retires avant execution;
-- les erreurs d'arguments sont capturees au moment de l'appel Python.
+- chaque action doit être un dictionnaire ;
+- `outil` doit exister dans le registre `OUTILS` (`LegacyToolRegistry`) ou correspondre à une capacité canonique résolue par `greatos_capabilities.py` ;
+- les outils inconnus sont retirés avant exécution ;
+- les arguments sont validés lors de la construction de `CapabilityRequest`.
 
 Une décision de type `action` ou `mixte` sans outil exécutable déclenche une passe de réparation à température zéro. Si elle ne produit toujours aucun outil valide, Jarvis indique explicitement qu'aucune action n'a été exécutée ; il ne présente pas une action comme accomplie.
 
-`jarvis.py` conserve aussi des helpers d'extraction d'objets JSON pour compatibilite avec certains flux et tests.
+`jarvis/agent.py` conserve aussi des helpers d'extraction d'objets JSON pour compatibilité avec certains flux et tests.
 
-## Confirmations et securite
+## Confirmations et politique DataShield
 
-La politique actuelle est basee sur la confirmation ciblee.
+La politique de sécurité est désormais centralisée dans `datashield/policy.py` (`evaluate_capability()`) avec gouvernance DEFCON :
 
-- Lecture : libre.
-- Ecriture dans l'espace utilisateur : libre.
-- Ecriture dans `JARVIS_DIR` ou une zone systeme Windows : confirmation.
-- Mode Stark : aucune confirmation interactive.
-- Les chemins sont normalises par `chemin_autorise()`.
+- **DEFCON 1** : Urgence absolue, blocage systématique de toutes les capacités.
+- **DEFCON 2** : Blocage total des opérations destructives (`filesystem.delete`, suppression de corbeille) et confirmation requise pour toute écriture.
+- **DEFCON 3** : Confirmation obligatoire pour les commandes système et opérations critiques.
+- **DEFCON 4 / 5 (Nominal)** : Écritures utilisateur libres ; confirmation ciblée sur les zones protégées (`JARVIS_DIR`, Windows, Program Files).
+- **Mode Stark** : autonome, mais strictement confiné aux droits du compte courant et soumis à l'évaluation DataShield.
+- Les chemins sont normalisés par `chemin_autorise()`.
 - Les automatisations refusent les outils declares non automatisables dans `taskflow.scheduler.OUTILS_AUTOMATISATION_INTERDITS`.
 
 `action_bloquee()` et certains alias historiques existent encore pour compatibilite, mais la logique actuelle ne bloque pas par zone : elle demande confirmation quand c'est necessaire.

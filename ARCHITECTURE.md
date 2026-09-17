@@ -22,7 +22,7 @@ Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `cor
 3. `detecter_commande_mode()` intercepte les commandes (`!a`, `!S <objectif>`, activation/desactivation du mode action).
 4. Hors commande spéciale, `parler()` appelle `core_intellect.intellect.interpreter_objectif()`.
 5. Core Intellect renvoie une structure normalisee : objectif, type, actions et reponse naturelle.
-6. `jarvis.py` execute les actions listées via `tools.OUTILS`, puis assemble la reponse finale.
+6. Jarvis exécute les actions via le dispatcher central `execute_capability()`, validé par DataShield et tracé dans Context Engine.
 
 Le modèle ne doit pas être appelé directement depuis les capabilities. Si une fonctionnalité doit "penser", elle remonte au Core Intellect ou reste une execution deterministe.
 
@@ -135,19 +135,17 @@ une décision unique : `allow`, `confirm` ou `deny`. Le module propriétaire
 exécute seulement après cette décision et retourne à terme un résultat structuré
 (`success`, `failed`, `denied`, `cancelled` ou `timeout`).
 
-La première migration couvre les capacités TaskFlow `system.execute_command`,
-`system.execute_powershell`, `filesystem.write` et `filesystem.delete`.
-TaskFlow classe l'opération ; DataShield possède la politique DEFCON et la
-décision de sécurité. Les façades historiques de `taskflow/tools.py` restent
-compatibles pendant la migration des autres capacités.
+L'ensemble des capacités est désormais réparti de façon souveraine entre les modules :
+- **TaskFlow** : actions système, fichiers, commandes, organisation, automatisations, recherche web et sessions Playwright (`taskflow/files.py`, `commands.py`, `storage.py`, `organization.py`, `scheduler.py`, `watchers.py`, `custom_commands.py`, `web_search.py`, `browser_automation.py`, `browser_session.py`).
+- **DataShield** : politique DEFCON, évaluation des risques et sécurité (`datashield/policy.py`, `datashield/tools.py`).
+- **Progress Tracker** : création et suivi d'objectifs, progression, analytics et métriques d'impact (`progress_tracker/tools.py`, `progress_tracker/goals.py`, `progress_tracker/analytics.py`).
+- **SyncSphere** : création, liste et restauration de snapshots `.gos` (`syncsphere/tools.py`, `syncsphere/snapshots.py`).
+- **Interface Morphique** : overlays de navigation et vocaux, API REST et SSE (`interface_morphique/tools.py`, `interface_morphique/browser_overlay.py`, `interface_morphique/server.py`).
+- **Context Engine** : notes, préférences, mémoire durable, traçabilité des capacités et journal des agents (`context_engine/memory.py`, `context_engine/memory_tools.py`, `context_engine/agent_learning.py`).
+- **Jarvis** : agent d'orchestration conversationnelle (`jarvis/agent.py`), reconnaissance et synthèse vocale (`jarvis/voice_input.py`, `jarvis/voice_output.py`, `jarvis/clap_input.py`).
+- **Core Intellect** : décision, analyse d'intentions et planification ordonnée (`core_intellect/intellect.py`, `core_intellect/decision_analyzer.py`, `core_intellect/tool_signatures.py`).
 
-`greatos_capabilities.py` fait la transition entre cette façade historique et
-la cible du CDC : chaque outil est catalogué sous un nom canonique et avec son
-module propriétaire. Par exemple, `executer_commande` devient
-`system.execute_command` détenu par TaskFlow, et `creer_objectif` devient
-`goals.create` détenu par Progress Tracker. Jarvis et Core Intellect continuent
-d'utiliser les alias historiques tant que l'intégralité des appels n'a pas été
-migrée ; ils peuvent déjà voir le propriétaire dans l'inventaire dynamique.
+`greatos_capabilities.py` fournit le dispatcher central `execute_capability()` qui résout les alias et noms canoniques, consulte DataShield (`evaluate_capability`), exécute la fonction du module propriétaire, trace le résultat dans Context Engine (`journaliser_resultat_capacite`) et enregistre l'impact dans Progress Tracker (`enregistrer_impact_capacite`).
 
 - `taskflow/files.py` : fichiers et dossiers.
 - `taskflow/storage.py` : stockage, temp, corbeille, notifications et fichiers lourds.
@@ -166,9 +164,9 @@ migrée ; ils peuvent déjà voir le propriétaire dans l'inventaire dynamique.
 - `taskflow/browser_automation.py` : automatisation de navigateur via Playwright pour navigation interactive, clics, formulaires, captures d'écran et séquences d'actions.
 - `taskflow/browser_session.py` : outils de gestion des sessions de navigation parallèles avec overlay visuel.
 
-## Facade outils
+## Façade outils et registre LegacyToolRegistry
 
-`tools.py` expose le registre `OUTILS`. C'est la facade stable appelee par `jarvis.py` et par Core Intellect pour valider les noms d'outils.
+`taskflow/tools.py` expose le registre `OUTILS`, désormais une instance de `LegacyToolRegistry(dict)` (définie dans `greatos_capabilities.py`). Cette façade assure une rétrocompatibilité à 100% avec les appels historiques (dictionnaire de callables, introspection de signatures) tout en routant chaque exécution vers le dispatcher sécurisé `execute_capability()`.
 
 Responsabilites principales :
 
@@ -239,10 +237,12 @@ Le module `jarvis/personality.py` permet a Jarvis d'adapter son comportement :
 
 ## Interfaces temps reel
 
-L'API FastAPI expose deux flux conversationnels :
+L'API FastAPI expose plusieurs flux conversationnels et de planification :
 
 - `POST /jarvis/ask` : endpoint compatible, retourne seulement la reponse finale.
 - `GET /jarvis/stream?message=...` : endpoint SSE qui transmet les evenements intermediaires (`thinking`, `provider`, `tool_started`, `tool_completed`, `tool_failed`, `confirmation_required`, `stark_activated`, `stark_action`, `stark_terminated`, `response`, `error`, `done`).
+- `POST /jarvis/plan` : endpoint de planification ordonnée (`ExecutionPlan` / `PlanStep`) généré par Core Intellect sans exécution directe.
+- `GET /jarvis/plan/stream?goal=...` : endpoint SSE d'orchestration de plan en continu avec validation de sécurité DataShield et diffusion des étapes (`plan_created`, `step_started`, `policy_decision`, `step_completed`, `plan_completed`).
 
 Les interfaces `interface_morphique/app.py` et `interface_morphique/web/index.html` consomment ce flux pour afficher les etapes que le terminal Rich montre deja. Elles ne disposent d'aucun chemin de décision ou d'exécution distinct : API et console passent par `executer_interaction_utilisateur()`.
 

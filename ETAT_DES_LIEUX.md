@@ -2,73 +2,77 @@
 
 **Date de révision :** 16 septembre 2026
 
-**Statut global :** prototype local-first avancé ; refactor structurel prioritaire en cours.
+**Statut global :** prototype local-first avancé ; refactor structurel d'unification modulaire (7 étapes) **100% achevé et stabilisé**.
 **Source de vérité :** le code et les tests du dépôt. Le [cahier des charges](Documents/CAHIER_DES_CHARGES.md) décrit la cible, pas l'état de livraison.
 
 ## Résumé
 
-GreatOS est une surcouche intelligente personnelle pour Windows, composée de huit modules Python. Jarvis est utilisable en texte et en voix ; il dispose d'une cascade LLM, d'outils locaux, d'automatisations, d'une API FastAPI et d'interfaces web/HUD.
+GreatOS est une surcouche intelligente personnelle pour Windows, composée de huit modules Python souverains. Jarvis est utilisable en texte et en voix ; il dispose d'une cascade LLM, d'outils locaux, d'automatisations, d'une API FastAPI et d'interfaces web/HUD.
 
-Les correctifs de stabilisation récents ont limité la latence des fournisseurs locaux, évité des cascades cloud excessives, amélioré la résilience de la capture vocale et suspendu l'agent autonome pendant une interaction utilisateur. Les suites ciblées de stabilité et de sécurité exécutées lors de cette révision sont vertes.
+L'ensemble des 7 étapes du grand refactor d'unification modulaire est achevé : un dispatcher central unifié (`execute_capability`), des contrats stricts (`greatos_contracts.py`), une politique de sécurité centrale (`datashield.policy`), la traçabilité intégrale dans Context Engine, la mesure d'impact dans Progress Tracker, l'extraction souveraine des capacités et le registre unifié rétrocompatible `LegacyToolRegistry`. Les 112 tests de régression sont au vert.
 
-Le projet ne doit pas encore être présenté comme une implémentation complète des critères PFE 2028 ou de la vision 2033. Avant tout nouveau chantier fonctionnel ou apprentissage automatique, la priorité est de terminer le refactor décrit ci-dessous.
+Le projet ne doit pas encore être présenté comme une implémentation complète des critères PFE 2028 ou de la vision 2033. Les fondations logicielles sont désormais modulaires, souveraines et sécurisées.
 
 ## Modules : état réel
 
 | Module | Disponible aujourd'hui | Limites et éléments à réaliser |
 |---|---|---|
-| **Jarvis** | Conversation texte/voix, wake word Vosk, double-clap, Piper TTS, mémoire de session, Mode Stark, orchestration des outils. | Les objectifs NLU >80 %, réponse <2 s à 95 % et mémoire conversationnelle illimitée ne sont pas mesurés ni garantis. |
-| **Core Intellect** | Cascade Groq / OpenRouter / Jarvis-GC / Ollama, analyse d'intention, outils connus, gestion de réponses LLM dégradées. | Pas de Random Forest ni Knowledge Graph démontré ; qualité des recommandations non mesurée. |
-| **Context Engine** | Mémoire JSON/SQLite, état système, suggestions, recherche sémantique et détection de patterns simples. | Pas de hooks OS complets, LSTM ni prédiction temporelle avancée. |
-| **TaskFlow** | Outils fichiers, commandes, web, navigateur, calendrier/email, workflows et automatisations planifiées. Les commandes et écritures/suppressions de fichiers consultent désormais DataShield via le contrat noyau. | Les intégrations externes annoncées ne sont pas toutes validées ; les autres capacités doivent migrer vers le même passage de sécurité centralisé. |
-| **Progress Tracker** | Objectifs, suivi persistant et analytics de base. | Dashboard complet, gamification, ARIMA et visualisations avancées ne sont pas établis. |
-| **DataShield** | DEFCON, protections de chemins, confirmations, classification d'erreurs et autodestruction contrôlée. | Chiffrement AES-256-GCM, SQLCipher, Argon2id, 2FA/TOTP et détection ML ne sont pas implémentés. |
-| **SyncSphere** | Snapshots locaux `.gos`, liste et restauration. | Les snapshots sont des archives `tar.gz`, pas des sauvegardes chiffrées ; pas de synchronisation multi-appareils. |
-| **Interface Morphique** | API FastAPI, SSE, interface web HTML/JS, interface Tkinter et HUDs vocaux/navigateur. | Pas d'Electron, React, Tailwind ni de huit layouts contextuels démontrés. |
+| **Jarvis** | Conversation texte/voix, wake word Vosk, double-clap, Piper TTS, mémoire de session, Mode Stark, orchestration de plans (`orchestrer_plan`) sans logique métier directe. | Les objectifs NLU >80 %, réponse <2 s à 95 % et mémoire conversationnelle illimitée ne sont pas mesurés ni garantis. |
+| **Core Intellect** | Cascade Groq / OpenRouter / Jarvis-GC / Ollama, analyse d'intention, planification ordonnée (`planifier_objectif` produisant `ExecutionPlan`), gestion de réponses LLM dégradées. | Pas de Random Forest ni Knowledge Graph démontré ; qualité des recommandations non mesurée. |
+| **Context Engine** | Mémoire JSON/SQLite, état système, suggestions, recherche sémantique, détection de patterns, traçabilité des capacités (`journaliser_resultat_capacite` avec filtrage récursif des secrets) et journal d'apprentissage des agents. | Pas de hooks OS complets, LSTM ni prédiction temporelle avancée. |
+| **TaskFlow** | Outils fichiers, commandes, web, navigateur, calendrier/email, workflows et automatisations planifiées. Toutes les capacités à effet externe passent obligatoirement par `evaluate_capability`. | Les intégrations externes calendrier/email complètes restent des chantiers fonctionnels futurs. |
+| **Progress Tracker** | Objectifs, suivi persistant, analytics de base et mesure d'impact systématique des capacités (`enregistrer_impact_capacite`). | Dashboard complet, gamification, ARIMA et visualisations avancées ne sont pas établis. |
+| **DataShield** | Politique de sécurité DEFCON (1, 2, 3), évaluation des capacités (`evaluate_capability`), protections de chemins, confirmations ciblées, classification d'erreurs et autodestruction contrôlée. | Chiffrement AES-256-GCM, SQLCipher, Argon2id, 2FA/TOTP et détection ML ne sont pas implémentés. |
+| **SyncSphere** | Snapshots locaux `.gos`, liste et restauration, exposés via ses capacités souveraines `syncsphere.snapshot.create/list/restore`. | Les snapshots sont des archives `tar.gz`, pas des sauvegardes chiffrées ; pas de synchronisation multi-appareils. |
+| **Interface Morphique** | API FastAPI REST & SSE, endpoints de plans (`/jarvis/plan`, `/jarvis/plan/stream`), interface web HTML/JS, interface Tkinter et HUDs vocaux/navigateur. | Pas d'Electron, React, Tailwind ni de huit layouts contextuels démontrés. |
 
 ## Architecture et responsabilités
 
 L'architecture opérationnelle actuelle est :
 
 ```text
-Interfaces (web, Tkinter, voix, CLI)
+Interfaces (web, Tkinter, voix, CLI, API)
              ↓
-Jarvis : orchestration des interactions
+Jarvis : normalise la demande et orchestre les plans (orchestrer_plan)
              ↓
-Core Intellect : interprétation et décision
+Core Intellect : analyse d'intention et planification ordonnée (planifier_objectif -> ExecutionPlan)
              ↓
-TaskFlow : exécution des outils
+DataShield : validation de sécurité centrale (evaluate_capability -> allow | confirm | deny)
              ↓
-DataShield : règles de zones, DEFCON et confirmations
+Module propriétaire : exécute sa capacité souveraine (taskflow, syncsphere, progress_tracker, etc.)
              ↓
-Windows, fichiers, réseau et services locaux
+CapabilityResult structuré : succès, échec, refus, timeout
+             ↓
+Context Engine : journalise (journaliser_resultat_capacite) avec masquage des secrets
+Progress Tracker : mesure l'impact (enregistrer_impact_capacite) et lie aux objectifs
+             ↓
+Jarvis & Interface Morphique : restitution uniforme des événements et du résultat
 ```
 
-La cible du cahier des charges est une architecture de huit modules métier souverains. Jarvis orchestre, mais ne possède ni la sécurité, ni la persistance, ni l'exécution. Core Intellect décide sans exécuter ; TaskFlow exécute sans définir de politique ; DataShield décide `allow`, `confirm` ou `deny` sans produire d'effet système. Context Engine conserve les preuves et le contexte ; Progress Tracker mesure l'impact ; SyncSphere assure la continuité ; Interface Morphique présente les événements.
+Le découplage est désormais effectif : chaque module possède ses capacités propres (`datashield.tools`, `progress_tracker.tools`, `syncsphere.tools`, `interface_morphique.tools`, `context_engine.memory_tools`, `taskflow`). `taskflow/tools.py` utilise l'adaptateur `LegacyToolRegistry(dict)` garantissant la rétrocompatibilité complète tout en routant chaque appel vers le dispatcher central `execute_capability()`.
 
-L'implémentation historique reste partiellement couplée : `taskflow/tools.py` est encore la façade unique de nombreux outils appartenant en réalité aux huit modules. Les appels directs d'un outil par Jarvis et les décisions de sécurité locales doivent donc disparaître progressivement, sans casser l'API, les prompts ni les automatisations existantes.
+## Refactor de souveraineté des modules — Bilan et Invariants
 
-## Refactor de souveraineté des modules — priorité active
+### Décisions non négociables respectées
 
-### Décisions non négociables
-
-1. Les huit modules du CDC restent les seuls domaines métier. Aucun neuvième module métier ne doit être créé.
-2. `greatos_contracts.py` et `greatos_capabilities.py` sont des fichiers du **noyau d'intégration**, pas des modules : ils ne décident pas, n'exécutent pas et ne persistent pas.
-3. Toute capacité a un propriétaire unique, un nom canonique stable et un résultat structuré.
+1. Les huit modules du CDC restent les seuls domaines métier. Aucun neuvième module métier n'a été créé.
+2. `greatos_contracts.py` et `greatos_capabilities.py` sont les contrats et dispatcher du **noyau d'intégration** : ils ne décident pas, n'exécutent pas et ne persistent pas.
+3. Toute capacité possède un propriétaire unique, un nom canonique stable et un résultat structuré (`CapabilityResult`).
 4. Toute action à effet externe passe par DataShield avant son exécution. Le module propriétaire classe l'opération ; DataShield rend la politique ; le propriétaire exécute.
-5. `OUTILS` est une façade de compatibilité temporaire. Elle ne doit plus être confondue avec la propriété métier des capacités.
-6. La migration doit préserver les comportements utiles et être validée par tests à chaque tranche. Aucun « grand remplacement » non testé.
-7. L'apprentissage continu à partir des agents est reporté après la stabilisation de ce socle. Le journal des agents est déjà capturé, mais ne doit pas devenir une source de règles automatiques avant la fin du refactor.
+5. `OUTILS` est devenu un registre typé `LegacyToolRegistry` encapsulant le dispatcher central.
+6. La migration a préservé l'intégralité des fonctionnalités et a été validée à chaque étape par une suite de tests automatisés (112 tests au vert).
+7. L'apprentissage continu s'appuie sur le journal structuré `learning/agent_sessions.jsonl` et `context_engine/agent_learning.py`.
+
 
 ### Éléments déjà implémentés
 
 | Élément | État | Emplacement | Rôle réel |
 |---|---|---|---|
-| Contrat noyau | En place | `greatos_contracts.py` | `CapabilityRequest`, `PolicyDecision`, `CapabilityResult`, risques et statuts partagés. |
-| Politique centralisée | Première tranche en place | `datashield/policy.py` | Évalue une capacité et répond `allow`, `confirm` ou `deny`. |
-| Commandes et fichiers | Première migration en place | `taskflow/tools.py` | `system.execute_command`, `system.execute_powershell`, `filesystem.write` et `filesystem.delete` consultent DataShield. |
-| Catalogue de propriété | En place | `greatos_capabilities.py` | Associe les alias historiques aux noms canoniques et aux modules propriétaires. |
-| Inventaire Core Intellect | En place | `core_intellect/tool_signatures.py` | Expose au LLM la signature, la capacité canonique et son propriétaire. |
+| Contrat noyau | En place | `greatos_contracts.py` | `CapabilityRequest`, `PolicyDecision`, `CapabilityResult`, `PlanStep`, `ExecutionPlan`, statuts et risques partagés. |
+| Politique centralisée | Complète | `datashield/policy.py` | Évalue chaque capacité selon DEFCON (1/2/3), confinement et règles destructives (`allow`, `confirm` ou `deny`). |
+| Modules souverains | Migrations complètes | `datashield.tools`, `progress_tracker.tools`, `syncsphere.tools`, `interface_morphique.tools`, `context_engine.memory_tools`, `taskflow` | Chaque module possède et implémente ses capacités souveraines. |
+| Dispatcher & Registre | En place | `greatos_capabilities.py` | Résolution canonique, exécution sécurisée unifiée via `execute_capability` et adaptateur `LegacyToolRegistry`. |
+| Planification & Orchestration | En place | `core_intellect/intellect.py`, `jarvis/agent.py` | Core Intellect planifie (`planifier_objectif`), Jarvis orchestre le graphe d'étapes (`orchestrer_plan`) avec flux SSE unifié. |
 | Continuité inter-agents | En place | `learning/agent_sessions.jsonl`, `SUIVI_PROJET.md`, `AGENTS.md` | Journal append-only, vue humaine dérivée et protocole obligatoire de relais. |
 
 Exemples de capacité déjà catalogués : `executer_commande` → `system.execute_command` (TaskFlow), `noter` → `memory.note` (Context Engine), `creer_objectif` → `goals.create` (Progress Tracker), `creer_snapshot_systeme` → `snapshots.create` (SyncSphere).

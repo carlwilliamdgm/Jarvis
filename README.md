@@ -250,7 +250,7 @@ arreter_overlay_navigation()
 
 | Surface | Fichier | Usage |
 | --- | --- | --- |
-| Console Rich | `jarvis.py` | Utilisation terminal complète |
+| Console Rich | `greatos.py` / `jarvis/agent.py` | Utilisation terminal complète |
 | API FastAPI | `interface_morphique/server.py` | Intégration locale, web, multi-device |
 | Interface Tkinter | `interface_morphique/app.py` | Client desktop local consommant le SSE |
 | Interface web | `interface_morphique/web/index.html` | Client navigateur servi sur `/web` |
@@ -869,78 +869,74 @@ jarvis.py
 ├── executer_mode_stark()
 └── AutonomousAgent
 
-interface_morphique/server.py
-├── FastAPI app
-├── /jarvis/ask
-├── /jarvis/stream
-├── /jarvis/status
-└── /web
+interface_morphique/
+├── server.py (FastAPI REST, SSE, /jarvis/ask, /jarvis/stream, /jarvis/plan, /jarvis/plan/stream, /jarvis/status)
+├── app.py (Interface Tkinter)
+├── browser_overlay.py (HUD navigation)
+├── tools.py (Capacités overlay)
+└── web/ (Interface web autonome)
 
-core/
-├── intellect.py
-├── prompt.py
-├── tool_signatures.py
-├── memory.py
-├── safety.py
-├── stark_parser.py
-├── stark_session.py
-├── voice_state.py
-├── voice_overlay.py
-├── autodestruct.py
-├── contextual_suggestions.py
-├── decision_analyzer.py
-├── error_classification.py
-├── pattern_analyzer.py
+jarvis/
+├── agent.py (Orchestrateur conversationnel & plans)
+├── voice_state.py & voice_overlay.py (État et HUD vocal)
+├── voice_input.py & voice_output.py (Vosk & Piper TTS)
+├── clap_input.py (Activation double-clap)
+└── personality.py (Personnalité adaptative)
+
+core_intellect/
+├── intellect.py (Cerveau unique & planificateur d'objectifs)
+├── llm_client.py (Cascade Groq / OpenRouter / Jarvis-GC / Ollama)
+├── tool_signatures.py (Inventaire temps réel des capacités)
+├── decision_analyzer.py (Auto-réflexion & mémorisation des succès)
+└── translator.py (Traducteur intentions)
+
+context_engine/
+├── memory.py (Persistance durable memory.json/SQLite)
+├── memory_tools.py (Traces capacités, notes, contexte)
+├── agent_learning.py (Journal d'apprentissage durable)
+├── contextual_suggestions.py & pattern_analyzer.py
 ├── semantic_search.py
-├── system_monitor.py
-├── personality.py
-├── translator.py
-├── paths.py
-└── confirmations.py
-
-tools.py
-└── OUTILS
+└── system_monitor.py
 
 taskflow/
-├── files.py
-├── storage.py
-├── commands.py
-├── organization.py
-├── memory_tools.py
-├── scheduler.py
-├── custom_commands.py
-├── watchers.py
-├── voice_input.py
-├── voice_output.py
-├── clap_input.py
-├── calendar_integration.py
-├── email_integration.py
-├── web_search.py
-└── browser_automation.py
-```
+├── tools.py (Registre OUTILS / LegacyToolRegistry)
+├── files.py & storage.py
+├── commands.py & custom_commands.py
+├── organization.py, scheduler.py, watchers.py
+└── web_search.py, browser_automation.py, browser_session.py
 
-### Responsabilités
+progress_tracker/
+├── goals.py (Gestion d'objectifs)
+├── analytics.py (Analytique de progression)
+└── tools.py (Capacités de mesure d'impact & progression)
 
-- `core_intellect/intellect.py` : seul composant qui raisonne.
-- `jarvis.py` : orchestration, modes, exécution, EventBus, agent autonome.
-- `tools.py` : façade publique des outils.
-- `taskflow/` : exécution déterministe.
-- `interface_morphique/server.py` : transport HTTP/SSE et fichiers statiques.
-- `interface_morphique/app.py` et `interface_morphique/web/index.html` : présentation.
-- `JarvisAgent` : tâche planifiée Windows exécutée dans la session utilisateur.
+datashield/
+├── policy.py (Évaluation evaluate_capability & DEFCON 1/2/3)
+├── safety.py & confirmations.py (Zones protégées & whitelist)
+├── error_classification.py
+├── autodestruct.py
+└── tools.py (Capacités DEFCON)
 
-### Nouveaux modules core
+syncsphere/
+├── snapshots.py (Gestion des snapshots .gos)
+└── tools.py (Capacités snapshots)
 
-- `jarvis/voice_state.py` : Gestion de l'état vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partagé pour l'overlay
-- `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'état vocal en temps réel avec style HUD
-- `core/autodestruct.py` : Auto-destruction complète de Jarvis (service, tâches planifiées, variables d'environnement, dossier)
-- `core/contextual_suggestions.py` : Génération de suggestions intelligentes basées sur patterns, état système, contexte utilisateur et automatisations potentielles
-- `core/decision_analyzer.py` : Auto-réflexion sur les décisions, détection de patterns d'erreur, apprentissage des solutions réussies
-- `core/error_classification.py` : Classification mécanique des erreurs système avec catégories prédéfinies
-- `core/pattern_analyzer.py` : Détection et analyse des patterns comportementaux (horaires, actions répétitives, séquences)
-- `core/semantic_search.py` : Indexation et recherche sémantique dans l'historique des interactions avec analyse thématique
-- `core/system_monitor.py` : Surveillance continue de l'état système (CPU, mémoire, disque, réseau) avec détection d'anomalies
-- `core/personality.py` : Gestion et adaptation de la personnalité Jarvis avec traits ajustables et évolution automatique
+Noyau d'intégration :
+├── greatos.py (Point d'entrée CLI et noyau d'orchestration)
+├── greatos_capabilities.py (Dispatcher execute_capability & LegacyToolRegistry)
+└── greatos_contracts.py (CapabilityRequest, PolicyDecision, CapabilityResult, PlanStep, ExecutionPlan)
+`
+
+### Responsabilités fondamentales
+
+- jarvis : orchestration des interactions conversationnelles, exécution des plans d'étapes (orchestrer_plan) et gestion des entrées vocales.
+- core_intellect : raisonnement pur, décision déterministe et conception de plans ordonnés (planifier_objectif).
+- datashield : autorité de sécurité souveraine (evaluate_capability), politique DEFCON et protection des ressources.
+- context_engine : mémoire unifiée, traçabilité exhaustive et sécurisée des capacités, journal durable des agents.
+- progress_tracker : mesure de performance, analytics et lien d'impact entre capacités et objectifs actifs.
+- syncsphere : intégrité et continuité par snapshots du système.
+- 	askflow : exécution déterministe des commandes, fichiers, automatisations et navigation web.
+- interface_morphique : présentation, transports API (REST, SSE) et interfaces graphiques adaptatives.
 
 ## Outils principaux
 

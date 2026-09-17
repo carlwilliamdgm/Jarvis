@@ -248,7 +248,7 @@ Dans une nouvelle fenêtre PowerShell :
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python gui\app.py
+python interface_morphique/app.py
 ```
 
 ## Étape 5 - Lancement manuel (sans script)
@@ -271,7 +271,7 @@ python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
 
 ```powershell
 cd %USERPROFILE%\Jarvis
-python gui\app.py
+python interface_morphique/app.py
 ```
 
 ## Étape 6 - Tests de validation

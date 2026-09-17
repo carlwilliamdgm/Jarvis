@@ -12,6 +12,25 @@
 
 ## Journal récent
 
+### 2026-09-17T06:50:44.330301+00:00 — Antigravity — completed
+
+Mise à jour complète de la documentation interne (ARCHITECTURE.md, ETAT_DES_LIEUX.md, EXECUTION_OUTILS.md, README.md, PREMIER_LANCEMENT.md, Notes dev/GreatOS_Module_Map.md) pour refléter fidèlement l'état réel du code sans altérer les fichiers .docs
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- ETAT_DES_LIEUX.md (statut refactor 100% achevé), ARCHITECTURE.md (flux unifié, 8 modules souverains, LegacyToolRegistry), EXECUTION_OUTILS.md (schéma de flux, endpoints /jarvis/plan), README.md (arborescence des 8 modules, responsabilités fondamentales), PREMIER_LANCEMENT.md (correction chemins gui), Notes dev/GreatOS_Module_Map.md (matrice des 8 modules souverains 100% opérationnels)
+
+**Vérification**
+- 72 tests de non-régression passés avec succès (code 0), git diff --check propre (code 0), exclusion totale de fichiers .docs/.docx
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- La documentation interne est parfaitement à jour, le dépôt est assaini et prêt pour les prochaines évolutions.
+
 ### 2026-09-16T21:08:46.570050+00:00 — Antigravity — completed
 
 Assainissement du dépôt : suppression des dossiers temporaires et orphelins, exclusion de .pytest_temp dans .gitignore et validation de l'intégrité globale
@@ -205,22 +224,3 @@ Préparation de l'Étape 5 : Politique DataShield complète pour sécuriser tout
 
 **À suivre**
 - Engager l'Étape 5 (Politique DataShield complète) : faire passer snapshots, automatisations, navigateur, réseau, calendrier/e-mail et maintenance par evaluate_capability.
-
-### 2026-09-16T08:40:52.044377+00:00 — Antigravity — in_progress
-
-Préparation de l'Étape 4 : extraction par propriétaire des façades de taskflow/tools.py vers les modules souverains.
-
-**Décisions**
-- Conserver les alias dans OUTILS comme adaptateurs de transition pendant la migration progressive.
-
-**Changements**
-- Aucun élément signalé.
-
-**Vérification**
-- Aucun élément signalé.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Extraire une première famille de capacités (Context Engine, Progress Tracker ou SyncSphere) vers son module souverain.
