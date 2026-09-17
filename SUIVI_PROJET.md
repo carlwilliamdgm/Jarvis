@@ -12,6 +12,25 @@
 
 ## Journal récent
 
+### 2026-09-17T18:50:08.847157+00:00 — WebSearchRefactor — completed
+
+Web search engine updated with ddgs integration, strict result validation and Wikipedia fallback
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- taskflow/web_search.py, requirements.txt, memory.json
+
+**Vérification**
+- All pytest tests passed (248 passed, 8 deselected)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Monitor rate‑limit handling; consider caching
+
 ### 2026-09-17T06:50:44.330301+00:00 — Antigravity — completed
 
 Mise à jour complète de la documentation interne (ARCHITECTURE.md, ETAT_DES_LIEUX.md, EXECUTION_OUTILS.md, README.md, PREMIER_LANCEMENT.md, Notes dev/GreatOS_Module_Map.md) pour refléter fidèlement l'état réel du code sans altérer les fichiers .docs
@@ -198,29 +217,3 @@ Préparation de l'Étape 5 : Politique DataShield complète pour sécuriser tout
 
 **À suivre**
 - Faire passer snapshots, automatisations, navigateur, réseau, calendrier/e-mail et maintenance par evaluate_capability.
-
-### 2026-09-16T14:24:31.469357+00:00 — Antigravity — completed
-
-Étape 4 (Migrations par propriétaire) achevée : extraction des façades métiers vers les modules souverains avec 100% de rétrocompatibilité et 94 tests validés.
-
-**Décisions**
-- Extraire les façades métier de taskflow/tools.py vers datashield.tools, progress_tracker.tools, syncsphere.tools, interface_morphique.tools et context_engine.memory_tools sans rompre l'API historique ni le catalogue OUTILS.
-
-**Changements**
-- datashield/tools.py créé et exporté via datashield/__init__.py
-- progress_tracker/tools.py créé et exporté via progress_tracker/__init__.py
-- syncsphere/tools.py créé et exporté via syncsphere/__init__.py
-- interface_morphique/tools.py créé et exporté via interface_morphique/__init__.py
-- context_engine/memory_tools.py enrichi de lire_traces_capacites et lire_journal_agents
-- taskflow/tools.py allégé des redondances et alimenté par imports souverains
-- tests/test_greatos_modules.py enrichi avec TestSovereignModuleTools
-
-**Vérification**
-- 94 tests ciblés passés avec succès (.venv\Scripts\python.exe -m pytest ... --basetemp=.pytest_temp)
-- git diff --check exécuté sans warning ni erreur
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Engager l'Étape 5 (Politique DataShield complète) : faire passer snapshots, automatisations, navigateur, réseau, calendrier/e-mail et maintenance par evaluate_capability.

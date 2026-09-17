@@ -17,12 +17,60 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Tentative d'import de duckduckgo-search (bibliothèque maintenue par la communauté)
+# Tentative d'import de ddgs (paquet officiel moderne) ou duckduckgo-search (legacy)
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     DDG_AVAILABLE = True
 except ImportError:
-    DDG_AVAILABLE = False
+    try:
+        from duckduckgo_search import DDGS
+        DDG_AVAILABLE = True
+    except ImportError:
+        DDG_AVAILABLE = False
+
+SEARCH_ENGINE_ROOTS = {
+    "duckduckgo.com", "html.duckduckgo.com",
+    "google.com", "google.fr",
+    "bing.com",
+    "yahoo.com",
+    "qwant.com",
+    "ecosia.org",
+    "brave.com",
+}
+
+
+def is_search_engine_root(url: str) -> bool:
+    """Vérifie si une URL pointe vers la racine ou une redirection interne d'un moteur de recherche."""
+    if not url:
+        return True
+    try:
+        parsed = urlparse(url)
+        netloc = parsed.netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        path = parsed.path.strip('/')
+        for root in SEARCH_ENGINE_ROOTS:
+            if netloc == root or netloc.endswith("." + root):
+                if not path or path in ('', 'html', 'l', 'search', 'web'):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def is_valid_result(result: Dict[str, Any]) -> bool:
+    """Valide qu'un résultat n'est pas un placeholder, une redirection vide ou une racine de moteur."""
+    if not isinstance(result, dict):
+        return False
+    title = (result.get("title") or "").strip().lower()
+    url = (result.get("url") or "").strip()
+    if not url or is_search_engine_root(url):
+        return False
+    if title in {"here", "sans titre", "duckduckgo", "google", "bing", "error", "temporairement indisponible"}:
+        return False
+    if "temporairement indisponible" in title:
+        return False
+    return True
 
 
 class WebSearchEngine:
@@ -146,56 +194,114 @@ class WebSearchEngine:
     
     def search_duckduckgo_search(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """
-        Utilise la bibliothèque duckduckgo-search (solution communautaire maintenue).
+        Utilise la bibliothèque ddgs (ou duckduckgo-search).
         
-        Cette bibliothèque est plus robuste que l'API DuckDuckGo officielle pour la recherche web.
+        Cette bibliothèque est la solution communautaire maintenue pour interroger l'API DuckDuckGo.
         """
         if not DDG_AVAILABLE:
             return []
         
         try:
-            ddgs = DDGS()
+            with DDGS() as ddgs:
+                raw_results = list(ddgs.text(query, max_results=num_results))
             results = []
-            
-            # Utiliser la méthode text de duckduckgo-search
-            for result in ddgs.text(query, max_results=num_results):
-                results.append({
-                    "title": result.get('title', ''),
-                    "url": result.get('href', ''),
-                    "snippet": result.get('body', '')
-                })
-            
+            for result in raw_results:
+                item = {
+                    "title": (result.get('title') or '').strip(),
+                    "url": (result.get('href') or '').strip(),
+                    "snippet": (result.get('body') or '').strip()
+                }
+                if is_valid_result(item):
+                    results.append(item)
             return results
-            
         except Exception as e:
-            # Fallback vers l'API DuckDuckGo classique
-            return self.search_duckduckgo(query, num_results)
+            logger.warning("Échec ddgs (%s): %s", query, e)
+            return []
     
+    def search_wikipedia(self, query: str, num_results: int = 5) -> List[Dict[str, Any]]:
+        """
+        Recherche des articles sur Wikipedia français en fallback fiable.
+        Ne nécessite aucune clé API.
+        """
+        self._rate_limit()
+        try:
+            url = "https://fr.wikipedia.org/w/api.php"
+            params = {
+                'action': 'query',
+                'generator': 'search',
+                'gsrsearch': query,
+                'gsrlimit': min(num_results, 10),
+                'prop': 'extracts|info',
+                'exintro': 1,
+                'explaintext': 1,
+                'inprop': 'url',
+                'format': 'json'
+            }
+            response = self.session.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            pages = data.get('query', {}).get('pages', {})
+            results = []
+            for _, page_info in pages.items():
+                title = (page_info.get('title') or '').strip()
+                page_url = (page_info.get('fullurl') or '').strip()
+                extract = (page_info.get('extract') or '').strip()
+                if title and page_url:
+                    item = {
+                        "title": title,
+                        "url": page_url,
+                        "snippet": extract[:300] if extract else ""
+                    }
+                    if is_valid_result(item):
+                        results.append(item)
+            return results
+        except Exception as e:
+            logger.warning("Échec Wikipedia (%s): %s", query, e)
+            return []
+
     def search(self, query: str, num_results: int = 10, provider: str = None) -> List[Dict[str, Any]]:
         """
-        Effectue une recherche web avec le provider approprié.
+        Effectue une recherche web avec le provider approprié et cascade de secours.
+        
+        Ordre de cascade :
+        1. Brave (si configuré ou demandé)
+        2. ddgs (duckduckgo_search)
+        3. DuckDuckGo Instant Answer / HTML
+        4. Wikipedia Search API
         
         Args:
             query: La requête de recherche
             num_results: Nombre de résultats souhaités
-            provider: Provider spécifique ('brave', 'duckduckgo_search', 'duckduckgo', None pour auto)
+            provider: Provider spécifique ('brave', 'duckduckgo_search', 'duckduckgo', 'wikipedia', None pour auto)
             
         Returns:
-            Liste de résultats avec titre, URL et snippet
+            Liste de résultats valides avec titre, URL et snippet
         """
-        if provider is None:
-            provider = self.preferred_provider
-        
-        if provider == "brave" and self.brave_api_key:
-            results = self.search_brave(query, num_results)
+        # 1. Provider Brave explicite ou prioritaire
+        if (provider == "brave" or (provider is None and self.preferred_provider == "brave")) and self.brave_api_key:
+            results = [r for r in self.search_brave(query, num_results) if is_valid_result(r)]
             if results:
                 return results
-            # Fallback vers duckduckgo-search si Brave échoue
-            return self.search_duckduckgo_search(query, num_results)
-        elif provider == "duckduckgo_search" and DDG_AVAILABLE:
-            return self.search_duckduckgo_search(query, num_results)
-        else:
-            return self.search_duckduckgo(query, num_results)
+
+        # 2. ddgs (duckduckgo_search)
+        if (provider in (None, "duckduckgo_search", "ddgs")) and DDG_AVAILABLE:
+            results = [r for r in self.search_duckduckgo_search(query, num_results) if is_valid_result(r)]
+            if results:
+                return results
+
+        # 3. DuckDuckGo API classique ou HTML
+        if provider in (None, "duckduckgo"):
+            results = [r for r in self.search_duckduckgo(query, num_results) if is_valid_result(r)]
+            if results:
+                return results
+
+        # 4. Fallback Wikipedia (encyclopédique & fiable sans clé API)
+        wiki_results = [r for r in self.search_wikipedia(query, min(num_results, 5)) if is_valid_result(r)]
+        if wiki_results:
+            return wiki_results
+
+        return []
     
     def _search_duckduckgo_html(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """Méthode de fallback utilisant le HTML de DuckDuckGo avec parsing amélioré."""
@@ -210,55 +316,39 @@ class WebSearchEngine:
             response.raise_for_status()
             
             results = self._parse_duckduckgo_html(response.text, num_results)
+            results = [r for r in results if is_valid_result(r)]
             
-            # Si toujours aucun résultat, essayer une approche alternative
-            if not results or (len(results) == 1 and "error" in results[0]):
+            # Si toujours aucun résultat, essayer l'approche alternative
+            if not results:
                 return self._search_duckduckgo_v2(query, num_results)
             
             return results
             
         except Exception as e:
-            # Essayer l'approche alternative en cas d'erreur
+            logger.debug("Échec _search_duckduckgo_html: %s", e)
             return self._search_duckduckgo_v2(query, num_results)
     
     def _search_duckduckgo_v2(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """Approche alternative pour DuckDuckGo avec différents patterns."""
         try:
-            # Essayer avec des paramètres différents
             params = {
                 'q': query,
             }
-            
             url = "https://duckduckgo.com/"
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
             
-            # Parser avec des patterns plus larges
             results = self._parse_duckduckgo_alternative(response.text, num_results)
-            
-            if not results:
-                # Retourner un message informatif plutôt qu'une erreur
-                return [{
-                    "title": "Recherche web temporairement indisponible",
-                    "url": "https://duckduckgo.com/",
-                    "snippet": f"La recherche web ne fonctionne pas actuellement. Veuillez configurer une clé API Brave Search (BRAVE_API_KEY) pour des résultats fiables, ou réessayez plus tard."
-                }]
-            
-            return results
+            return [r for r in results if is_valid_result(r)]
             
         except Exception as e:
-            # Retourner un message informatif plutôt qu'une erreur
-            return [{
-                "title": "Recherche web temporairement indisponible",
-                "url": "https://duckduckgo.com/",
-                "snippet": f"Erreur de recherche web: {str(e)}. Veuillez configurer une clé API Brave Search (BRAVE_API_KEY) pour des résultats fiables."
-            }]
+            logger.debug("Échec _search_duckduckgo_v2: %s", e)
+            return []
     
     def _parse_duckduckgo_html(self, html: str, num_results: int) -> List[Dict[str, Any]]:
         """Parse les résultats HTML de DuckDuckGo."""
         results = []
         
-        # Essayer plusieurs patterns pour extraire les résultats
         patterns = [
             r'<a rel="nofollow" class="result__a" href="([^"]+)">([^<]+)</a>',
             r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
@@ -269,33 +359,31 @@ class WebSearchEngine:
             matches = re.findall(pattern, html, re.IGNORECASE)
             if matches:
                 for url, title in matches[:num_results]:
-                    # Nettoyer l'URL (DuckDuckGo utilise des URLs redirect)
                     clean_url = self._clean_duckduckgo_url(url)
-                    
-                    # Essayer d'extraire un snippet
                     snippet_pattern = r'<a[^>]*result__a[^>]*>.*?</a>.*?<a[^>]*class="result__snippet"[^>]*>([^<]+)</a>'
                     snippet_match = re.search(snippet_pattern, html, re.IGNORECASE | re.DOTALL)
                     snippet = snippet_match.group(1).strip() if snippet_match else ""
                     
-                    results.append({
+                    item = {
                         "title": title.strip(),
                         "url": clean_url,
                         "snippet": snippet
-                    })
+                    }
+                    if is_valid_result(item):
+                        results.append(item)
                 break
         
-        # Si toujours aucun résultat, essayer une approche plus basique
         if not results:
-            # Chercher tous les liens avec des titres
             all_links = re.findall(r'<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>', html, re.IGNORECASE)
             for url, title in all_links[:num_results]:
-                if title and len(title) > 3 and 'http' in url:  # Filtre basique
-                    clean_url = self._clean_duckduckgo_url(url)
-                    results.append({
-                        "title": title.strip(),
-                        "url": clean_url,
-                        "snippet": ""
-                    })
+                clean_url = self._clean_duckduckgo_url(url)
+                item = {
+                    "title": title.strip(),
+                    "url": clean_url,
+                    "snippet": ""
+                }
+                if is_valid_result(item):
+                    results.append(item)
         
         return results
     
@@ -303,12 +391,11 @@ class WebSearchEngine:
         """Approche alternative de parsing pour DuckDuckGo avec patterns plus génériques."""
         results = []
         
-        # Patterns alternatifs plus larges et plus génériques
         alternative_patterns = [
             r'<a[^>]*class="[^"]*result[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
             r'<h2[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>.*?</h2>',
             r'<div[^>]*class="[^"]*result[^"]*"[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
-            r'<a[^>]*href="(https?://[^"]+)"[^>]*>([^<]{5,100})</a>',  # Pattern générique pour liens externes
+            r'<a[^>]*href="(https?://[^"]+)"[^>]*>([^<]{5,100})</a>',
         ]
         
         for pattern in alternative_patterns:
@@ -316,15 +403,13 @@ class WebSearchEngine:
             if matches:
                 for url, title in matches[:num_results]:
                     clean_url = self._clean_duckduckgo_url(url)
-                    # Filtres plus stricts pour éviter les liens internes
-                    if title and len(title) > 3 and clean_url.startswith('http'):
-                        # Éviter les liens internes DuckDuckGo
-                        if 'duckduckgo.com' not in clean_url or '/l/?uddg=' in clean_url:
-                            results.append({
-                                "title": title.strip(),
-                                "url": clean_url,
-                                "snippet": ""
-                            })
+                    item = {
+                        "title": title.strip(),
+                        "url": clean_url,
+                        "snippet": ""
+                    }
+                    if is_valid_result(item):
+                        results.append(item)
                 if results:
                     break
         
@@ -420,10 +505,10 @@ def rechercher_web(requete: str, nombre_resultats: int = 5) -> str:
     engine = WebSearchEngine()
     results = engine.search(requete, min(nombre_resultats, 10))
     
-    # Filtrer les résultats factices provenant du fallback DuckDuckGo
-    filtered_results = [r for r in results if not (r.get('url') == 'https://duckduckgo.com/' and 'temporairement indisponible' in r.get('title', '').lower())]
+    # Filtrer strictement les résultats factices ou invalides
+    filtered_results = [r for r in results if is_valid_result(r)]
     if not filtered_results:
-        return f"Erreur lors de la recherche: aucun résultat fiable trouvé. Vérifiez votre connexion ou configurez une clé API Brave Search (BRAVE_API_KEY)."
+        return f"Erreur lors de la recherche: aucun résultat fiable trouvé pour '{requete}'. Vérifiez votre connexion ou configurez une clé API Brave Search (BRAVE_API_KEY)."
     
     # Utiliser les résultats filtrés pour le formatage
     lignes = [f"=== RÉSULTATS DE RECHERCHE: {requete} ==="]
@@ -475,24 +560,26 @@ def rechercher_et_analyser(requete: str, nombre_pages: int = 3) -> str:
     Returns:
         Synthèse de la recherche avec analyse des contenus
     """
-    # D'abord, rechercher
-    lignes = [rechercher_web(requete, nombre_pages * 2)]
-    
-    # Ensuite, analyser les premières pages
     engine = WebSearchEngine()
-    results = engine.search(requete, nombre_pages * 2)
+    results = [r for r in engine.search(requete, nombre_pages * 2) if is_valid_result(r)]
     
     if not results:
-        return lignes[0]
+        return f"Erreur lors de la recherche: aucun résultat fiable trouvé pour '{requete}'."
     
-    if "error" in results[0]:
-        return lignes[0]
+    lignes = [f"=== RÉSULTATS DE RECHERCHE: {requete} ==="]
+    lignes.append(f"{len(results)} résultats trouvés\n")
+    for i, result in enumerate(results, 1):
+        lignes.append(f"{i}. {result.get('title', 'Sans titre')}")
+        lignes.append(f"   URL: {result.get('url', 'N/A')}")
+        if result.get('snippet'):
+            lignes.append(f"   {result.get('snippet')}")
+        lignes.append("")
     
     lignes.append("\n=== ANALYSE DES PAGES PERTINENTES ===\n")
     
     for i, result in enumerate(results[:nombre_pages], 1):
         url = result.get('url', '')
-        if url:
+        if url and not is_search_engine_root(url):
             lignes.append(f"\n--- Page {i}: {result.get('title', 'Sans titre')} ---")
             page_analysis = analyser_page_web(url)
             lignes.append(page_analysis)
