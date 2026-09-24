@@ -1148,15 +1148,6 @@ Vérifier :
 
 Ne pas appeler directement un LLM depuis `taskflow/`.
 
-## Modules futurs
-
-Le dossier `modules/` contient des modules planifiés :
-
-- `context_engine` : perception du contexte permanent.
-- `datashield` : protection des données sensibles.
-- `progress_tracker` : suivi long terme.
-- `syncsphere` : synchronisation multi-appareils.
-- `taskflow` : workflows complexes.
 
 Ils doivent respecter les principes existants : Core Intellect pense, les capabilities exécutent, `tools.OUTILS` expose.
 
