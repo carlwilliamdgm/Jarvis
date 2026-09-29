@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-09-29T11:37:35.203537+00:00 — Antigravity — completed
+
+Renforcement souverain de Core Intellect : défense cognitive (prompt injection/jailbreak/secret leak), routeur d'intention et validateur/auto-correcteur d'arguments
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/cognitive_defense.py, core_intellect/intent_router.py, core_intellect/argument_validator.py, core_intellect/intellect.py, core_intellect/__init__.py, tests/test_core_intellect_defense_and_router.py, ARCHITECTURE.md, ETAT_DES_LIEUX.md
+
+**Vérification**
+- 178/178 tests unitaires passés avec succès (code 0) dont 20 nouveaux tests dédiés Core Intellect
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Connecter les flux d'extraction web/email de TaskFlow pour propager automatiquement RequestOrigin.EXTERNAL
+
 ### 2026-09-29T10:54:32.190825+00:00 — Antigravity — completed
 
 Finalisation de l'Étape 7 : consolidation de OUTILS comme adaptateur explicite (LegacyToolRegistry), intégration des capacités de chiffrement DataShield et alignement du suivi de projet
@@ -183,22 +202,3 @@ Redémarrage réussi du serveur GreatOS (Interface Morphique) sur le port 8000 v
 
 **À suivre**
 - Refactor complet achevé. Maintenir la suite de tests à 112 minimum et étendre les nouvelles capacités selon l'architecture modulaire stabilisée.
-
-### 2026-09-16T20:02:28.333288+00:00 — Antigravity — in_progress
-
-Préparation de l'Étape 7 : Retrait progressif de OUTILS vers un adaptateur explicite sans rupture de compatibilité.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun élément signalé.
-
-**Vérification**
-- Aucun élément signalé.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Réduire OUTILS dans taskflow/tools.py à un adaptateur de compatibilité explicite.

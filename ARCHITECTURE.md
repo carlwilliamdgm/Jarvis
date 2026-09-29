@@ -38,6 +38,9 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 - `taskflow/stark_parser.py` : parseur de la grammaire Stark (`>>`, `&&`, `||`).
 - `taskflow/stark_session.py` : coordination multi-instance Stark via `stark_actif.json`.
 - `core_intellect/llm_client.py` : orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud -> Fallback local).
+- `core_intellect/cognitive_defense.py` : moteur de défense cognitive et détection des prompt injections, jailbreaks (DAN, overrides), délimiteurs usurpés et exfiltration de secrets avec support RequestOrigin (Taint).
+- `core_intellect/intent_router.py` : routeur d'intention sémantique pour adapter la température et alléger le prompt système (élagage des signatures d'outils sur les échanges conversationnels purs).
+- `core_intellect/argument_validator.py` : validateur et auto-correcteur d'arguments d'outils, normalisant les alias de paramètres et prévenant les erreurs de contrat avant passage à DataShield.
 - `taskflow/browser_session.py` : gestion de sessions de navigateur persistantes avec états, événements et exécution asynchrone.
 - `interface_morphique/browser_overlay.py` : interface visuelle flottante pour la navigation en temps réel.
 

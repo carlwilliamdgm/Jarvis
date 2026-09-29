@@ -32,7 +32,14 @@ from context_engine.memory import charger_memoire, normaliser_memoire
 from core_intellect.prompt import construire_prompt_action
 from core_intellect.tool_signatures import documenter_signatures_outils
 from core_intellect.decision_analyzer import memoriser_succes, enregistrer_apprentissage
-from jarvis.personality import adapter_ton_contextuel, generer_prompt_personnalite
+from core_intellect.cognitive_defense import (
+    analyser_menace_cognitive,
+    generer_reponse_neutralisation,
+    CognitiveThreatSeverity,
+)
+from core_intellect.intent_router import router_intention, IntentCategory
+from core_intellect.argument_validator import valider_et_corriger_arguments
+from greatos_contracts import RequestOrigin
 from taskflow.tools import OUTILS
 
 OS = platform.system()
@@ -54,6 +61,7 @@ def interpreter_objectif(
     mode_stark: bool = False,
     forcer_action: bool = False,
     on_event: Callable[[str, dict], None] | None = None,
+    origin: RequestOrigin = RequestOrigin.USER,
 ) -> dict:
     """
     Interprète l'objectif réel de l'utilisateur en une seule passe LLM.
@@ -62,6 +70,7 @@ def interpreter_objectif(
         message: Le message de l'utilisateur
         historique: L'historique de conversation
         memoire: La mémoire de Jarvis
+        origin: Origine de la requête (USER par défaut, EXTERNAL pour flux web/email)
 
     Returns:
         dict avec les clés:
@@ -71,8 +80,31 @@ def interpreter_objectif(
         - "reponse": réponse naturelle à l'utilisateur
     """
     try:
+        # 1. Défense cognitive amont (Souveraineté Core Intellect)
+        threat_report = analyser_menace_cognitive(message, origin=origin)
+        if threat_report.is_threat and threat_report.severity == CognitiveThreatSeverity.CRITICAL:
+            if on_event:
+                on_event("cognitive_threat", threat_report.to_dict())
+            return {
+                "objectif": "neutralisation_menace_cognitive",
+                "type": "conversation",
+                "raisonnement": threat_report.explanation,
+                "actions": [],
+                "reponse": generer_reponse_neutralisation(threat_report),
+            }
+
+        # 2. Routage d'intention et optimisation de prompt
+        route = router_intention(message, historique)
+        temp_effective = temperature if temperature != 0.7 else route.temperature
+        inclure_outils = mode_stark or forcer_action or route.needs_tool_signatures
+
         # Construire le prompt système pour l'interprétation
-        prompt_system = _construire_prompt_interpretation(memoire, mode_stark=mode_stark, message_actuel=message)
+        prompt_system = _construire_prompt_interpretation(
+            memoire,
+            mode_stark=mode_stark,
+            message_actuel=message,
+            inclure_signatures=inclure_outils,
+        )
 
         # Préparer les messages pour le LLM
         messages = [{"role": "system", "content": prompt_system}]
@@ -89,7 +121,7 @@ def interpreter_objectif(
             messages.append({"role": "user", "content": message})
 
         # Appel LLM avec retry
-        reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temperature, on_event=on_event)
+        reponse = _appeler_llm_avec_retry(messages, memoire, temperature=temp_effective, on_event=on_event)
 
         if reponse is None:
             providers_cloud = _providers_cloud_disponibles()
@@ -165,7 +197,16 @@ def interpreter_objectif(
 
 def _normaliser_decision(contenu: str, message_original: str) -> dict:
     resultat = _parser_reponse_intellect(contenu, message_original)
-    resultat["actions"] = _filtrer_outils_inconnus(resultat["actions"])
+    actions_validees = []
+    for action in resultat.get("actions", []):
+        if not isinstance(action, dict):
+            continue
+        outil = action.get("outil")
+        args = action.get("args") if isinstance(action.get("args"), dict) else {}
+        val_res = valider_et_corriger_arguments(outil, args)
+        if val_res.is_valid:
+            actions_validees.append({"outil": val_res.outil, "args": val_res.arguments})
+    resultat["actions"] = actions_validees
     return resultat
 
 
@@ -242,7 +283,12 @@ def _reparer_decision_action(
     )
 
 
-def _construire_prompt_interpretation(memoire: dict, mode_stark: bool = False, message_actuel: str = "") -> str:
+def _construire_prompt_interpretation(
+    memoire: dict,
+    mode_stark: bool = False,
+    message_actuel: str = "",
+    inclure_signatures: bool = True,
+) -> str:
     """Construit le prompt système pour l'interprétation d'objectif."""
     u = memoire.get("utilisateur", {})
     nom = u.get("nom", "utilisateur")
@@ -274,7 +320,10 @@ Notes enregistrées récemment :
 """
         consigne_memoire = "\n- Avant de répondre que tu ne sais pas ou que tu n'as pas d'information sur un sujet, vérifie d'abord les notes et les échanges récents listés ci-dessus. S'ils contiennent la réponse, utilise-la — ne dis jamais \"je n'ai pas d'information\" si elle est juste au-dessus dans ce prompt."
 
-    signatures_outils = documenter_signatures_outils()
+    if inclure_signatures:
+        signatures_outils = documenter_signatures_outils()
+    else:
+        signatures_outils = "Inventaire des capacités : non requis pour cette interaction conversationnelle pure (actions = [])."
     regles_stark = ""
     if mode_stark:
         regles_stark = """
@@ -293,6 +342,7 @@ Règles impératives du Mode Stark (Plein Accès & Raisonnement Renforcé) :
 """
 
     # Adapter le ton en fonction du contexte
+    from jarvis.personality import adapter_ton_contextuel, generer_prompt_personnalite
     ton_contextuel = adapter_ton_contextuel(message_actuel) if message_actuel else "ton naturel et équilibré"
     
     # Obtenir les instructions de personnalité
