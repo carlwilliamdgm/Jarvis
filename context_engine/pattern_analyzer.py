@@ -244,3 +244,42 @@ def obtenir_patterns_actuels() -> str:
         lignes.append(f"  Échanges/jour (7j) : {frequence.get('moyenne_echanges_jour', 0):.1f}")
     
     return "\n".join(lignes)
+
+
+def evaluer_anomalie_action(nom_capacite: str, heure: int | None = None) -> dict[str, Any]:
+    """Évalue souverainement si une action présente une anomalie comportementale pour Carl.
+
+    Vérifie l'heure de la journée par rapport aux plages d'activité habituelles
+    et la familiarité de la capacité demandée.
+    """
+    try:
+        data = charger_memoire()
+        patterns = data.get("patterns_comportementaux", {})
+        if not patterns:
+            return {"anomalie": False, "score": 0.0, "raison": "Patterns non encore établis"}
+
+        h_actuelle = heure if heure is not None else datetime.now().hour
+        horaires = patterns.get("horaires", {})
+        actions = patterns.get("actions", {})
+
+        total_interactions = sum(horaires.values())
+        if total_interactions >= 10:
+            if h_actuelle not in horaires and (h_actuelle < 6 or h_actuelle > 23):
+                return {
+                    "anomalie": True,
+                    "score": 0.7,
+                    "raison": f"Action demandée à {h_actuelle}h en dehors des heures habituelles d'activité.",
+                }
+
+        total_actions = sum(actions.values())
+        if total_actions >= 30 and nom_capacite not in actions:
+            return {
+                "anomalie": True,
+                "score": 0.5,
+                "raison": f"Première exécution de la capacité '{nom_capacite}' dans un historique dense.",
+            }
+
+        return {"anomalie": False, "score": 0.0, "raison": "Action conforme aux patterns"}
+    except Exception:
+        return {"anomalie": False, "score": 0.0, "raison": "Erreur analyse pattern"}
+

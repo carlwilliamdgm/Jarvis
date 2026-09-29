@@ -22,8 +22,8 @@ Le projet ne doit pas encore être présenté comme une implémentation complèt
 | **Context Engine** | Mémoire JSON/SQLite, état système, suggestions, recherche sémantique, détection de patterns, traçabilité des capacités (`journaliser_resultat_capacite` avec filtrage récursif des secrets) et journal d'apprentissage des agents. | Pas de hooks OS complets, LSTM ni prédiction temporelle avancée. |
 | **TaskFlow** | Outils fichiers, commandes, web, navigateur, calendrier/email, workflows et automatisations planifiées. Toutes les capacités à effet externe passent obligatoirement par `evaluate_capability`. | Les intégrations externes calendrier/email complètes restent des chantiers fonctionnels futurs. |
 | **Progress Tracker** | Objectifs, suivi persistant, analytics de base et mesure d'impact systématique des capacités (`enregistrer_impact_capacite`). | Dashboard complet, gamification, ARIMA et visualisations avancées ne sont pas établis. |
-| **DataShield** | Politique de sécurité DEFCON (1, 2, 3), évaluation des capacités (`evaluate_capability`), protections de chemins, confirmations ciblées, classification d'erreurs et autodestruction contrôlée. | Chiffrement AES-256-GCM, SQLCipher, Argon2id, 2FA/TOTP et détection ML ne sont pas implémentés. |
-| **SyncSphere** | Snapshots locaux `.gos`, liste et restauration, exposés via ses capacités souveraines `syncsphere.snapshot.create/list/restore`. | Les snapshots sont des archives `tar.gz`, pas des sauvegardes chiffrées ; pas de synchronisation multi-appareils. |
+| **DataShield** | Chiffrement AES-256-GCM (`datashield.crypto`), protection de la mémoire (`EncryptedJsonMemoryStore`), chiffrement des snapshots SyncSphere, politique de sécurité DEFCON (1, 2, 3), évaluation des capacités (`evaluate_capability`), protections de chemins, confirmations ciblées, classification d'erreurs et autodestruction contrôlée. | SQLCipher natif, 2FA/TOTP et détection ML d'anomalies restent à implémenter. |
+| **SyncSphere** | Snapshots locaux `.gos` chiffrés de bout en bout en AES-256-GCM via DataShield (ou en clair en rétrocompatibilité), liste avec détection de format et restauration sécurisée avec validation de clé, exposés via ses capacités souveraines `snapshots.create/list`. | Pas de synchronisation multi-appareils (P2P / cloud E2EE). |
 | **Interface Morphique** | API FastAPI REST & SSE, endpoints de plans (`/jarvis/plan`, `/jarvis/plan/stream`), interface web HTML/JS, interface Tkinter et HUDs vocaux/navigateur. | Pas d'Electron, React, Tailwind ni de huit layouts contextuels démontrés. |
 
 ## Architecture et responsabilités
@@ -162,7 +162,7 @@ Les tests ciblés LLM, audio, noyau, DataShield, TaskFlow et durcissement passen
 2. Faire un test vocal prolongé sur la machine cible, avec consultation des logs et mesure de la latence.
 3. Mesurer les objectifs annoncés : latence p95, consommation CPU/RAM, taux de reconnaissance et taux d'échec des outils.
 4. Configurer explicitement le fournisseur OpenRouter retenu et `JARVIS_API_KEY` si l'API est accessible hors de localhost.
-5. Centraliser la décision de sécurité dans DataShield et chiffrer les données/snapshots avant de revendiquer les contrôles cryptographiques du cahier des charges.
+5. [Fait] Centraliser la décision de sécurité dans DataShield et chiffrer les données/snapshots (AES-256-GCM actif dans DataShield et SyncSphere).
 
 ## Portée plateforme
 

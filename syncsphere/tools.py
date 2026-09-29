@@ -21,7 +21,8 @@ def creer_snapshot_systeme_tool(nom: str = "") -> str:
         return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
         chemin = snapshot_manager.creer_snapshot(nom=nom if nom else None)
-        return f"Snapshot GreatOS créé avec succès : {chemin.name} ({chemin})"
+        chiffre_tag = " [🔒 Chiffré]" if snapshot_manager.est_chiffre(chemin) else " [🔓 Non chiffré]"
+        return f"Snapshot GreatOS créé avec succès{chiffre_tag} : {chemin.name} ({chemin})"
     except Exception as e:
         return resultat_erreur(f"Erreur création snapshot : {e}", e)
 
@@ -41,7 +42,8 @@ def lister_snapshots_systeme_tool() -> str:
         lignes = ["=== SNAPSHOTS SYNCHSPHERE ==="]
         for s in snaps:
             taille_ko = round(s['taille_octets'] / 1024, 1)
-            lignes.append(f"- {s['nom']} ({taille_ko} Ko)")
+            chiffre_tag = " [🔒 Chiffré]" if s.get("chiffre") else " [🔓 Non chiffré]"
+            lignes.append(f"- {s['nom']} ({taille_ko} Ko){chiffre_tag}")
         return "\n".join(lignes)
     except Exception as e:
         return resultat_erreur(f"Erreur liste snapshots : {e}", e)

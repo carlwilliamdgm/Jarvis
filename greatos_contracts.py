@@ -24,6 +24,13 @@ class SecurityDecision(str, Enum):
     DENY = "deny"
 
 
+class RequestOrigin(str, Enum):
+    """Provenance de la demande pour l'analyse de frontière de confiance."""
+    USER = "user"          # Interaction directe utilisateur (console, voix, HUD local)
+    EXTERNAL = "external"  # Source externe non fiable (web scraping, document tiers, email)
+    SYSTEM = "system"      # Tâche planifiée ou automatisation interne
+
+
 class CapabilityStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
@@ -42,6 +49,7 @@ class CapabilityRequest:
     resource: str = ""
     requires_confirmation: bool = False
     irreversible: bool = False
+    origin: RequestOrigin = RequestOrigin.USER
 
 
 @dataclass(frozen=True)

@@ -107,7 +107,8 @@ def render_project_status(entries: list[dict[str, Any]], output_path: Path | Non
     """Régénère la vue de suivi humaine depuis le journal structuré."""
     target = output_path or DEFAULT_STATUS_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
-    current = next((entry for entry in entries if entry.get("status") == "in_progress"), None)
+    # L'état courant est la session la plus récente si elle est active (in_progress).
+    current = entries[0] if (entries and entries[0].get("status") == "in_progress") else None
     latest = entries[:10]
 
     lines = [

@@ -59,6 +59,9 @@ _EXPLICIT_CAPABILITIES = {
     # Modules dont les façades sont encore exposées par TaskFlow.
     "obtenir_niveau_defcon": ("datashield", "security.get_defcon"),
     "changer_niveau_defcon": ("datashield", "security.set_defcon"),
+    "statut_chiffrement": ("datashield", "security.crypto_status"),
+    "chiffrer_valeur": ("datashield", "security.encrypt"),
+    "dechiffrer_valeur": ("datashield", "security.decrypt"),
     "creer_objectif": ("progress_tracker", "goals.create"),
     "lister_objectifs": ("progress_tracker", "goals.list"),
     "mettre_a_jour_objectif": ("progress_tracker", "goals.update"),

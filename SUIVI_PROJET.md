@@ -4,13 +4,85 @@
 
 ## État courant
 
-- Responsable : Antigravity
-- Session : refactor-tools-gradual-retirement
-- Sujet : Préparation de l'Étape 7 : Retrait progressif de OUTILS vers un adaptateur explicite sans rupture de compatibilité.
-- Prochaines étapes :
-- Réduire OUTILS dans taskflow/tools.py à un adaptateur de compatibilité explicite.
+- Aucune session marquée `in_progress`.
 
 ## Journal récent
+
+### 2026-09-29T10:54:32.190825+00:00 — Antigravity — completed
+
+Finalisation de l'Étape 7 : consolidation de OUTILS comme adaptateur explicite (LegacyToolRegistry), intégration des capacités de chiffrement DataShield et alignement du suivi de projet
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- taskflow/tools.py (statut_chiffrement, chiffrer_valeur, dechiffrer_valeur), greatos_capabilities.py (_EXPLICIT_CAPABILITIES), EXECUTION_OUTILS.md, context_engine/agent_learning.py (détection session active), SUIVI_PROJET.md
+
+**Vérification**
+- Tests unitaires complets passés (158/158, code 0) incluant la conformité documentaire et les tests du registre hérité
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Toutes les étapes du refactor et du blindage crypto/cyber initial sont achevées avec succès ; système prêt pour de nouveaux développements fonctionnels
+
+### 2026-09-29T10:46:21.739630+00:00 — Antigravity — completed
+
+Implémentation de la cybersécurité collaborative souveraine : frontière de confiance (RequestOrigin/Taint), moteur de détection de menaces MITRE ATT&CK, désobfuscation Base64 transparente et détection d'anomalies comportementales
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- greatos_contracts.py (RequestOrigin), datashield/threat_analyzer.py (nouveau), datashield/policy.py (évaluation cyber & Taint), context_engine/pattern_analyzer.py (evaluer_anomalie_action), tests/test_datashield_threat_analyzer.py (nouveau), ARCHITECTURE.md
+
+**Vérification**
+- 158/158 tests unitaires passés avec succès (code 0) dont 12 nouveaux tests cyber dédiés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Connecter les flux d'extraction web/email pour propager automatiquement RequestOrigin.EXTERNAL
+
+### 2026-09-29T09:56:17.164735+00:00 — Antigravity — completed
+
+Extension du chiffrement AES-256-GCM DataShield aux archives snapshots SyncSphere (.gos), restauration sécurisée et validation de clé
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- syncsphere/snapshot.py, syncsphere/tools.py, datashield/crypto.py, tests/test_syncsphere_crypto.py, ETAT_DES_LIEUX.md
+
+**Vérification**
+- 146/146 tests unitaires passés avec succès (code 0) dont 6 nouveaux tests SyncSphere crypto
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Implémenter l'authentification 2FA/TOTP sur l'API FastAPI ou le journal d'audit HMAC
+
+### 2026-09-29T09:32:22.840961+00:00 — Antigravity — completed
+
+Implémentation du moteur de chiffrement AES-256-GCM dans DataShield avec dérivation PBKDF2-SHA256, store chiffré EncryptedJsonMemoryStore, capacités publiques statut/chiffrer/déchiffrer, et 28 nouveaux tests unitaires
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- datashield/crypto.py (nouveau), context_engine/encrypted_memory_store.py (nouveau), context_engine/memory_store.py (backend encrypted), datashield/tools.py (capacités crypto), datashield/__init__.py, requirements.txt, pytest.ini, tests/test_datashield_crypto.py (nouveau)
+
+**Vérification**
+- 140/140 tests passés avec succès (code 0) dont 28 nouveaux tests crypto dédiés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Intégrer le chiffrement au niveau SQLite/SQLCipher ou chiffrer les snapshots SyncSphere .gos
 
 ### 2026-09-17T18:50:08.847157+00:00 — WebSearchRefactor — completed
 
@@ -130,90 +202,3 @@ Préparation de l'Étape 7 : Retrait progressif de OUTILS vers un adaptateur exp
 
 **À suivre**
 - Réduire OUTILS dans taskflow/tools.py à un adaptateur de compatibilité explicite.
-
-### 2026-09-16T20:02:10.805574+00:00 — Antigravity — completed
-
-Étape 6 (Planification et API) achevée : Core Intellect génère des plans d'exécution ordonnés (PlanStep, ExecutionPlan) avec préconditions et dépendances ; Jarvis orchestre sans logique métier avec évaluation DataShield, Context Engine et Progress Tracker ; événements SSE uniformisés (/jarvis/plan, /jarvis/plan/stream). 106 tests au vert.
-
-**Décisions**
-- Core Intellect pense et planifie sans exécuter ; Jarvis orchestre le graphe de dépendances sans logique métier ; événements plan_created, step_started, policy_decision, step_completed uniformisés.
-
-**Changements**
-- greatos_contracts.py : ajout de PlanStep et ExecutionPlan
-- core_intellect/intellect.py : ajout de planifier_objectif
-- jarvis/agent.py : ajout de orchestrer_plan
-- interface_morphique/server.py : ajout des endpoints /jarvis/plan et /jarvis/plan/stream
-- tests/test_planning_and_api.py : création de 6 tests complets
-- ETAT_DES_LIEUX.md : Étape 6 marquée terminée, baseline portée à 106 tests
-
-**Vérification**
-- 106 tests passés avec succès (.venv\Scripts\python.exe -m pytest ... --basetemp=.pytest_temp)
-- git diff --check exécuté avec succès (code 0)
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Étape 7 (Retrait progressif) : réduire OUTILS à un adaptateur explicite ou le remplacer sans rupture de compatibilité.
-
-### 2026-09-16T15:09:47.916497+00:00 — Antigravity — in_progress
-
-Préparation de l'Étape 6 : Planification et API (Core Intellect générant des capacités canoniques avec préconditions et dépendances).
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun élément signalé.
-
-**Vérification**
-- Aucun élément signalé.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Faire générer à Core Intellect des plans à capacités canoniques et uniformiser les événements SSE/UI.
-
-### 2026-09-16T15:08:59.262147+00:00 — Antigravity — completed
-
-Étape 5 (Politique DataShield complète) achevée : toutes les capacités à effet externe passent par evaluate_capability avec 100 tests validés.
-
-**Décisions**
-- Centraliser l'évaluation de sécurité dans datashield.policy sans laisser aucune capacité à effet externe contourner DataShield.
-
-**Changements**
-- datashield/policy.py étendu avec règles DEFCON 1, 2, 3, écriture et destruction
-- syncsphere/tools.py raccordé à evaluate_capability pour les snapshots
-- taskflow/tools.py raccordé pour maintenance, automatisation, navigateur, tailscale, calendrier et emails
-- tests/test_datashield_policy.py enrichi de 6 nouveaux tests de couverture
-- ETAT_DES_LIEUX.md mis à jour avec baseline 100 tests
-
-**Vérification**
-- 100 tests ciblés passés avec succès (.venv\Scripts\python.exe -m pytest ... --basetemp=.pytest_temp)
-- git diff --check exécuté sans warning ni erreur
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Passer à l'Étape 6 (Planification et API) : faire générer à Core Intellect des capacités canoniques avec préconditions et dépendances.
-
-### 2026-09-16T14:24:38.835319+00:00 — Antigravity — in_progress
-
-Préparation de l'Étape 5 : Politique DataShield complète pour sécuriser toutes les capacités à effet externe.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun élément signalé.
-
-**Vérification**
-- Aucun élément signalé.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Faire passer snapshots, automatisations, navigateur, réseau, calendrier/e-mail et maintenance par evaluate_capability.

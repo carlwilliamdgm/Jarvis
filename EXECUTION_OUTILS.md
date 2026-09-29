@@ -559,6 +559,9 @@ taskflow/
 
 - `obtenir_niveau_defcon()` : Consulte le niveau de sécurité DEFCON actuel du système.
 - `changer_niveau_defcon(niveau)` : Ajuste le niveau DEFCON de 1 (confinement) à 5 (nominal).
+- `statut_chiffrement()` : Affiche l'état d'activation et l'algorithme du moteur de chiffrement AES-256-GCM DataShield.
+- `chiffrer_valeur(valeur)` : Chiffre une chaîne de caractères avec AES-256-GCM via DataShield.
+- `dechiffrer_valeur(blob)` : Déchiffre un blob protégé par DataShield.
 - `creer_objectif(id_obj, titre, description, cible, unite)` : Enregistre un nouvel objectif dans le Progress Tracker.
 - `lister_objectifs()` : Affiche les objectifs actifs, terminés ou en pause avec leur progression.
 - `mettre_a_jour_objectif(id_obj, nouvelle_valeur)` : Met à jour la valeur et le pourcentage de complétion d'un objectif.

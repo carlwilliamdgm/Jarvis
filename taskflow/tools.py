@@ -36,7 +36,10 @@ from context_engine.memory_tools import (
 )
 from datashield.tools import (
     changer_niveau_defcon,
+    chiffrer_valeur,
+    dechiffrer_valeur,
     obtenir_niveau_defcon,
+    statut_chiffrement,
 )
 from progress_tracker.tools import (
     creer_objectif_tool,
@@ -1372,6 +1375,9 @@ OUTILS = LegacyToolRegistry({
     "decouvrir_appareils_tailscale": decouvrir_appareils_tailscale,
     "obtenir_niveau_defcon": obtenir_niveau_defcon,
     "changer_niveau_defcon": changer_niveau_defcon,
+    "statut_chiffrement": statut_chiffrement,
+    "chiffrer_valeur": chiffrer_valeur,
+    "dechiffrer_valeur": dechiffrer_valeur,
     "creer_objectif": creer_objectif_tool,
     "lister_objectifs": lister_objectifs_tool,
     "mettre_a_jour_objectif": mettre_a_jour_objectif_tool,

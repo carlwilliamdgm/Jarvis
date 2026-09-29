@@ -45,6 +45,8 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 
 - `jarvis/voice_state.py` : Gestion de l'etat vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partage `voice_state.json` pour l'overlay.
 - `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'etat vocal en temps reel avec style HUD (fenetre sans bordure, topmost, positionnement configurable, polling a 100ms).
+- `datashield/crypto.py` : Moteur de chiffrement AES-256-GCM avec dérivation PBKDF2 (600k itérations), détection transparente et support des snapshots chiffrés.
+- `datashield/threat_analyzer.py` : Moteur d'analyse heuristique des menaces cyber (MITRE ATT&CK), désobfuscation Base64 à la volée, blocage de sabotage (VSS) et détection d'injections.
 - `datashield/autodestruct.py` : Auto-destruction complete de Jarvis (service Windows, taches planifiees, variables d'environnement, modele Ollama, dossier Jarvis).
 - `context_engine/contextual_suggestions.py` : Generation de suggestions intelligentes basees sur les patterns comportementaux, l'etat systeme, l'heure actuelle, le contexte utilisateur et les automatisations potentielles.
 - `core_intellect/decision_analyzer.py` : Auto-reflexion sur les decisions recentes, detection de patterns d'erreur recurrents, memorisation des solutions reussies pour reutilisation future.

@@ -227,12 +227,21 @@ _STORES: Dict[str, BaseMemoryStore] = {}
 def get_memory_store(backend: Optional[str] = None) -> BaseMemoryStore:
     """
     Factory & Singleton retournant l'instance du store configuré.
-    Par défaut, sélectionne JSON pour compatibilité totale (ou SQLite WAL si JARVIS_MEMORY_BACKEND=sqlite).
+
+    Backends disponibles :
+    - ``json`` (défaut) : JsonMemoryStore standard.
+    - ``sqlite`` : SqliteMemoryStore avec WAL.
+    - ``encrypted`` : EncryptedJsonMemoryStore (AES-256-GCM, nécessite JARVIS_CRYPTO_KEY).
+
+    Sélection via la variable d'environnement ``JARVIS_MEMORY_BACKEND``.
     """
     selected = backend or os.environ.get("JARVIS_MEMORY_BACKEND", "json").lower()
     if selected not in _STORES:
         if selected == "sqlite":
             _STORES[selected] = SqliteMemoryStore()
+        elif selected == "encrypted":
+            from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
+            _STORES[selected] = EncryptedJsonMemoryStore()
         else:
             _STORES[selected] = JsonMemoryStore()
     return _STORES[selected]

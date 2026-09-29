@@ -471,7 +471,8 @@ class DocumentationConsistencyTests(unittest.TestCase):
                                'ordonner_providers_cloud', 'chat_with_openrouter', 'stop_browser_overlay',
                                'create_session', 'chat_with_jarvis_gc', 'get_session_manager',
                                'list_sessions', 'get_groq_clients', 'providers_cloud_disponibles',
-                               'modele_souverain_disponible', 'start_browser_overlay']:
+                               'modele_souverain_disponible', 'start_browser_overlay',
+                               'evaluate_capability', 'execute_capability']:
                 documented_tools.add(tool_name)
         
         # Get actual tool names
