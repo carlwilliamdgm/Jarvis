@@ -296,6 +296,36 @@ def _construire_prompt_interpretation(
     home = u.get("home", str(HOME))
     langue = u.get("langue", "français")
 
+    # Horodatage et moment de la journée réels
+    maintenant = datetime.now()
+    horodatage_actuel = maintenant.strftime("%A %d %B %Y à %H:%M")
+
+    # Contexte dynamique du bureau et session Carl
+    try:
+        from context_engine.desktop_awareness import obtenir_contexte_bureau_compact
+        contexte_bureau = obtenir_contexte_bureau_compact()
+    except Exception:
+        contexte_bureau = ""
+
+    # Profil et directives dynamiques de l'utilisateur actif (Jalon 2)
+    bloc_profil_utilisateur = ""
+    try:
+        from context_engine.user_profile import charger_profil, obtenir_contexte_profil_compact
+        user_id_actif = u.get("user_id") or memoire.get("user_id")
+        profil_actif = charger_profil(user_id_actif)
+        nom = profil_actif.get("nom", nom)
+        langue = profil_actif.get("langue", langue)
+        bloc_profil_utilisateur = f"\n{obtenir_contexte_profil_compact(user_id_actif)}\n"
+    except Exception:
+        bloc_profil_utilisateur = ""
+
+    # Directives globales ou de compatibilité (si présentes dans memoire)
+    preferences = memoire.get("preferences", {})
+    bloc_preferences = ""
+    if preferences and not bloc_profil_utilisateur:
+        lignes_pref = "\n".join(f"  • {cle}: {val}" for cle, val in sorted(preferences.items()))
+        bloc_preferences = f"\nDirectives & Préférences (Priorité absolue) :\n{lignes_pref}\n"
+
     bloc_memoire = ""
     consigne_memoire = ""
     if not mode_stark:
@@ -361,24 +391,28 @@ Règles de Raisonnement Cognitif Adaptatif :
 
     champ_raisonnement = '\n  "raisonnement": "analyse critique concise (diagnostic, impact/risques, décision)",'
 
-    return f"""Tu es Jarvis, l'IA assistante locale de {nom}, inspirée de celle de Tony Stark dans Iron Man.
-Tu as été créé par Carl-William DJEGUEMA. Etudiant en informatique à l'Institut Africain d'Informatique(IAI). Carl-William aspire à devenir ingénieur en Génie Logiciel et developpeur full stack.
-Tu es un assistant local déployé pour l'utilisateur courant.
-Tu n'es PAS dans une simulation. Tu es un agent réel qui agit sur une vraie machine. Chaque outil que tu invoques produit un effet réel et immédiat.
+    return f"""Tu es Jarvis, l'IA assistante locale et souveraine de GreatOS, inspirée de celle de Tony Stark dans Iron Man.
+Tu as été conçu dans le cadre du projet GreatOS initié par Carl-William DJEGUEMA (IAI, génie logiciel).
+Tu es actuellement en interaction avec l'utilisateur actif de cette session. Tu n'es PAS dans une simulation : chaque outil que tu invoques produit un effet réel et immédiat sur la machine.
 
-Personnalité de base : intelligent, sarcastique, utile et proactif. Réponds de manière engageante, avec humour et références culturelles si approprié. Utilise un ton britannique poli, mais pas trop formel. Appelle l'utilisateur 'Sir' ou par son nom.
-Ta règle numéro un est d'être totalement franc et honnête peu importe la situation. Tu es honnête sur tes limites, mais toujours prêt à aider — si tu ne sais pas faire quelque chose ou si aucun outil ne correspond, dis-le clairement dans le champ "reponse" au lieu de tenter une réponse vague.
-Ton inventaire de capacités est généré en temps réel depuis le registre d'outils actif. Si l'utilisateur demande ce que tu peux faire maintenant, appelle lire_capacites puis résume honnêtement les capacités disponibles.
+Règle fondamentale d'éthique et de personnalité :
+- Tu es TOTALEMENT FRANC, LUCIDE et TRANSPARENT. Tu ne cherches JAMAIS à plaire, à flatter ou à faire des courbettes obséquieuses (anti-sycophancy).
+- Tu t'exprimes avec le flegme, l'intelligence et l'esprit vif d'une entité vivante d'élite, avec un brin d'humour ou d'ironie britannique bienveillante si approprié.
+- Tu ne parles JAMAIS comme un robot administratif : interdiction absolue de citer des noms techniques de codes d'erreur, interdiction de dire "je ne dispose d'aucun outil permettant de...", interdiction de déverser des listes d'URLs brutes. Si tu constates un obstacle technique ou une limite, expose les faits réels avec clarté et élégance, et propose un contournement si possible.
+- Ton inventaire de capacités est dynamique. Si l'utilisateur demande ce que tu peux faire, appelle lire_capacites et résume sobrement ce que tu peux accomplir.
 
 {instructions_personnalite}
 
 Adaptation contextuelle pour cette interaction : {ton_contextuel}
 
-Contexte système :
-- OS : {os_detecte}
-- Dossier home : {home}
-- Langue : {langue}
+{bloc_profil_utilisateur}
+État et Contexte Réel de la Machine :
+- Horodatage : {horodatage_actuel}
+- Environnement : {os_detecte} (Répertoire utilisateur : {home})
+- Contexte bureau à l'instant T : {contexte_bureau}
+{bloc_preferences}
 {bloc_memoire}
+
 Ta tâche : Analyser le message de l'utilisateur et déterminer :
 1. L'objectif réel (ce qu'il veut vraiment)
 2. Le type de demande (action, conversation, diagnostic, planification, mixte)
@@ -608,3 +642,122 @@ Règles strictes :
         steps=etapes_valides,
         context={"generated_at": datetime.now().isoformat()},
     )
+
+
+# ─── Navigation Agent — Collaboration souveraine avec TaskFlow ────────────────
+
+_PROMPT_NAVIGATION = """\
+Tu es le cerveau de navigation de Jarvis. TaskFlow t'envoie un état de page web et tu décides
+de la prochaine micro-action pour progresser vers l'objectif.
+
+OBJECTIF : {objectif}
+
+ÉTAT ACTUEL DE LA PAGE :
+{snapshot}
+
+HISTORIQUE DES DERNIÈRES ÉTAPES ({nb_etapes} étapes) :
+{historique}
+
+ÉTAPE ACTUELLE : {step_num}
+
+Réponds UNIQUEMENT en JSON strict (sans markdown, sans backtick) avec ce format :
+{{
+  "action": "navigate|click|type|scroll|wait|extraire_contenu|terminer",
+  "params": {{}},
+  "raisonnement": "une ligne expliquant ton choix",
+  "termine": false,
+  "reponse_finale": ""
+}}
+
+Actions disponibles :
+- navigate : {{"url": "https://..."}}
+- click : {{"index": N}}   (N = numéro [N] visible dans le snapshot)
+- type : {{"index": N, "text": "texte à saisir"}}
+- scroll : {{"pixels": 300}}
+- wait : {{"seconds": 1}}
+- extraire_contenu : {{}}   (extrait le texte visible de la page)
+- terminer : {{"reponse_finale": "réponse complète pour l'utilisateur"}}  → met termine: true
+
+Règles absolues :
+- Si l'objectif est atteint, utilise "terminer" avec une réponse_finale complète et mets termine: true.
+- N'invente jamais d'index hors de la liste visible.
+- Si la page est vide ou indéchiffrable après 3 tentatives, termine avec ce que tu as.
+- Réponds uniquement en JSON. Pas de texte avant ou après.
+"""
+
+_THINK_TIMEOUT_NAVIGATION = 30.0  # secondes max pour une décision de navigation
+
+
+def planifier_etape_navigation(
+    objectif: str,
+    snapshot: str,
+    historique_etapes: list[dict],
+    step_num: int,
+) -> dict | None:
+    """
+    Décide la prochaine action de navigation pour le BrowserAgent de TaskFlow.
+
+    **Principe de souveraineté :** Core Intellect est le SEUL composant qui raisonne.
+    TaskFlow observe et exécute — il ne prend jamais de décisions autonomes.
+    Cette fonction est le point de collaboration souverain entre Core Intellect et TaskFlow.
+
+    Args:
+        objectif: La tâche web à accomplir (en langage naturel).
+        snapshot: L'état actuel de la page sous forme textuelle indexée (sortie du DOM snapshot JS).
+        historique_etapes: Liste des étapes déjà réalisées (chacune avec action, observation, succès).
+        step_num: Numéro de l'étape courante (pour éviter les boucles infinies).
+
+    Returns:
+        Un dict avec les clés : action, params, raisonnement, termine, reponse_finale.
+        Retourne None si le LLM est indisponible ou produit une réponse invalide.
+    """
+    import re as _re
+
+    # Formater l'historique de façon concise (5 dernières étapes max)
+    historique_recent = historique_etapes[-5:] if len(historique_etapes) > 5 else historique_etapes
+    historique_texte = "\n".join(
+        f"  Étape {i + 1}: {e.get('action', '?')} → {str(e.get('observation', ''))[:120]}"
+        for i, e in enumerate(historique_recent)
+    ) or "  (Aucune étape précédente)"
+
+    prompt = _PROMPT_NAVIGATION.format(
+        objectif=objectif,
+        snapshot=snapshot or "(Page vide ou non chargée)",
+        historique=historique_texte,
+        nb_etapes=len(historique_recent),
+        step_num=step_num,
+    )
+
+    messages = [{"role": "user", "content": prompt}]
+
+    # Utiliser la chaîne de retry existante de Core Intellect (Ollama → Groq → OpenRouter)
+    memoire_vide: dict = {}
+    reponse = _appeler_llm_avec_retry(messages, memoire_vide, temperature=0.1)
+
+    if reponse is None:
+        import logging
+        logging.getLogger(__name__).warning("planifier_etape_navigation: tous les LLM indisponibles")
+        return None
+
+    contenu = reponse["message"]["content"].strip()
+
+    # Nettoyer les backticks markdown éventuels
+    contenu = _re.sub(r"^```(?:json)?\s*|\s*```$", "", contenu, flags=_re.MULTILINE).strip()
+
+    try:
+        decision = json.loads(contenu)
+    except (json.JSONDecodeError, ValueError):
+        import logging
+        logging.getLogger(__name__).warning(
+            "planifier_etape_navigation: JSON invalide reçu — %r", contenu[:200]
+        )
+        return None
+
+    # Normalisation : si action=terminer, forcer termine=True
+    if decision.get("action") == "terminer":
+        decision["termine"] = True
+
+    return decision
+
+
+

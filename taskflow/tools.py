@@ -110,8 +110,13 @@ from taskflow.browser_automation import (
     fermer_navigateur,
     reinitialiser_navigateur
 )
+from taskflow.browser_agent import accomplir_tache_web
+
 from taskflow.browser_session import get_session_manager
+from context_engine.desktop_awareness import envoyer_signal_multimedia_global, redimensionner_ou_deplacer_fenetre
+from context_engine.desktop_vision import analyser_ecran_live
 from datashield.error_classification import resultat_erreur
+
 from datashield.confirmations import request_streaming_confirmation
 from datashield.safety import action_requiert_confirmation, chemin_autorise, est_mode_stark_actif
 from datashield.policy import evaluate_capability
@@ -121,6 +126,7 @@ from core_intellect.translator import lire_traducteur, obtenir_stats_traducteur
 from rich.console import Console
 
 _console = Console()
+
 
 
 def demander_confirmation(description: str) -> bool:
@@ -1001,6 +1007,42 @@ def reinitialiser_navigateur_tool() -> str:
         return resultat_erreur(f"Erreur lors de la réinitialisation du navigateur: {str(e)}", e)
 
 
+def accomplir_tache_web_tool(objectif: str, url_depart: str = "", headless: bool = True) -> str:
+    """
+    Accomplit une tâche web de manière autonome en pilotant un navigateur réel.
+
+    Contrairement à ``rechercher_web`` (lecture seule de liens), cet outil
+    navigue, clique, remplit des formulaires et extrait des informations
+    exactement comme le ferait un humain dans Chrome — à la façon de Claude
+    dans Chrome.
+
+    Exemples d'usage :
+        - "Cherche le prix du vol Paris-Montréal le 15 octobre sur Google Flights"
+        - "Va sur leboncoin.fr et liste les appartements 3 pièces à Lyon sous 1000€"
+        - "Ouvre Hacker News et résume les 5 premiers titres du jour"
+
+    Args:
+        objectif: Description en langage naturel de la tâche à accomplir.
+        url_depart: URL de départ optionnelle. Si vide, l'agent commence sur Google.
+        headless: Si False, ouvre le navigateur en mode visible (utile pour le débogage).
+
+    Returns:
+        Résultat de la tâche en langage naturel avec le contenu extrait.
+    """
+    decision = evaluate_capability(CapabilityRequest(
+        capability="browser.agent_task",
+        arguments={"objectif": objectif, "url_depart": url_depart},
+        risk=RiskLevel.WRITE,
+        resource=url_depart or "web",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    try:
+        return accomplir_tache_web(objectif=objectif, url_depart=url_depart, headless=headless)
+    except Exception as e:
+        return resultat_erreur(f"Erreur du BrowserAgent: {str(e)}", e)
+
+
 def creer_session_navigation(session_id: str, headless: bool = True) -> str:
     """
     Crée une nouvelle session de navigation parallèle.
@@ -1285,8 +1327,61 @@ def decouvrir_appareils_tailscale() -> str:
         return resultat_erreur(f"Erreur lors de la détection Tailscale: {str(e)}", e)
 
 
+def controler_multimedia_tool(action: str) -> str:
+    """Pilote le flux multimédia universel (Play/Pause, Piste, Volume) sur la machine."""
+    decision = evaluate_capability(CapabilityRequest(
+        capability="desktop.multimedia_control",
+        arguments={"action": action},
+        risk=RiskLevel.WRITE,
+        resource="audio_bus",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    try:
+        return envoyer_signal_multimedia_global(action=action)
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors du contrôle multimédia: {str(e)}", e)
+
+
+def manipuler_fenetre_tool(titre: str, x: int = 0, y: int = 0, largeur: int = 1280, hauteur: int = 720) -> str:
+    """Repositionne ou redimensionne une fenêtre visible sur le bureau de Carl."""
+    decision = evaluate_capability(CapabilityRequest(
+        capability="desktop.window_control",
+        arguments={"titre": titre, "x": x, "y": y, "largeur": largeur, "hauteur": hauteur},
+        risk=RiskLevel.WRITE,
+        resource="window_manager",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    try:
+        return redimensionner_ou_deplacer_fenetre(titre_partiel=titre, x=x, y=y, largeur=largeur, hauteur=hauteur)
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de la manipulation de la fenêtre: {str(e)}", e)
+
+
+def regarder_ecran_tool(question: str = "", zone: str = "ecran") -> str:
+    """Capture et analyse en direct ce qui est visible sur l'écran de Carl ou la fenêtre active."""
+    decision = evaluate_capability(CapabilityRequest(
+        capability="desktop.vision_inspect",
+        arguments={"question": question, "zone": zone},
+        risk=RiskLevel.READ,
+        resource="screen_capture",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+    try:
+        return analyser_ecran_live(question=question, zone=zone)
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de la capture/analyse visuelle de l'écran: {str(e)}", e)
+
+
 OUTILS = LegacyToolRegistry({
+    "regarder_ecran": regarder_ecran_tool,
+    "controler_multimedia": controler_multimedia_tool,
+    "manipuler_fenetre": manipuler_fenetre_tool,
     "creer_dossier": creer_dossier,
+
+
     "creer_fichier": creer_fichier,
     "lire_fichier": lire_fichier,
     "lister_dossier": lister_dossier,
@@ -1361,6 +1456,7 @@ OUTILS = LegacyToolRegistry({
     "obtenir_infos_page": obtenir_infos_page_tool,
     "fermer_navigateur": fermer_navigateur_tool,
     "reinitialiser_navigateur": reinitialiser_navigateur_tool,
+    "accomplir_tache_web": accomplir_tache_web_tool,
     "demarrer_overlay_navigation": demarrer_overlay_navigation,
     "arreter_overlay_navigation": arreter_overlay_navigation,
     "creer_session_navigation": creer_session_navigation,

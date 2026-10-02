@@ -1,4 +1,5 @@
 from collections import deque
+import asyncio
 from datetime import datetime
 import json
 import os
@@ -69,11 +70,14 @@ if sys.stderr.encoding != 'utf-8':
 
 from core_intellect.llm_client import get_llm_client
 from jarvis.agent import (
+    arreter_daemon_proactif,
     demarrer_agent_autonome,
+    demarrer_daemon_proactif,
     event_bus,
     executer_interaction_utilisateur,
     initialiser,
 )
+from service.consolidation_scheduler import ConsolidationScheduler
 from jarvis.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
 from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale
 from jarvis.clap_input import demarrer_ecoute_clap, arreter_ecoute_clap
@@ -137,6 +141,11 @@ async def lifespan(app: FastAPI):
         logger.info("Jarvis API server started successfully")
         # Démarrer le thread de sampling CPU non-bloquant pour /jarvis/status
         _demarrer_cpu_sampler()
+        proactive_daemon = demarrer_daemon_proactif(event_bus)
+        consolidation_scheduler = ConsolidationScheduler()
+        consolidation_scheduler.start()
+        app.state.proactive_daemon = proactive_daemon
+        app.state.consolidation_scheduler = consolidation_scheduler
     except Exception as e:
         logger.error("Error initializing agent: %s", e)
         raise
@@ -145,6 +154,11 @@ async def lifespan(app: FastAPI):
 
     if agent_stop_event is not None:
         agent_stop_event.set()
+    arreter_daemon_proactif()
+    scheduler = getattr(app.state, "consolidation_scheduler", None)
+    if scheduler is not None:
+        scheduler.arreter()
+        scheduler.join(timeout=2.0)
     # Arrêter l'overlay visuel vocal
     arreter_overlay_vocal()
     # Arrêter l'écoute vocale
@@ -523,6 +537,31 @@ def stream_jarvis(
 
                 if event.get("type") == "done":
                     break
+        finally:
+            event_bus.unsubscribe(event_queue)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/jarvis/events")
+def stream_background_events(
+    request: Request,
+    _auth: bool = Depends(verify_api_key),
+):
+    """Keep an SSE subscription open for proactive events outside chat turns."""
+    async def event_stream():
+        event_queue = event_bus.subscribe_broadcast()
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.to_thread(event_queue.get, True, 15)
+                except queue.Empty:
+                    yield b": keep-alive\n\n"
+                    continue
+                payload = json.dumps(event, ensure_ascii=False)
+                yield f"data: {payload}\n\n".encode("utf-8")
         finally:
             event_bus.unsubscribe(event_queue)
 

@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import json
+import logging
 import ollama
 import os
 import platform
@@ -49,6 +50,8 @@ from context_engine.memory import (
     sauvegarder_memoire,
     signalement_erreurs_autre_recurrentes,
 )
+from context_engine.memory_tools import intercepter_directive
+from context_engine.output_governor import gouverner_sortie
 from core_intellect.prompt import construire_prompt_action, construire_prompt_conversation
 from core_intellect.intellect import interpreter_objectif
 from datashield.safety import activer_mode_stark, desactiver_mode_stark, est_mode_stark_actif
@@ -68,10 +71,12 @@ from greatos_contracts import (
 )
 from datashield.policy import evaluate_capability
 from progress_tracker import enregistrer_impact_capacite
+from service.proactive_daemon import DaemonProactif
 
 import psutil
 
 console = Console()
+logger = logging.getLogger("jarvis.agent")
 
 
 class EventBus:
@@ -79,11 +84,21 @@ class EventBus:
         self._queues = set()
         self._lock = threading.Lock()
         self._local = threading.local()
+        self._proactive_alerts = {}
 
     def subscribe(self) -> queue.Queue:
         event_queue = queue.Queue()
         with self._lock:
             self._queues.add(event_queue)
+        return event_queue
+
+    def subscribe_broadcast(self) -> queue.Queue:
+        """Subscribe to broadcasts and replay currently active proactive alerts."""
+        event_queue = queue.Queue()
+        with self._lock:
+            self._queues.add(event_queue)
+            for event in self._proactive_alerts.values():
+                event_queue.put(event)
         return event_queue
 
     def unsubscribe(self, event_queue: queue.Queue) -> None:
@@ -103,8 +118,23 @@ class EventBus:
         if target_queue is not None:
             target_queue.put(event)
 
+    def emit_broadcast(self, event_type: str, data: dict) -> None:
+        """Publish a process-wide event to every active SSE subscriber."""
+        event = {"type": event_type, "data": data}
+        with self._lock:
+            alert_key = f"{data.get('type', 'unknown')}:{data.get('mountpoint', '')}"
+            if event_type == "alerte_proactive":
+                self._proactive_alerts[alert_key] = event
+            elif event_type == "alerte_proactive_resolue":
+                self._proactive_alerts.pop(alert_key, None)
+            queues = tuple(self._queues)
+        for event_queue in queues:
+            event_queue.put(event)
+
 
 event_bus = EventBus()
+_proactive_daemon_lock = threading.Lock()
+_proactive_daemon: DaemonProactif | None = None
 register_event_emitter(event_bus.emit)
 
 # Une interaction modifie l'historique et peut appeler le LLM. Toutes les
@@ -331,6 +361,56 @@ def initialiser() -> dict:
         sauvegarder_memoire(memoire)
     sauvegarder_memoire(memoire)
     return memoire
+
+
+def demarrer_daemon_proactif(event_bus_param: Any = None, intervalle_secondes: float = 60.0) -> DaemonProactif:
+    """
+    Démarre le daemon de veille proactive.
+
+    Args:
+        event_bus_param: Instance de EventBus (utilise event_bus global si None)
+        intervalle_secondes: Fréquence des cycles de surveillance (défaut: 60s)
+
+    Returns:
+        Instance du DaemonProactif démarré
+    """
+    global _proactive_daemon
+    with _proactive_daemon_lock:
+        if _proactive_daemon is not None and _proactive_daemon.is_alive():
+            return _proactive_daemon
+        bus = event_bus_param if event_bus_param is not None else event_bus
+        daemon = DaemonProactif(bus, intervalle_secondes)
+        daemon.start()
+        _proactive_daemon = daemon
+        return daemon
+
+
+def arreter_daemon_proactif() -> None:
+    """Arrête le daemon global si le serveur termine son cycle de vie."""
+    global _proactive_daemon
+    with _proactive_daemon_lock:
+        daemon = _proactive_daemon
+        _proactive_daemon = None
+    if daemon is not None:
+        daemon.arreter()
+        daemon.join(timeout=2.0)
+
+
+def _confirmer_selon_confiance(capacite: str, description: str, user_id: str | None = None) -> bool:
+    """Applique le seuil d'autonomie avant toute exécution de capacité."""
+    try:
+        from context_engine.trust_registry import doit_confirmer_action
+        confirmation_requise = doit_confirmer_action(capacite, user_id=user_id)
+    except Exception as exc:
+        # Le registre est une barrière de sécurité : si son état est illisible,
+        # demander une confirmation au lieu d'ignorer le contrôle.
+        logger.warning("Trust registry unavailable for %s: %s", capacite, exc)
+        confirmation_requise = True
+    if not confirmation_requise:
+        return True
+    return demander_confirmation(
+        f"(niveau de confiance GreatOS) {description or capacite}"
+    )
 
 
 def extraire_json_objets(texte: str, verbose: bool = False) -> list[dict]:
@@ -856,6 +936,16 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
 
     if outil not in OUTILS:
         resultat_outil = f"Outil inconnu : {outil}"
+        try:
+            from learning.capability_proposals import proposer_nouvelle_capacite
+            proposal = proposer_nouvelle_capacite(outil or "inconnu", "Capacité demandée en mode Stark mais absente du registre.")
+            event_bus.emit("capability_proposal", {
+                "proposal_id": proposal["id"],
+                "capability": proposal["capability_requested"],
+                "status": proposal["status"],
+            })
+        except Exception as exc:
+            logger.warning("Could not record Stark missing capability proposal: %s", exc)
         etat.actions.append({
             "outil": outil,
             "args": args,
@@ -879,6 +969,11 @@ def _executer_action_stark(action: dict, etat: EtatMicroObjectif) -> None:
         resultat_outil = execute_capability(OUTILS, outil, args)
         journaliser_resultat_capacite(resultat_outil, arguments=args, contexte="stark")
         enregistrer_impact_capacite(resultat_outil, goal_id=args.get("goal_id"))
+        try:
+            from context_engine.trust_registry import enregistrer_resultat_action
+            enregistrer_resultat_action(outil, not resultat_est_erreur(resultat_outil))
+        except Exception as exc:
+            logger.warning("Could not update trust registry for Stark action %s: %s", outil, exc)
         resultat_texte = resultat_outil.message
         entree = {
             "outil": outil,
@@ -1147,7 +1242,7 @@ def _formater_rapport_stark(objectif: str, rapports_segments: list[dict]) -> str
     return "\n".join(lignes)
 
 
-def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
+def parler(message: str, historique: list, memoire: dict, user_id: str | None = None) -> tuple[str, bool]:
     global mode_action_force, ATTENTE_DETAILS_STARK
 
     # ── Gestion commandes de mode ─────────────────────────────────────────────
@@ -1207,6 +1302,21 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
 
     # Recharger la mémoire depuis le disque AVANT l'appel LLM
     memoire.update(normaliser_memoire(charger_memoire()))
+    if user_id:
+        memoire["user_id"] = user_id
+
+    # ── INTERCEPTEUR DE DIRECTIVES (Jalon 1 & 2) ─────────────────────────────
+    # Détecte et persiste les directives utilisateur sans appel LLM
+    resultat_directive = intercepter_directive(message, user_id=user_id)
+    if resultat_directive:
+        # (True, consigne, cle, reponse)
+        _, consigne, cle, reponse_directive_texte = resultat_directive
+        console.print(f"[cyan]⚡ Directive détectée et ancrée[/cyan]")
+        historique.append({"role": "user", "content": message})
+        historique.append({"role": "assistant", "content": reponse_directive_texte})
+        limiter_historique(historique)
+        return reponse_directive_texte, False
+    # ─────────────────────────────────────────────────────────────────────────
 
     # Core Intellect comprend l'objectif réel en une seule passe LLM
     resultat_intellect = interpreter_objectif(
@@ -1230,7 +1340,31 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
     for action in actions:
         outil = action.get("outil")
         args = action.get("args", {})
-        if outil and outil in OUTILS:
+        if outil and outil not in OUTILS:
+            try:
+                from learning.capability_proposals import proposer_nouvelle_capacite
+                proposal = proposer_nouvelle_capacite(outil, "Capacité demandée mais absente du registre.")
+                event_bus.emit("capability_proposal", {
+                    "proposal_id": proposal["id"],
+                    "capability": proposal["capability_requested"],
+                    "status": proposal["status"],
+                })
+                resultats_outils.append(
+                    f"La capacité « {outil} » n'existe pas encore. Une proposition inerte a été enregistrée pour revue."
+                )
+            except Exception as exc:
+                logger.warning("Could not record missing capability proposal: %s", exc)
+                resultats_outils.append(f"Capacité inconnue : {outil}.")
+        elif outil and outil in OUTILS:
+            if not _confirmer_selon_confiance(outil, f"exécuter {outil}", user_id):
+                resultats_outils.append(f"Action annulée : {outil} n'a pas été exécutée sans confirmation.")
+                event_bus.emit("tool_failed", {
+                    "outil": outil,
+                    "args": args,
+                    "resultat": "Action refusée par la confirmation de confiance.",
+                    "mode": "normal",
+                })
+                continue
             event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "normal"})
             try:
                 resultat = execute_capability(OUTILS, outil, args)
@@ -1238,6 +1372,15 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                 journaliser_resultat_capacite(resultat, arguments=args, contexte=contexte)
                 enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
                 _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
+
+                # ── REGISTRE D'AUTONOMIE PROGRESSIVE (Jalon 5) ────────────────────────
+                try:
+                    from context_engine.trust_registry import enregistrer_resultat_action
+                    enregistrer_resultat_action(outil, not resultat_est_erreur(resultat), user_id=user_id)
+                except Exception:
+                    pass
+                # ───────────────────────────────────────────────────────────────────────
+
                 resultats_outils.append(resultat.message)
                 event_bus.emit(
                     "tool_failed" if resultat_est_erreur(resultat) else "tool_completed",
@@ -1260,6 +1403,11 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     args=args,
                     resultat_brut=erreur,
                 )
+                try:
+                    from context_engine.trust_registry import enregistrer_resultat_action
+                    enregistrer_resultat_action(outil, False, user_id=user_id)
+                except Exception:
+                    pass
                 resultats_outils.append(erreur)
                 event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
             except Exception as e:
@@ -1272,6 +1420,11 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
                     args=args,
                     resultat_brut=erreur,
                 )
+                try:
+                    from context_engine.trust_registry import enregistrer_resultat_action
+                    enregistrer_resultat_action(outil, False, user_id=user_id)
+                except Exception:
+                    pass
                 resultats_outils.append(erreur)
                 event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
 
@@ -1279,6 +1432,11 @@ def parler(message: str, historique: list, memoire: dict) -> tuple[str, bool]:
         reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
     else:
         reponse_finale = reponse_naturelle
+
+    # ── GOUVERNEUR DE SORTIE (Jalon 3) ───────────────────────────────────────
+    # Intercepte et filtre la réponse finale avant renvoi à l'utilisateur
+    reponse_finale = gouverner_sortie(reponse_finale, user_id=user_id)
+    # ─────────────────────────────────────────────────────────────────────────────
 
     signalement_erreur = signalement_erreurs_autre_recurrentes()
     if signalement_erreur:
@@ -1398,6 +1556,7 @@ def orchestrer_plan(
             )
             continue
 
+        confirmation_deja_obtenue = False
         if policy_decision.decision == SecurityDecision.CONFIRM and not est_mode_stark_actif():
             desc_confirm = f"Étape {step.id} ({step.capability}) : {step.description or policy_decision.reason}"
             if not demander_confirmation(desc_confirm):
@@ -1420,6 +1579,29 @@ def orchestrer_plan(
                     },
                 )
                 continue
+            confirmation_deja_obtenue = True
+
+        if not confirmation_deja_obtenue and not est_mode_stark_actif() and not _confirmer_selon_confiance(
+            step.capability,
+            f"exécuter l'étape {step.id} ({step.description or step.capability})",
+            user_id=memoire.get("user_id"),
+        ):
+            res_cancel = CapabilityResult(
+                capability=step.capability,
+                status=CapabilityStatus.CANCELLED,
+                message="Action annulée : confirmation de confiance refusée.",
+                error_category="action_refusee_par_confirmation",
+            )
+            journaliser_resultat_capacite(res_cancel, arguments=step.arguments, contexte="orchestrateur_plan")
+            resultats.append(res_cancel)
+            etapes_echouees.add(step.id)
+            emitter("step_failed", {
+                "step_id": step.id,
+                "capability": step.capability,
+                "resultat": res_cancel.message,
+                "status": "cancelled",
+            })
+            continue
 
         # Exécution souveraine via dispatcher
         emitter(
@@ -1434,6 +1616,29 @@ def orchestrer_plan(
         res_exec = execute_capability(OUTILS, step.capability, step.arguments)
         journaliser_resultat_capacite(res_exec, arguments=step.arguments, contexte="orchestrateur_plan")
         enregistrer_impact_capacite(res_exec, goal_id=step.arguments.get("goal_id"))
+        if res_exec.error_category == "capacite_manquante":
+            try:
+                from learning.capability_proposals import proposer_nouvelle_capacite
+                proposal = proposer_nouvelle_capacite(
+                    step.capability,
+                    f"Étape de planification demandée : {step.description or plan.goal}",
+                )
+                emitter("capability_proposal", {
+                    "proposal_id": proposal["id"],
+                    "capability": proposal["capability_requested"],
+                    "status": proposal["status"],
+                })
+            except Exception as exc:
+                logger.warning("Could not record missing planned capability: %s", exc)
+        try:
+            from context_engine.trust_registry import enregistrer_resultat_action
+            enregistrer_resultat_action(
+                step.capability,
+                res_exec.status == CapabilityStatus.SUCCESS,
+                user_id=memoire.get("user_id"),
+            )
+        except Exception as exc:
+            logger.warning("Could not update trust registry for %s: %s", step.capability, exc)
         resultats.append(res_exec)
 
         if res_exec.status == CapabilityStatus.SUCCESS:

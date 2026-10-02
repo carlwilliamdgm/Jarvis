@@ -183,6 +183,38 @@ La politique de sécurité est désormais centralisée dans `datashield/policy.p
 
 `action_bloquee()` et certains alias historiques existent encore pour compatibilite, mais la logique actuelle ne bloque pas par zone : elle demande confirmation quand c'est necessaire.
 
+### Bilan de session — modèle de permissions discuté (2026-10-01)
+
+Cette section distingue les constats du code actuel des décisions de conception exprimées pendant la session. Elle ne signifie pas que les changements décrits dans la politique cible ont déjà été implémentés.
+
+#### Objectif fixé
+
+GreatOS/Jarvis doit rester une surcouche de l'OS hôte et se comporter comme un utilisateur standard de GreatOS. Le compte OS sous lequel Jarvis s'exécute fournit le plafond réel de ses droits : la trust matrix, le mode action et le mode Stark peuvent éviter les confirmations Jarvis selon leurs règles, mais ne donnent jamais à Jarvis des privilèges que ce compte ne possède pas. Toute élévation nécessaire appartient à Windows/UAC (ou au mécanisme équivalent de l'OS hôte).
+
+Seuls deux espaces sont considérés comme protégés par la politique cible : l'espace de l'OS hôte et celui de la surcouche GreatOS. Les autres actions restent limitées par les permissions effectives du compte OS. Le but est d'éviter les confirmations inutiles pour le travail quotidien tout en gardant les limites de l'OS.
+
+La distinction propriétaire/tiers a également été clarifiée au niveau conceptuel : le propriétaire est l'utilisateur du compte OS qui exécute GreatOS à l'instant T ; les tiers peuvent être mémorisés comme personnes, sans recevoir les privilèges du propriétaire. L'identification comportementale des personnes est hors objectif immédiat. L'authentification/API multi-utilisateur reste un chantier séparé si une identité distincte du compte OS devient nécessaire.
+
+#### Ce qui a été vérifié ou fait
+
+- L'audit du code a confirmé que `datashield/policy.py` produit les décisions `ALLOW`, `CONFIRM` ou `DENY`, tandis que la trust matrix est une couche distincte qui décide si une confirmation de confiance est demandée.
+- La matrice actuelle suit les capacités par domaine et promeut après 5 succès consécutifs. Les niveaux 0 et 1 demandent une confirmation ; le niveau 2 permet une action avec notification et le niveau 3 une action silencieuse.
+- Le code actuel cartographie notamment `JARVIS_DIR`, `SystemRoot`, `Program Files`, `ProgramData` et `Common Files` comme racines protégées. Pour les opérations concernées, cette protection provoque principalement une confirmation, pas un refus absolu ; `chemin_autorise()` normalise le chemin mais n'est pas une barrière d'accès au système de fichiers.
+- L'évaluation centrale applique DEFCON 1 (blocage général), DEFCON 2 (blocage système/destructif et confirmation des écritures) et DEFCON 3 (confirmation des commandes système). DEFCON 4 n'a pas de règle distincte dans cette fonction.
+- La session a identifié que les points d'appel inspectés ne renseignent pas explicitement `RequestOrigin.EXTERNAL` : la protection de provenance prévue pour les contenus externes doit être vérifiée avant d'être considérée comme active.
+- Aucun changement du comportement produit n'a été effectué pendant cette discussion. La proposition d'augmenter le seuil de promotion à 10 succès par palier était une piste, pas une décision adoptée.
+
+#### Écarts et suite à faire
+
+1. Définir précisément les frontières des deux espaces protégés (« OS hôte » et « surcouche GreatOS »), notamment pour les autres OS, et vérifier que la cartographie actuelle correspond à cette définition sans protéger involontairement tout un espace utilisateur.
+2. Traduire la politique cible en règles exécutables : opérations courantes autorisées sans friction dans le périmètre du compte OS ; confirmations de confiance pilotées par la matrice ; limites des espaces protégés maintenues ; aucune élévation de privilèges accordée par GreatOS.
+3. Vérifier séparément l'effet du mode action, du mode Stark et des niveaux de confiance sur chaque chemin d'exécution, en veillant à ce qu'ils ne court-circuitent pas les refus absolus de sécurité.
+4. Décider si les actions vers les espaces protégés sont confirmées ou refusées par GreatOS, et comment les demandes d'élévation OS sont déclenchées. Une commande lancée sans demande d'élévation explicite peut être refusée par l'OS sans afficher UAC.
+5. Propager et tester la provenance des demandes externes avant de s'appuyer sur la règle anti-injection correspondante.
+6. Après implémentation, exécuter un essai quotidien contrôlé : lecture et écriture ordinaires, action vers chaque espace protégé, commande nécessitant une élévation, refus d'une action bloquée, puis répétition après progression de confiance.
+
+Le seuil de promotion de la trust matrix reste à arbitrer : la valeur actuelle est 5 ; la valeur 10 a été proposée pendant la discussion mais n'a pas été validée par l'utilisateur.
+
 ## Outils disponibles
 
 La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.tool_signatures.documenter_signatures_outils()` pour obtenir l'inventaire exact du registre courant.
@@ -250,7 +282,15 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 - `lister_commandes_personnalisees()` - Liste les commandes custom.
 - `executer_commande_personnalisee(nom)` - Execute une commande custom.
 
+### Controle bureau et environnement
+
+- `controler_multimedia(action)` - Pilote le flux multimedia universel (pause, play, toggle, suivant, precedent, volume_up, volume_down, mute).
+- `manipuler_fenetre(titre, x=0, y=0, largeur=1280, hauteur=720)` - Repositionne ou redimensionne une fenetre visible sur le bureau de Carl.
+- `regarder_ecran(question="", zone="ecran")` - Capture l'ecran ou la fenetre active en direct et l'analyse visuellement via le modele multimodal VLM.
+
 ### Traducteur
+
+
 
 - `lire_traducteur()` - Affiche les entrees et statistiques du traducteur.
 - `modifier_traducteur(cle, patterns_fr, patterns_en, outil="", args_json="{}")` - Flux de demande de modification du traducteur. Actuellement, la persistance reelle n'est pas implementee.
@@ -304,6 +344,7 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 
 ### Automatisation de Navigateur
 
+- `accomplir_tache_web(objectif, url_depart="", headless=True)` - **Agent de navigation autonome** : accomplit une tâche web complexe en pilotant le navigateur (navigue, clique, remplit des formulaires, extrait du contenu) à la façon de Claude dans Chrome. Exemple : *"Cherche le prix du vol Paris-Montréal le 15 oct sur Google Flights"*.
 - `naviguer_vers(url)` - Navigue vers une URL dans le navigateur contrôlé.
 - `cliquer_element(selecteur)` - Clique sur un élément via sélecteur CSS ou texte.
 - `remplir_formulaire(selecteur, texte)` - Saisit du texte dans un champ de formulaire.
@@ -313,6 +354,7 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 - `obtenir_infos_page()` - Récupère le titre et l'URL de la page courante.
 - `fermer_navigateur()` - Ferme la session de navigation persistante et libère les ressources Chromium.
 - `reinitialiser_navigateur()` - Réinitialise la session de navigation persistante (ferme et rouvre).
+
 
 ### Sessions de Navigation & Overlay
 

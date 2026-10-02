@@ -40,7 +40,12 @@ _EXPLICIT_CAPABILITIES = {
     "naviguer_vers": ("taskflow", "browser.navigate"),
     "cliquer_element": ("taskflow", "browser.click"),
     "remplir_formulaire": ("taskflow", "browser.fill"),
+    "controler_multimedia": ("taskflow", "desktop.multimedia_control"),
+    "manipuler_fenetre": ("taskflow", "desktop.window_control"),
+    "regarder_ecran": ("taskflow", "desktop.vision_inspect"),
     # Context Engine : mémoire, observations et contexte de continuité.
+
+
     "noter": ("context_engine", "memory.note"),
     "lire_notes": ("context_engine", "memory.read_notes"),
     "memoriser_contexte": ("context_engine", "context.remember"),
@@ -114,7 +119,7 @@ def execute_capability(
             capability=name,
             status=CapabilityStatus.FAILED,
             message=f"Outil inconnu : {name}",
-            error_category="erreur_technique_outil",
+            error_category="capacite_manquante",
         )
     if arguments is not None and not isinstance(arguments, dict):
         return CapabilityResult(

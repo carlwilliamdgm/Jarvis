@@ -81,36 +81,118 @@ class AdaptiveVAD:
 
     Le plancher de bruit ne se met a jour QUE pendant les periodes silencieuses
     reconnues, pour eviter d'apprendre la voix et de remonter le seuil.
+    
+    Améliorations pour la robustesse au bruit :
+    - Hystérésis (nécessite N trames consécutives pour transition)
+    - Moyenne glissante de l'énergie pour lisser les pics
+    - Adaptation plus lente du plancher de bruit
+    - Détection de saturation audio (clipping)
+    - Filtre spectral simple pour distinguer parole vs bruit continu
     """
 
     def __init__(
         self,
-        alpha: float = 0.05,
-        min_ratio: float = 2.2,
+        alpha: float = 0.02,  # Plus lent pour éviter de monter le seuil trop vite
+        min_ratio: float = 2.5,  # Ratio plus conservateur
         min_threshold: int = 150,
+        hysteresis_frames: int = 3,  # Nombre de trames consécutives requises
     ) -> None:
         self.noise_floor = 50.0
         self.alpha = alpha
         self.min_ratio = min_ratio
         self.min_threshold = min_threshold
         self.is_speech_active = False
+        
+        # Hystérésis pour éviter les fluctuations
+        self.hysteresis_frames = hysteresis_frames
+        self.consecutive_speech = 0
+        self.consecutive_silence = 0
+        
+        # Moyenne glissante de l'énergie (fenêtre de 5 trames)
+        self.energy_window = []
+        self.energy_window_size = 5
+        
+        # Détection de saturation (clipping)
+        self.saturation_threshold = 30000  # Près de max int16 (32767)
+        self.saturation_count = 0
+        self.saturation_window = []
+        self.saturation_window_size = 10
+        
+        # Filtre spectral simple (ratio zero-crossing)
+        self.zcr_window = []
+        self.zcr_window_size = 5
 
     def process(self, samples: np.ndarray) -> bool:
         if samples.size == 0:
             return False
+        
+        # Calcul de l'énergie avec lissage
         energy = float(np.max(np.abs(samples)))
-        threshold = max(self.noise_floor * self.min_ratio, float(self.min_threshold))
-        is_speech = energy > threshold
-        # Mise a jour du plancher UNIQUEMENT en periode calme reconnue
-        if not is_speech:
+        self.energy_window.append(energy)
+        if len(self.energy_window) > self.energy_window_size:
+            self.energy_window.pop(0)
+        smoothed_energy = sum(self.energy_window) / len(self.energy_window)
+        
+        # Détection de saturation (clipping) - ignore les trames saturées
+        saturated = np.any(np.abs(samples) > self.saturation_threshold)
+        self.saturation_window.append(saturated)
+        if len(self.saturation_window) > self.saturation_window_size:
+            self.saturation_window.pop(0)
+        saturation_ratio = sum(self.saturation_window) / len(self.saturation_window)
+        
+        # Si saturation excessive, ignorer cette trame pour le VAD
+        if saturation_ratio > 0.5:
+            return self.is_speech_active  # Maintenir l'état actuel
+        
+        # Calcul du zero-crossing rate (ZCR) pour distinguer parole vs bruit continu
+        # La parole a un ZCR plus variable que la musique ou le bruit blanc
+        zero_crossings = np.sum(np.diff(np.sign(samples)) != 0)
+        zcr = zero_crossings / len(samples)
+        self.zcr_window.append(zcr)
+        if len(self.zcr_window) > self.zcr_window_size:
+            self.zcr_window.pop(0)
+        avg_zcr = sum(self.zcr_window) / len(self.zcr_window)
+        
+        # Ajustement dynamique du seuil basé sur le ZCR
+        # Un ZCR très bas ou très constant indique du bruit continu (musique, ventilateur)
+        zcr_factor = 1.0
+        if len(self.zcr_window) >= 3:
+            zcr_std = np.std(self.zcr_window)
+            # Si le ZCR est très stable (faible écart-type), c'est probablement du bruit continu
+            if zcr_std < 0.02:
+                zcr_factor = 1.5  # Augmenter le seuil pour les bruits continus
+        
+        threshold = max(self.noise_floor * self.min_ratio * zcr_factor, float(self.min_threshold))
+        raw_speech = smoothed_energy > threshold
+        
+        # Hystérésis : nécessite plusieurs trames consécutives
+        if raw_speech:
+            self.consecutive_speech += 1
+            self.consecutive_silence = 0
+        else:
+            self.consecutive_silence += 1
+            self.consecutive_speech = 0
+        
+        # Transition parole -> silence
+        if self.is_speech_active and self.consecutive_silence >= self.hysteresis_frames:
+            self.is_speech_active = False
+        # Transition silence -> parole
+        elif not self.is_speech_active and self.consecutive_speech >= self.hysteresis_frames:
+            self.is_speech_active = True
+        
+        # Mise a jour du plancher UNIQUEMENT en periode calme reconnue (hystérésis appliquée)
+        if not self.is_speech_active and self.consecutive_silence >= self.hysteresis_frames * 2:
             self.noise_floor = (
-                (1.0 - self.alpha) * self.noise_floor + self.alpha * energy
+                (1.0 - self.alpha) * self.noise_floor + self.alpha * smoothed_energy
             )
-        self.is_speech_active = is_speech
-        return is_speech
+        
+        return self.is_speech_active
 
     def reset_floor(self, default_val: float = 50.0) -> None:
         self.noise_floor = default_val
+        self.consecutive_speech = 0
+        self.consecutive_silence = 0
+        self.energy_window.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -444,16 +526,38 @@ class AudioCaptureEngine:
     # ------------------------------------------------------------------
 
     def _capture_loop(self) -> None:
-        """Lit en continu depuis PortAudio, traite et distribue les trames."""
+        """Lit en continu depuis PortAudio, traite et distribue les trames.
+        
+        Inclut une logique de reconnexion automatique en cas de déconnexion du micro.
+        """
         native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
         LOGGER.info("[AudioCaptureEngine] Thread capture demarre (bloc: %d samples)", native_block)
+        
+        consecutive_errors = 0
+        max_consecutive_errors = 10
+        reconnect_delay = 1.0
+        
         while self._running:
             try:
                 data, overflowed = self._stream.read(native_block)
                 if overflowed:
                     LOGGER.debug("[AudioCaptureEngine] PortAudio overflow")
+                consecutive_errors = 0  # Reset compteur d'erreurs
             except Exception as exc:
-                LOGGER.debug("[AudioCaptureEngine] Erreur lecture: %s", exc)
+                consecutive_errors += 1
+                LOGGER.warning(
+                    "[AudioCaptureEngine] Erreur lecture (%d/%d): %s",
+                    consecutive_errors, max_consecutive_errors, exc
+                )
+                
+                # Si trop d'erreurs consécutives : tentative de reconnexion
+                if consecutive_errors >= max_consecutive_errors:
+                    LOGGER.error("[AudioCaptureEngine] Trop d'erreurs - tentative de reconnexion")
+                    self._attempt_reconnect()
+                    consecutive_errors = 0
+                    time.sleep(reconnect_delay)
+                    continue
+                
                 time.sleep(0.01)
                 continue
 
@@ -473,6 +577,62 @@ class AudioCaptureEngine:
             self._accumulate_and_emit(resampled)
 
         LOGGER.info("[AudioCaptureEngine] Thread capture termine")
+
+    def _attempt_reconnect(self) -> bool:
+        """Reconnecte le flux depuis le thread de capture courant.
+
+        Ne pas appeler ``ouvrir()`` ici : cette méthode démarre un nouveau
+        thread de capture. Le thread courant est déjà le propriétaire du
+        microphone et doit reprendre la lecture après la reconnexion.
+        """
+        LOGGER.info("[AudioCaptureEngine] Tentative de reconnexion du micro...")
+        
+        with self._stream_lock:
+            # Fermer l'ancien flux si existe
+            if self._stream is not None:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+            self._accumulation_buffer = np.array([], dtype=np.int16)
+            self._q_wake.drain()
+            self._q_clap.drain()
+            self._q_transcription.drain()
+            self._q_stop.drain()
+        
+        # Réinitialiser le VAD pour éviter un plancher de bruit erroné
+        self.vad.reset_floor()
+        
+        # Attendre un peu avant reconnexion
+        time.sleep(0.5)
+        
+        # Réouvrir seulement le flux matériel. Le thread courant reprend
+        # naturellement sa boucle; en démarrer un second ferait lire le même
+        # flux par deux consommateurs concurrents.
+        with self._stream_lock:
+            if not self._running or sd is None:
+                return False
+            try:
+                self._detect_native_params()
+                self._init_resampler()
+                native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
+                stream = sd.RawInputStream(
+                    device=self.device_index,
+                    samplerate=self.native_rate,
+                    blocksize=native_block,
+                    dtype="int16",
+                    channels=self.native_channels,
+                )
+                stream.start()
+                self._stream = stream
+                LOGGER.info("[AudioCaptureEngine] Micro reconnecté")
+                return True
+            except Exception as exc:
+                self._stream = None
+                LOGGER.warning("[AudioCaptureEngine] Reconnexion échouée: %s", exc)
+                return False
 
     # ------------------------------------------------------------------
     # API publique

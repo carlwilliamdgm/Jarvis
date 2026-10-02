@@ -85,7 +85,8 @@ def test_jarvis_orchestrer_plan_events_and_execution():
     )
     plan = ExecutionPlan(goal="Test orchestration", steps=[step1])
 
-    resultats = orchestrer_plan(plan, memoire={}, on_event=capter_event)
+    with patch("jarvis.agent._confirmer_selon_confiance", return_value=True):
+        resultats = orchestrer_plan(plan, memoire={}, on_event=capter_event)
 
     assert len(resultats) == 1
     assert resultats[0].status == CapabilityStatus.SUCCESS
@@ -125,7 +126,8 @@ def test_jarvis_orchestrer_plan_fails_when_dependency_fails():
     )
     plan = ExecutionPlan(goal="Test dépendances", steps=[step1, step2])
 
-    resultats = orchestrer_plan(plan, memoire={}, on_event=capter_event)
+    with patch("jarvis.agent._confirmer_selon_confiance", return_value=True):
+        resultats = orchestrer_plan(plan, memoire={}, on_event=capter_event)
 
     assert len(resultats) == 2
     assert resultats[1].status == CapabilityStatus.FAILED
@@ -133,6 +135,19 @@ def test_jarvis_orchestrer_plan_fails_when_dependency_fails():
 
     types_events = [t for t, _ in events_recus]
     assert "plan_interrupted" in types_events
+
+
+def test_trust_confirmation_blocks_planned_action_before_dispatch():
+    step = PlanStep(id="step_1", capability="goals.list", description="Lister les objectifs")
+    plan = ExecutionPlan(goal="Contrôle de confiance", steps=[step])
+    with (
+        patch("jarvis.agent._confirmer_selon_confiance", return_value=False),
+        patch("jarvis.agent.execute_capability") as execute,
+    ):
+        results = orchestrer_plan(plan, memoire={})
+    execute.assert_not_called()
+    assert len(results) == 1
+    assert results[0].status == CapabilityStatus.CANCELLED
 
 
 def test_jarvis_orchestrer_plan_blocked_by_defcon():

@@ -1,0 +1,126 @@
+{
+  "domaines": {
+    "lister_objectifs": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    },
+    "executer_powershell": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 4,
+      "actions_totales": 4,
+      "echecs": 0
+    },
+    "rapport_performance": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    },
+    "executer_commande": {
+      "niveau": 0,
+      "score": 0.25,
+      "succes_consecutifs": 0,
+      "actions_totales": 4,
+      "echecs": 3
+    },
+    "rechercher_et_analyser": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 2,
+      "actions_totales": 2,
+      "echecs": 0
+    },
+    "lire_preferences": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    }
+  },
+  "historique_resultats": [
+    {
+      "date": "2026-10-01T17:55:21.682020+00:00",
+      "domaine": "lister_objectifs",
+      "capacite": "lister_objectifs",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T18:21:47.799975+00:00",
+      "domaine": "executer_powershell",
+      "capacite": "executer_powershell",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T18:40:58.836020+00:00",
+      "domaine": "executer_powershell",
+      "capacite": "executer_powershell",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T19:04:02.235747+00:00",
+      "domaine": "rapport_performance",
+      "capacite": "rapport_performance",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T19:08:21.326549+00:00",
+      "domaine": "executer_commande",
+      "capacite": "executer_commande",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T19:28:11.842330+00:00",
+      "domaine": "executer_powershell",
+      "capacite": "executer_powershell",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T19:28:55.112032+00:00",
+      "domaine": "executer_powershell",
+      "capacite": "executer_powershell",
+      "succes": true
+    },
+    {
+      "date": "2026-10-01T19:31:37.449539+00:00",
+      "domaine": "executer_commande",
+      "capacite": "executer_commande",
+      "succes": false
+    },
+    {
+      "date": "2026-10-01T19:35:23.237354+00:00",
+      "domaine": "executer_commande",
+      "capacite": "executer_commande",
+      "succes": false
+    },
+    {
+      "date": "2026-10-01T19:40:28.371266+00:00",
+      "domaine": "executer_commande",
+      "capacite": "executer_commande",
+      "succes": false
+    },
+    {
+      "date": "2026-10-02T10:21:51.163475+00:00",
+      "domaine": "rechercher_et_analyser",
+      "capacite": "rechercher_et_analyser",
+      "succes": true
+    },
+    {
+      "date": "2026-10-02T10:50:52.846833+00:00",
+      "domaine": "rechercher_et_analyser",
+      "capacite": "rechercher_et_analyser",
+      "succes": true
+    },
+    {
+      "date": "2026-10-02T10:51:37.809009+00:00",
+      "domaine": "lire_preferences",
+      "capacite": "lire_preferences",
+      "succes": true
+    }
+  ]
+}

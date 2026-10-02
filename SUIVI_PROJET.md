@@ -8,197 +8,192 @@
 
 ## Journal récent
 
-### 2026-09-29T11:37:35.203537+00:00 — Antigravity — completed
+### 2026-10-02T11:29:57.390167+00:00 — Codex - Audit renforcement mode vocal — completed
 
-Renforcement souverain de Core Intellect : défense cognitive (prompt injection/jailbreak/secret leak), routeur d'intention et validateur/auto-correcteur d'arguments
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- core_intellect/cognitive_defense.py, core_intellect/intent_router.py, core_intellect/argument_validator.py, core_intellect/intellect.py, core_intellect/__init__.py, tests/test_core_intellect_defense_and_router.py, ARCHITECTURE.md, ETAT_DES_LIEUX.md
-
-**Vérification**
-- 178/178 tests unitaires passés avec succès (code 0) dont 20 nouveaux tests dédiés Core Intellect
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Connecter les flux d'extraction web/email de TaskFlow pour propager automatiquement RequestOrigin.EXTERNAL
-
-### 2026-09-29T10:54:32.190825+00:00 — Antigravity — completed
-
-Finalisation de l'Étape 7 : consolidation de OUTILS comme adaptateur explicite (LegacyToolRegistry), intégration des capacités de chiffrement DataShield et alignement du suivi de projet
+Audit étendu du cycle vocal et correction d'un défaut de reconnexion pouvant créer deux threads lecteurs concurrents; confirmation wake-word espacée.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- taskflow/tools.py (statut_chiffrement, chiffrer_valeur, dechiffrer_valeur), greatos_capabilities.py (_EXPLICIT_CAPABILITIES), EXECUTION_OUTILS.md, context_engine/agent_learning.py (détection session active), SUIVI_PROJET.md
+- jarvis/audio_capture.py : reconnexion du flux dans le thread capture propriétaire sans relancer un deuxième worker; jarvis/voice_input.py : espacement minimal des détections wake-word confirmées.
 
 **Vérification**
-- Tests unitaires complets passés (158/158, code 0) incluant la conformité documentaire et les tests du registre hérité
+- py_compile réussi sur audio_capture.py et voice_input.py; tests non exécutés. git diff --check remonte des espaces finaux dans les modifications vocales préexistantes des deux fichiers.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Toutes les étapes du refactor et du blindage crypto/cyber initial sont achevées avec succès ; système prêt pour de nouveaux développements fonctionnels
+- Valider le reconnect micro en conditions réelles et mesurer le délai de confirmation wake-word avec différents niveaux de bruit.
 
-### 2026-09-29T10:46:21.739630+00:00 — Antigravity — completed
+### 2026-10-02T11:25:43.853501+00:00 — Codex - Renforcement mode vocal — completed
 
-Implémentation de la cybersécurité collaborative souveraine : frontière de confiance (RequestOrigin/Taint), moteur de détection de menaces MITRE ATT&CK, désobfuscation Base64 transparente et détection d'anomalies comportementales
+Confirmation du mot de réveil espacée pour ignorer les trames adjacentes du même pic audio.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- greatos_contracts.py (RequestOrigin), datashield/threat_analyzer.py (nouveau), datashield/policy.py (évaluation cyber & Taint), context_engine/pattern_analyzer.py (evaluer_anomalie_action), tests/test_datashield_threat_analyzer.py (nouveau), ARCHITECTURE.md
+- jarvis/voice_input.py : délai minimal de 250 ms entre deux détections comptées pour la confirmation secondaire.
 
 **Vérification**
-- 158/158 tests unitaires passés avec succès (code 0) dont 12 nouveaux tests cyber dédiés
+- py_compile jarvis/voice_input.py réussi; git diff --check ciblé réussi; tests non exécutés.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Connecter les flux d'extraction web/email pour propager automatiquement RequestOrigin.EXTERNAL
+- Valider le compromis latence/faux positifs en conditions réelles et ajuster le délai minimal si nécessaire.
 
-### 2026-09-29T09:56:17.164735+00:00 — Antigravity — completed
+### 2026-10-02T10:29:23.097744+00:00 — Devin — completed
 
-Extension du chiffrement AES-256-GCM DataShield aux archives snapshots SyncSphere (.gos), restauration sécurisée et validation de clé
+Renforcement avancé du mode vocal : validation secondaire wake word, VAD spectral, transcription robuste, latence optimisée
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- syncsphere/snapshot.py, syncsphere/tools.py, datashield/crypto.py, tests/test_syncsphere_crypto.py, ETAT_DES_LIEUX.md
+- jarvis/voice_input.py (validation secondaire wake word, timeouts réduits, préchargement parallèle), jarvis/audio_capture.py (VAD avec ZCR et détection saturation), jarvis/voice_output.py (garde anti-écho réduite), jarvis/voice_state.py (docs timeout 25s), tests/test_voice_reliability.py (nouveau fichier de tests)
 
 **Vérification**
-- 146/146 tests unitaires passés avec succès (code 0) dont 6 nouveaux tests SyncSphere crypto
+- Compilation Python réussie (py_compile) sur les 3 fichiers modifiés
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Implémenter l'authentification 2FA/TOTP sur l'API FastAPI ou le journal d'audit HMAC
+- Tester en conditions réelles avec bruit ambiant pour valider le ZCR et la réduction des faux positifs. Surveiller les logs pour confirmer l'adaptation du seuil wake word et les confirmations multiples.
 
-### 2026-09-29T09:32:22.840961+00:00 — Antigravity — completed
+### 2026-10-02T10:18:31.817070+00:00 — Devin — completed
 
-Implémentation du moteur de chiffrement AES-256-GCM dans DataShield avec dérivation PBKDF2-SHA256, store chiffré EncryptedJsonMemoryStore, capacités publiques statut/chiffrer/déchiffrer, et 28 nouveaux tests unitaires
+Renforcement du mode vocal : seuil adaptatif, VAD amélioré, reconnexion auto, latence optimisée
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- datashield/crypto.py (nouveau), context_engine/encrypted_memory_store.py (nouveau), context_engine/memory_store.py (backend encrypted), datashield/tools.py (capacités crypto), datashield/__init__.py, requirements.txt, pytest.ini, tests/test_datashield_crypto.py (nouveau)
+- jarvis/voice_input.py (seuil adaptatif dynamique), jarvis/audio_capture.py (VAD avec hystérésis, reconnexion auto), tests/test_voice_improvements.py (nouveau fichier de tests)
 
 **Vérification**
-- 140/140 tests passés avec succès (code 0) dont 28 nouveaux tests crypto dédiés
+- 11 tests unitaires tous passés
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Intégrer le chiffrement au niveau SQLite/SQLCipher ou chiffrer les snapshots SyncSphere .gos
+- Tester les améliorations en conditions réelles pour valider l'impact sur les faux positifs/négatifs et la latence perçue
 
-### 2026-09-17T18:50:08.847157+00:00 — WebSearchRefactor — completed
+### 2026-10-01T19:16:56.951141+00:00 — Codex - Synthèse politique de permissions GreatOS — completed
 
-Web search engine updated with ddgs integration, strict result validation and Wikipedia fallback
+Documentation de l'ensemble de la session : objectif OS standard, espaces protégés, rôle de la trust matrix, état actuel et suites.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- taskflow/web_search.py, requirements.txt, memory.json
+- Ajout d'un bilan daté dans EXECUTION_OUTILS.md séparant politique cible discutée, constats vérifiés et tâches à faire; aucune modification du comportement produit.
 
 **Vérification**
-- All pytest tests passed (248 passed, 8 deselected)
+- Lecture des consignes AGENTS.md et des docs de sécurité; inspection de datashield/policy.py, datashield/defcon.py, datashield/safety.py, datashield/threat_analyzer.py, context_engine/trust_registry.py et jarvis/agent.py; git diff --check.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Monitor rate‑limit handling; consider caching
+- Arbitrer le seuil de confiance et le comportement exact dans les espaces protégés; implémenter l'alignement des décisions de politique puis faire un essai quotidien contrôlé incluant une demande d'élévation OS.
 
-### 2026-09-17T06:50:44.330301+00:00 — Antigravity — completed
+### 2026-10-01T18:19:10.810654+00:00 — Codex - Audit politique de sécurité — completed
 
-Mise à jour complète de la documentation interne (ARCHITECTURE.md, ETAT_DES_LIEUX.md, EXECUTION_OUTILS.md, README.md, PREMIER_LANCEMENT.md, Notes dev/GreatOS_Module_Map.md) pour refléter fidèlement l'état réel du code sans altérer les fichiers .docs
+Cartographie de la politique DataShield appliquée aux capacités et identification des limites du flux.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- ETAT_DES_LIEUX.md (statut refactor 100% achevé), ARCHITECTURE.md (flux unifié, 8 modules souverains, LegacyToolRegistry), EXECUTION_OUTILS.md (schéma de flux, endpoints /jarvis/plan), README.md (arborescence des 8 modules, responsabilités fondamentales), PREMIER_LANCEMENT.md (correction chemins gui), Notes dev/GreatOS_Module_Map.md (matrice des 8 modules souverains 100% opérationnels)
+- Aucun changement produit; lecture de datashield/policy.py, datashield/defcon.py, datashield/safety.py, datashield/threat_analyzer.py, taskflow/tools.py et jarvis/agent.py.
 
 **Vérification**
-- 72 tests de non-régression passés avec succès (code 0), git diff --check propre (code 0), exclusion totale de fichiers .docs/.docx
+- Inspection statique des décisions ALLOW/CONFIRM/DENY et des points d'appel; aucun test exécuté.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- La documentation interne est parfaitement à jour, le dépôt est assaini et prêt pour les prochaines évolutions.
+- Si une correction est demandée, faire un audit ciblé des capacités destructives pouvant devenir silencieuses via la trust matrix, du chemin provenance EXTERNAL et de la définition attendue de DEFCON4.
 
-### 2026-09-16T21:08:46.570050+00:00 — Antigravity — completed
+### 2026-10-01T17:30:41.956613+00:00 — Codex - Branchement des services GreatOS — completed
 
-Assainissement du dépôt : suppression des dossiers temporaires et orphelins, exclusion de .pytest_temp dans .gitignore et validation de l'intégrité globale
+Raccordement du daemon proactif et de la consolidation au cycle de vie Uvicorn; garde de confiance avant actions; profils de directives isolés; statistiques nocturnes par profil et propositions inertes de capacités manquantes.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- .gitignore (.pytest_temp/, tmp_cdc_render/, .cursor/), suppression .pytest_temp/, suppression tmp_cdc_render/, suppression contracts/ orphelin
+- jarvis/agent.py, interface_morphique/server.py, interface_morphique/web/index.html, service/proactive_daemon.py, service/consolidation_scheduler.py, context_engine/trust_registry.py, context_engine/memory_tools.py, learning/consolidation_engine.py, learning/capability_proposals.py, greatos_capabilities.py et tests ciblés.
 
 **Vérification**
-- 72 tests de non-régression passés avec succès (code 0) ; git status -s propre et sans fichiers parasites ; git diff --check code 0
+- Compilation Python OK; 135 tests ciblés passés. Suite complète : 453 passés, 1 échec dû à ImageGrab.grab sans bureau interactif Windows; huit tests d'intégration exclus par pytest.ini. git diff --check ne signale qu'une ligne blanche en fin de core_intellect/intellect.py, fichier déjà modifié avant cette session.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Le dépôt est parfaitement assaini et stable, prêt pour un commit global ou de nouveaux développements.
+- Définir une authentification multi-utilisateur avant d'exposer des profils distincts par API; décider si les prototypes doivent être générés par LLM et comment les valider/tester avant intégration; redémarrer JarvisAgent pour activer les branchements en production; répéter le test de capture sur un bureau Windows interactif.
 
-### 2026-09-16T20:31:17.128309+00:00 — Antigravity — completed
+### 2026-10-01T17:00:49.004451+00:00 — Codex - Inventaire des fils GreatOS — completed
 
-Redémarrage réussi du serveur GreatOS (Interface Morphique) sur le port 8000 via la tâche planifiée JarvisAgent
+Cartographie statique des composants du plan et des points d'intégration depuis le démarrage JarvisAgent; identification des modules absents et non branchés.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- Processus python précédent (PID 28964) renouvelé par PID 27244 avec le nouveau code modulaire GreatOS
+- Aucun changement produit; ajout du compte rendu d'audit au journal GreatOS.
 
 **Vérification**
-- Vérification HTTP 200 sur /jarvis/status, /web/ et POST /jarvis/plan avec génération de plan en direct
+- Recherches statiques des définitions et appels dans greatos.py, interface_morphique/server.py, jarvis/agent.py, context_engine, service, taskflow et learning; aucun test exécuté.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Serveur opérationnel et prêt pour les interactions utilisateur, vocales ou web.
+- Réutiliser l'inventaire en ordre d'intégration: daemon dans lifespan (et vérifier la livraison SSE), contrôle de confiance avant exécution, parcours de user_id/API si mult-utilisateur voulu, implémenter consolidation nocturne puis propositions de capacités.
 
-### 2026-09-16T20:15:27.743919+00:00 — Antigravity — completed
+### 2026-10-01T16:43:19.235574+00:00 — Codex - Vérification du plan multi-utilisateurs — completed
 
-Étape 7 (Retrait progressif) achevée : OUTILS élevé en LegacyToolRegistry(dict) avec dispatching explicite ; taskflow/scheduler.py migré vers execute_capability. Aucun appel interne ne dépend d'un dictionnaire anonyme. 112 tests validés au vert.
+Vérification du plan J.A.R.V.I.S : phases 1 à 4 largement présentes, mais activation du daemon, application du trust registry et phases 6-7 incomplètes ou absentes.
 
 **Décisions**
-- OUTILS est désormais une instance typée de LegacyToolRegistry garantissant la rétrocompatibilité tout en formalisant la délégation au dispatcher central ; tous les appels internes de production passent par execute_capability.
+- Aucun élément signalé.
 
 **Changements**
-- greatos_capabilities.py : classe LegacyToolRegistry ajoutée
-- taskflow/tools.py : OUTILS instancié via LegacyToolRegistry
-- taskflow/scheduler.py : executer_action_automatisation utilise execute_capability
-- tests/test_legacy_tool_registry.py : 6 tests de validation de l'adaptateur et de non-régression
-- ETAT_DES_LIEUX.md : plan complété à 100%, baseline portée à 112 tests
+- Aucun changement produit; rapport basé sur inspection de jarvis/agent.py, core_intellect/intellect.py, context_engine/*, service/*, taskflow/* et tests.
 
 **Vérification**
-- 112 tests passés avec succès (.venv\Scripts\python.exe -m pytest ... --basetemp=.pytest_temp)
-- git diff --check exécuté avec succès (code 0)
+- Inspection statique des points d'entrée, appels de fonctions, fichiers et critères décrits dans le plan; aucun test exécuté.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Refactor complet achevé. Maintenir la suite de tests à 112 minimum et étendre les nouvelles capacités selon l'architecture modulaire stabilisée.
+- Brancher le daemon au démarrage réel et à la diffusion UI; imposer la vérification de confiance avant execute_capability; implémenter consolidation_engine et capability_proposals; confirmer les validations de production annoncées.
+
+### 2026-10-01T16:08:44.782251+00:00 — Devin — completed
+
+Jalon 5: Registre d'Autonomie Progressive (Trust Matrix) implémenté avec succès
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- context_engine/trust_registry.py (nouveau module), tests/test_trust_registry.py (nouveau fichier de tests)
+
+**Vérification**
+- 27 tests unitaires tous passés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Intégrer le trust_registry dans le pipeline de décision de Core Intellect pour appliquer les niveaux d'autonomie aux actions

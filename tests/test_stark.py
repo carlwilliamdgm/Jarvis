@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 try:
     import pytest
 except ImportError:
@@ -460,7 +461,8 @@ class ErrorClassificationTests(unittest.TestCase):
                 args={"chemin": "C:\\pagefile.sys"},
                 resultat_brut="Erreur : verrouille",
             )
-            jarvis.parler("ouvre absent", [], normaliser_memoire({}))
+            with patch("jarvis.agent._confirmer_selon_confiance", return_value=True):
+                jarvis.parler("ouvre absent", [], normaliser_memoire({}))
             data = normaliser_memoire(charger_memoire())
         finally:
             jarvis.interpreter_objectif = old_interpreter

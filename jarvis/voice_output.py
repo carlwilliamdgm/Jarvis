@@ -105,7 +105,7 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
     - Le moteur audio passe en mode SPEAKING (seule la queue stop est alimentée).
     - On lit les trames de la queue stop pour détecter la commande vocale d'arrêt.
     - Après la lecture (interrompue ou naturelle), on revient en NORMAL et on
-      applique la garde anti-écho (450 ms) pour éliminer la résonance des haut-parleurs.
+      applique la garde anti-écho (350 ms) pour éliminer la résonance des haut-parleurs.
     """
     import sounddevice as sd
     from jarvis.audio_capture import get_audio_capture_engine, CaptureMode
@@ -128,7 +128,7 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
     except Exception:
         LOGGER.exception("Erreur lors de la lecture audio")
         engine.set_mode(CaptureMode.NORMAL)
-        engine.drainer_et_ignorer_garde(450)
+        engine.drainer_et_ignorer_garde(350)
         _revenir_en_ecoute()
         return
 
@@ -166,15 +166,15 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
                 sd.wait()
         except Exception:
             pass
-        # Revenir en mode normal + garde anti-écho post-haut-parleur
+        # Revenir en mode normal + garde anti-écho post-haut-parleur (réduite à 350ms)
         engine.set_mode(CaptureMode.NORMAL)
-        engine.drainer_et_ignorer_garde(450)
+        engine.drainer_et_ignorer_garde(350)
         LOGGER.debug("Fin de _lire_avec_interruption")
         _revenir_en_ecoute()
         if interrupted:
             LOGGER.info("Lecture interrompue - retour en écoute")
         else:
-            LOGGER.info("Parole terminée - début écoute 30s")
+            LOGGER.info("Parole terminée - début écoute 25s")
 
 def _nettoyer_markdown(texte: str) -> str:
     """Nettoie le texte pour la synthèse vocale en supprimant le markdown."""

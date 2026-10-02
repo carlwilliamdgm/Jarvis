@@ -89,7 +89,7 @@ def _set_voice_state(state: VoiceState) -> bool:
     """Met à jour l'état global.
 
     Cycle : IDLE → WAKING_UP → LISTENING → THINKING → ACTION/SPEAKING → LISTENING
-    → (parole) LISTENING → … ou (silence 30s) IDLE.
+    → (parole) LISTENING → … ou (silence 25s) IDLE.
 
     Un état déjà courant est ignoré (retour ``False``) pour éviter de relire
     l'overlay et de perdre une course entre wake word et double-clap.

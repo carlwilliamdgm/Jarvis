@@ -52,7 +52,9 @@ _MOTS_ACTION = [
     r"(?i)\b(nettoie|vide la corbeille|vide les temp|optimise le stockage)\b",
     r"(?i)\b(snapshot|sauvegarde|restaure|chiffre|déchiffre|dechiffre)\b",
     r"(?i)\b(powershell|terminal|cmd|ping|curl|git)\b",
+    r"(?i)\b(regarde|vois|écran|ecran|capture|musique|volume|pause|play|fenêtre|fenetre|redimensionne)\b",
 ]
+
 
 # Motifs de planification complexe
 _MOTS_PLANIFICATION = [

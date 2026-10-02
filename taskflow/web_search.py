@@ -2,18 +2,33 @@
 Module de recherche web avancée pour Jarvis.
 
 Ce module permet à Jarvis d'effectuer des recherches web intelligentes,
-similaires aux capacités de Claude dans Chrome, avec analyse et synthèse
-des résultats.
+avec extraction propre du contenu (décodage HTML, élagage navigation),
+filtrage de pertinence sémantique et fallback Playwright pour les SPAs JS.
 """
 
+import html as _html_module
 import logging
 import re
 import json
 import time
 import os
+import unicodedata
 from typing import List, Dict, Optional, Any
 from urllib.parse import urlencode, quote_plus, urlparse
 import requests
+
+# ─── Constantes de pertinence ─────────────────────────────────────────────────
+
+# Requêtes encyclopédiques → Wikipedia reste pertinent même sans overlap strict
+_INTENT_ENCYCLOPEDIQUE = re.compile(
+    r"\b(qu(?:i|'est|oi)|what|who|when|quand|o[uù]|where|histoire|history|"
+    r"d[ée]finition|definition|biographie|biography|wikipedia|signification|"
+    r"meaning|origine|origin)\b",
+    re.IGNORECASE,
+)
+
+# Nombre minimum de tokens de la requête devant apparaître dans title+snippet
+_MIN_TOKEN_OVERLAP = 1
 
 logger = logging.getLogger(__name__)
 
@@ -49,28 +64,89 @@ def is_search_engine_root(url: str) -> bool:
         if netloc.startswith("www."):
             netloc = netloc[4:]
         path = parsed.path.strip('/')
+        # Une URL avec query params n'est pas une racine de moteur (c'est un vrai résultat)
+        if parsed.query:
+            return False
         for root in SEARCH_ENGINE_ROOTS:
             if netloc == root or netloc.endswith("." + root):
-                if not path or path in ('', 'html', 'l', 'search', 'web'):
+                if not path or path in ('', 'html', 'l'):
                     return True
     except Exception:
         pass
     return False
 
 
-def is_valid_result(result: Dict[str, Any]) -> bool:
-    """Valide qu'un résultat n'est pas un placeholder, une redirection vide ou une racine de moteur."""
+
+def _normaliser_texte(texte: str) -> str:
+    """Normalise un texte : minuscules, sans accents, sans ponctuation."""
+    texte = texte.lower()
+    # Supprimer les accents
+    nfkd = unicodedata.normalize('NFKD', texte)
+    texte = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    # Garder seulement lettres et espaces
+    texte = re.sub(r'[^a-z0-9\s]', ' ', texte)
+    return texte
+
+
+def _tokens_requete(requete: str) -> list[str]:
+    """
+    Extrait les tokens significatifs d'une requête (longueur >= 3, hors mots vides).
+    """
+    MOTS_VIDES = {
+        "les", "des", "une", "qui", "que", "quoi", "pour", "avec", "dans",
+        "sur", "par", "the", "and", "for", "how", "are", "was",
+    }
+    tokens = _normaliser_texte(requete).split()
+    return [t for t in tokens if len(t) >= 3 and t not in MOTS_VIDES]
+
+
+def is_valid_result(result: Dict[str, Any], requete: str = "") -> bool:
+    """
+    Valide qu'un résultat est structurellement valide ET sémantiquement pertinent.
+
+    Args:
+        result: Dictionnaire résultat avec clés 'title', 'url', 'snippet'.
+        requete: Requête originale pour le filtrage de pertinence. Si vide, seule
+                 la validation structurelle est effectuée.
+
+    Returns:
+        True si le résultat est valide et pertinent.
+    """
     if not isinstance(result, dict):
         return False
+
     title = (result.get("title") or "").strip().lower()
     url = (result.get("url") or "").strip()
+
+    # Validation structurelle
     if not url or is_search_engine_root(url):
         return False
     if title in {"here", "sans titre", "duckduckgo", "google", "bing", "error", "temporairement indisponible"}:
         return False
     if "temporairement indisponible" in title:
         return False
+
+    # Filtrage de pertinence sémantique (seulement si une requête est fournie)
+    if requete:
+        tokens = _tokens_requete(requete)
+        if tokens:
+            snippet = (result.get("snippet") or "").lower()
+            texte_result = _normaliser_texte(f"{title} {snippet}")
+            overlap = sum(1 for t in tokens if t in texte_result)
+            if overlap < _MIN_TOKEN_OVERLAP:
+                # Wikipedia : n'accepter que pour les intentions encyclopédiques
+                is_wiki = "wikipedia.org" in url
+                if is_wiki and not _INTENT_ENCYCLOPEDIQUE.search(requete):
+                    logger.debug("Résultat Wikipedia rejeté (non encyclopédique): %s", title)
+                    return False
+                if not is_wiki:
+                    logger.debug("Résultat rejeté (pertinence insuffisante, overlap=%d): %s", overlap, title)
+                    return False
+
     return True
+
+
+
 
 
 class WebSearchEngine:
@@ -263,45 +339,47 @@ class WebSearchEngine:
     def search(self, query: str, num_results: int = 10, provider: str = None) -> List[Dict[str, Any]]:
         """
         Effectue une recherche web avec le provider approprié et cascade de secours.
-        
+
         Ordre de cascade :
         1. Brave (si configuré ou demandé)
         2. ddgs (duckduckgo_search)
         3. DuckDuckGo Instant Answer / HTML
-        4. Wikipedia Search API
-        
+        4. Wikipedia Search API (uniquement pour requêtes encyclopédiques)
+
         Args:
             query: La requête de recherche
             num_results: Nombre de résultats souhaités
             provider: Provider spécifique ('brave', 'duckduckgo_search', 'duckduckgo', 'wikipedia', None pour auto)
-            
+
         Returns:
-            Liste de résultats valides avec titre, URL et snippet
+            Liste de résultats valides et pertinents avec titre, URL et snippet
         """
         # 1. Provider Brave explicite ou prioritaire
         if (provider == "brave" or (provider is None and self.preferred_provider == "brave")) and self.brave_api_key:
-            results = [r for r in self.search_brave(query, num_results) if is_valid_result(r)]
+            results = [r for r in self.search_brave(query, num_results) if is_valid_result(r, query)]
             if results:
                 return results
 
         # 2. ddgs (duckduckgo_search)
         if (provider in (None, "duckduckgo_search", "ddgs")) and DDG_AVAILABLE:
-            results = [r for r in self.search_duckduckgo_search(query, num_results) if is_valid_result(r)]
+            results = [r for r in self.search_duckduckgo_search(query, num_results) if is_valid_result(r, query)]
             if results:
                 return results
 
         # 3. DuckDuckGo API classique ou HTML
         if provider in (None, "duckduckgo"):
-            results = [r for r in self.search_duckduckgo(query, num_results) if is_valid_result(r)]
+            results = [r for r in self.search_duckduckgo(query, num_results) if is_valid_result(r, query)]
             if results:
                 return results
 
-        # 4. Fallback Wikipedia (encyclopédique & fiable sans clé API)
-        wiki_results = [r for r in self.search_wikipedia(query, min(num_results, 5)) if is_valid_result(r)]
-        if wiki_results:
-            return wiki_results
+        # 4. Fallback Wikipedia — uniquement pour requêtes encyclopédiques
+        if _INTENT_ENCYCLOPEDIQUE.search(query):
+            wiki_results = [r for r in self.search_wikipedia(query, min(num_results, 5)) if is_valid_result(r, query)]
+            if wiki_results:
+                return wiki_results
 
         return []
+
     
     def _search_duckduckgo_html(self, query: str, num_results: int = 10) -> List[Dict[str, Any]]:
         """Méthode de fallback utilisant le HTML de DuckDuckGo avec parsing amélioré."""
@@ -433,62 +511,147 @@ class WebSearchEngine:
     
     def fetch_page_content(self, url: str, max_length: int = 10000) -> Dict[str, Any]:
         """
-        Récupère et extrait le contenu d'une page web.
-        
+        Récupère et extrait le contenu textuel propre d'une page web.
+
+        Améliorations par rapport à la version précédente :
+        - Décodage des entités HTML (html.unescape) → plus de &nbsp; ni &#39;
+        - Élagage des blocs de bruit : <nav>, <header>, <footer>, <aside>
+        - Fallback Playwright automatique si le texte extrait < 200 caractères
+          (page SPA React/Vue/Angular avec rendu JS requis)
+        - Champ 'origin' = 'external_web' pour le Taint DataShield
+
         Args:
             url: URL de la page à récupérer
             max_length: Longueur maximale du contenu à retourner
-            
+
         Returns:
-            Dictionnaire avec le titre, le contenu et les métadonnées
+            Dictionnaire avec titre, contenu propre, url, status, length, origin
         """
         self._rate_limit()
-        
+
+        def _extraire_texte_propre(html_raw: str) -> tuple[str, str]:
+            """Retourne (titre, texte_propre) depuis du HTML brut."""
+            # Titre
+            title_match = re.search(r'<title[^>]*>([^<]+)</title>', html_raw, re.IGNORECASE)
+            titre = _html_module.unescape(title_match.group(1).strip()) if title_match else "Sans titre"
+
+            # Supprimer scripts, styles, commentaires
+            raw = re.sub(r'<script[^>]*>.*?</script>', ' ', html_raw, flags=re.DOTALL | re.IGNORECASE)
+            raw = re.sub(r'<style[^>]*>.*?</style>', ' ', raw, flags=re.DOTALL | re.IGNORECASE)
+            raw = re.sub(r'<!--.*?-->', ' ', raw, flags=re.DOTALL)
+
+            # Élaguer les blocs de bruit de navigation/structure
+            for bruit in ('nav', 'header', 'footer', 'aside'):
+                raw = re.sub(
+                    rf'<{bruit}[^>]*>.*?</{bruit}>',
+                    ' ',
+                    raw,
+                    flags=re.DOTALL | re.IGNORECASE,
+                )
+
+            # Supprimer les balises restantes
+            texte = re.sub(r'<[^>]+>', ' ', raw)
+
+            # Décoder les entités HTML
+            texte = _html_module.unescape(texte)
+
+            # Normaliser les espaces blancs
+            texte = re.sub(r'[ \t]+', ' ', texte)
+            texte = re.sub(r'\n{3,}', '\n\n', texte)
+            texte = texte.strip()
+
+            return titre, texte
+
+        # ── Tentative 1 : requests (rapide, sites HTML statiques) ─────────────
         try:
             response = self.session.get(url, timeout=15)
             response.raise_for_status()
-            
-            # Extraction basique du contenu (sans BeautifulSoup pour éviter une dépendance supplémentaire)
-            content = response.text
-            
-            # Extraire le titre
-            title_match = re.search(r'<title>([^<]+)</title>', content, re.IGNORECASE)
-            title = title_match.group(1).strip() if title_match else "Sans titre"
-            
-            # Extraire le contenu principal (très basique)
-            # Supprimer les scripts, styles et commentaires
-            content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
-            content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL | re.IGNORECASE)
-            content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
-            
-            # Extraire le texte
-            text_content = re.sub(r'<[^>]+>', ' ', content)
-            text_content = re.sub(r'\s+', ' ', text_content).strip()
-            
-            # Limiter la longueur
-            if len(text_content) > max_length:
-                text_content = text_content[:max_length] + "..."
-            
-            return {
-                "url": url,
-                "title": title,
-                "content": text_content,
-                "status": "success",
-                "length": len(text_content)
-            }
-            
+            titre, texte = _extraire_texte_propre(response.text)
+
+            # Détecter une SPA (page vide après nettoyage) → fallback Playwright
+            if len(texte) >= 200:
+                if len(texte) > max_length:
+                    texte = texte[:max_length] + "..."
+                return {
+                    "url": url,
+                    "title": titre,
+                    "content": texte,
+                    "status": "success",
+                    "length": len(texte),
+                    "origin": "external_web",
+                }
+            logger.debug("Contenu trop court (%d chars) pour %s → fallback Playwright", len(texte), url)
+
         except requests.RequestException as e:
-            return {
-                "url": url,
-                "error": f"Erreur de récupération: {str(e)}",
-                "status": "error"
-            }
+            logger.debug("Erreur requests pour %s: %s → tentative Playwright", url, e)
+
+        # ── Tentative 2 : Playwright headless (SPAs JS, React/Vue/Angular) ────
+        try:
+            return self._fetch_via_playwright(url, max_length)
         except Exception as e:
+            logger.warning("Playwright fetch échoué pour %s: %s", url, e)
             return {
                 "url": url,
-                "error": f"Erreur d'extraction: {str(e)}",
-                "status": "error"
+                "error": f"Impossible d'extraire le contenu (requests + Playwright): {str(e)}",
+                "status": "error",
+                "origin": "external_web",
             }
+
+    def _fetch_via_playwright(self, url: str, max_length: int = 10000) -> Dict[str, Any]:
+        """
+        Récupère le contenu d'une page via Playwright headless (pour les SPAs JS).
+
+        Utilise la session de navigateur persistante de Jarvis.
+        """
+        from taskflow.browser_session import get_session_manager
+        session = get_session_manager().get_default_session(headless=True)
+
+        nav_result = session.navigate_sync(url, timeout=40.0)
+        if "erreur" in nav_result.lower():
+            raise RuntimeError(nav_result)
+
+        # Attendre que le contenu JS soit chargé
+        import time as _time
+        _time.sleep(1.5)
+
+        # Extraire le titre
+        titre = session.get_title_sync()
+
+        # Extraire le texte depuis le body (élagage côté navigateur)
+        _js_extract = r"""
+(function() {
+    var noisy = ['nav', 'header', 'footer', 'aside'];
+    noisy.forEach(function(tag) {
+        document.querySelectorAll(tag).forEach(function(el) { el.remove(); });
+    });
+    var main = document.querySelector('main, article, [role="main"]') || document.body;
+    return (main.innerText || main.textContent || '').replace(/\s+/g, ' ').trim().substring(0, 12000);
+})();
+"""
+        raw = session.execute_javascript_sync(_js_extract, timeout=15.0)
+        if isinstance(raw, str) and raw.startswith("Résultat: "):
+            raw = raw[len("Résultat: "):]
+        try:
+            import json as _json
+            texte = _json.loads(raw) if raw.startswith('"') else raw
+        except Exception:
+            texte = raw
+
+        texte = str(texte).strip()
+        if len(texte) > max_length:
+            texte = texte[:max_length] + "..."
+
+        return {
+            "url": url,
+            "title": titre or "Sans titre",
+            "content": texte,
+            "status": "success",
+            "length": len(texte),
+            "origin": "external_web",
+            "via": "playwright",
+        }
+
+
 
 
 def rechercher_web(requete: str, nombre_resultats: int = 5) -> str:

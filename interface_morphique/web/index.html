@@ -27,6 +27,10 @@
       --jarvis-bg: #0d0d14;
       --jarvis-border: #1a2030;
       --jarvis-text: #a8b8c8;
+      --panel: #10151f;
+      --accent: #69a9e8;
+      --good: #55c58a;
+      --warning: #e9b85f;
     }
 
     body.light {
@@ -47,6 +51,10 @@
       --jarvis-bg: #ffffff;
       --jarvis-border: #cad4df;
       --jarvis-text: #263746;
+      --panel: #ffffff;
+      --accent: #246da8;
+      --good: #218653;
+      --warning: #9a6410;
     }
 
     html,
@@ -63,14 +71,13 @@
 
     body {
       display: flex;
-      justify-content: center;
-      padding: 18px;
+      flex-direction: column;
+      padding: 0;
     }
 
     .chat {
-      width: min(100%, 720px);
-      height: calc(100vh - 36px);
-      height: calc(100dvh - 36px);
+      width: 100%;
+      height: 100%;
       background: var(--chat);
       display: flex;
       flex-direction: column;
@@ -89,6 +96,46 @@
       gap: 16px;
       z-index: 2;
     }
+
+    .app-header { padding: 14px clamp(16px, 3vw, 36px); }
+    .app-nav { display: flex; align-items: center; gap: 6px; margin-right: auto; margin-left: clamp(16px, 4vw, 56px); }
+    .nav-button { border: 0; background: transparent; color: var(--muted); padding: 10px 13px; border-radius: 8px; cursor: pointer; font: inherit; }
+    .nav-button.active, .nav-button:hover { background: var(--panel); color: var(--text); }
+    .workspace { width: min(100%, 1440px); margin: 0 auto; padding: clamp(18px, 3vw, 38px); flex: 1; min-height: 0; overflow-y: auto; }
+    .dashboard { display: block; }
+    .dashboard-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    .eyebrow { color: var(--accent); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; font-weight: 700; }
+    .dashboard-heading h1 { color: var(--text); font-size: clamp(28px, 4vw, 40px); margin: 8px 0 6px; }
+    .dashboard-heading p { color: var(--muted); margin: 0; }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+    .dash-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px; min-width: 0; }
+    .metric-card { min-height: 150px; }
+    .card-label { color: var(--muted); font-size: 13px; }
+    .metric-value { color: var(--text); font-size: 32px; font-weight: 650; margin: 15px 0 6px; }
+    .metric-note { color: var(--muted); font-size: 12px; }
+    .dashboard-updated { color: var(--muted); font-size: 12px; }
+    .metric-value.good { color: var(--good); }
+    .metric-value.warn { color: var(--warning); }
+    .meter { height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; margin-top: 14px; }
+    .meter-fill { height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
+    .meter-fill.warn { background: var(--warning); }
+    .wide-card { grid-column: span 2; min-height: 230px; }
+    .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .card-heading h2 { color: var(--text); font-size: 16px; margin: 0; }
+    .text-button { background: transparent; border: 0; color: var(--accent); font: inherit; cursor: pointer; }
+    .session-list { display: grid; gap: 10px; }
+    .session-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 9px; }
+    .session-title { color: var(--text); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-url { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
+    .pill { flex: 0 0 auto; color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); border-radius: 99px; padding: 5px 9px; font-size: 11px; }
+    .empty-state { color: var(--muted); font-size: 14px; padding: 12px 0; }
+    .quick-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .primary-action { background: var(--button); color: #fff; border: 0; border-radius: 8px; padding: 11px 15px; cursor: pointer; font: inherit; }
+    .chat-view { display: none; flex: 1; min-height: 0; width: min(100%, 900px); margin: 0 auto; border: 1px solid var(--border); }
+    body.show-chat .workspace { display: none; }
+    body.show-chat .chat-view { display: flex; }
+    body.show-chat .nav-button[data-view="chat"] { background: var(--panel); color: var(--text); }
+    body:not(.show-chat) .nav-button[data-view="dashboard"] { background: var(--panel); color: var(--text); }
 
     .brand {
       display: flex;
@@ -139,6 +186,12 @@
 
     .dot.offline {
       background: #6a1a1a;
+      animation: none;
+      box-shadow: none;
+    }
+
+    .dot.auth-required {
+      background: var(--warning);
       animation: none;
       box-shadow: none;
     }
@@ -534,11 +587,23 @@
 
       .chat {
         width: 100%;
-        height: 100vh;
-        height: 100dvh;
+        height: auto;
+        flex: 1 1 auto;
+        min-height: 0;
         border-left: 0;
         border-right: 0;
       }
+
+      .app-header { flex-wrap: wrap; padding: 10px 14px; gap: 8px; }
+      .app-nav { order: 3; width: 100%; margin: 0; }
+      .app-nav .nav-button { flex: 1; }
+      .workspace { padding: 18px 14px; }
+      .dashboard-heading { align-items: flex-start; flex-direction: column; }
+      .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .dash-card { padding: 15px; }
+      .metric-card { min-height: 132px; }
+      .metric-value { font-size: 27px; }
+      .wide-card { grid-column: 1 / -1; }
 
       header {
         flex-wrap: wrap;
@@ -583,15 +648,29 @@
         padding: 12px;
       }
     }
+
+    @media (min-width: 561px) and (max-width: 980px) {
+      .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .wide-card { grid-column: 1 / -1; }
+    }
+
+    @media (max-width: 380px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+      .wide-card { grid-column: auto; }
+      .header-actions { gap: 6px; }
+    }
   </style>
 </head>
 <body>
-  <section class="chat">
-    <header>
+  <header class="app-header">
       <div class="brand">
         <div class="title">JARVIS</div>
         <div class="subtitle">by Carl-William</div>
       </div>
+      <nav class="app-nav" aria-label="Navigation principale">
+        <button class="nav-button" data-view="dashboard" type="button" aria-current="page">Vue d’ensemble</button>
+        <button class="nav-button" data-view="chat" type="button">Conversation</button>
+      </nav>
       <div class="header-actions">
         <div class="instance-selector">
           <select id="instanceSelect" class="instance-select" title="Sélectionner l'instance Jarvis"></select>
@@ -604,8 +683,24 @@
         <button id="manageInstancesButton" class="icon-button" type="button" title="Gérer les instances">⚙</button>
         <button id="themeButton" class="icon-button" type="button" title="Changer le thème">☾</button>
       </div>
-    </header>
+  </header>
 
+  <section class="workspace" id="dashboardView" aria-labelledby="dashboardTitle">
+    <div class="dashboard-heading">
+      <div><div class="eyebrow">GreatOS · Tableau de bord</div><h1 id="dashboardTitle">Vue d’ensemble</h1><p>État du service, ressources et navigation pilotée par Jarvis.</p><div class="dashboard-updated" id="dashboardUpdated" aria-live="polite">Chargement des données…</div></div>
+      <button class="primary-action" id="dashboardChatButton" type="button">Nouvelle conversation&nbsp; →</button>
+    </div>
+    <div class="dashboard-grid">
+      <article class="dash-card metric-card"><div class="card-label">Service Jarvis</div><div class="metric-value" id="dashService">—</div><div class="metric-note" id="dashServiceNote">Vérification…</div></article>
+      <article class="dash-card metric-card"><div class="card-label">Processeur</div><div class="metric-value" id="dashCpu">—</div><div class="metric-note" id="dashCpuNote">En attente des données</div><div class="meter" role="meter" aria-label="Utilisation processeur" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-fill" id="dashCpuMeter"></div></div></article>
+      <article class="dash-card metric-card"><div class="card-label">Mémoire vive</div><div class="metric-value" id="dashRam">—</div><div class="metric-note" id="dashRamNote">En attente des données</div><div class="meter" role="meter" aria-label="Utilisation mémoire vive" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-fill" id="dashRamMeter"></div></div></article>
+      <article class="dash-card metric-card"><div class="card-label">Sessions navigateur</div><div class="metric-value" id="dashSessionsCount">—</div><div class="metric-note" id="dashSessionsNote">Chargement…</div></article>
+      <article class="dash-card wide-card"><div class="card-heading"><h2>Navigation en cours</h2><button class="text-button" id="refreshDashboard" type="button">Actualiser</button></div><div class="session-list" id="dashSessions"><div class="empty-state">Chargement des sessions…</div></div></article>
+      <article class="dash-card wide-card"><div class="card-heading"><h2>Accès rapide</h2></div><p class="empty-state">Reprenez une tâche avec Jarvis ou consultez les sessions de navigation actives.</p><div class="quick-actions"><button class="primary-action" id="quickChatButton" type="button">Parler à Jarvis</button><button class="btn btn-secondary" id="quickInstancesButton" type="button">Gérer les instances</button></div></article>
+    </div>
+  </section>
+
+  <section class="chat chat-view" id="chatView" aria-label="Conversation Jarvis">
     <main id="conversation"></main>
 
     <footer>
@@ -668,6 +763,18 @@
     const sendButton = document.getElementById("sendButton");
     const cancelButton = document.getElementById("cancelButton");
     const themeButton = document.getElementById("themeButton");
+    const dashboardService = document.getElementById("dashService");
+    const dashboardServiceNote = document.getElementById("dashServiceNote");
+    const dashboardCpu = document.getElementById("dashCpu");
+    const dashboardRam = document.getElementById("dashRam");
+    const dashboardCpuNote = document.getElementById("dashCpuNote");
+    const dashboardRamNote = document.getElementById("dashRamNote");
+    const dashboardCpuMeter = document.getElementById("dashCpuMeter");
+    const dashboardRamMeter = document.getElementById("dashRamMeter");
+    const dashboardSessionsCount = document.getElementById("dashSessionsCount");
+    const dashboardSessionsNote = document.getElementById("dashSessionsNote");
+    const dashboardSessions = document.getElementById("dashSessions");
+    const dashboardUpdated = document.getElementById("dashboardUpdated");
     const statusDot = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
     const instanceSelect = document.getElementById("instanceSelect");
@@ -689,6 +796,7 @@
     let discoveryActive = false;
     
     let source = null;
+    let proactiveSource = null;
     let apiBase = window.location.origin;
     let instances = [];
     const localInstanceId = "local";
@@ -775,6 +883,12 @@
         addBubble("jarvis", `Jarvis — ${data.timestamp || ""}`.trim(), data.text || "");
       } else if (type === "error") {
         addEvent("error", data.message || "Erreur inconnue.");
+      } else if (type === "alerte_proactive") {
+        addEvent("error", `⚠ Veille GreatOS — ${data.message || data.type || "anomalie détectée"}`);
+      } else if (type === "alerte_proactive_resolue") {
+        addEvent("status-line", `Veille GreatOS — anomalie ${data.type || "système"} résolue.`);
+      } else if (type === "capability_proposal") {
+        addEvent("status-line", `Capacité candidate enregistrée pour revue : ${data.capability || "capacité inconnue"} (${data.proposal_id || ""}).`);
       } else if (type === "done") {
         closeStream(false);
       }
@@ -849,6 +963,20 @@
       };
     }
 
+    function startProactiveEventStream() {
+      proactiveSource = new EventSource(`${apiBase}/jarvis/events`);
+      proactiveSource.onmessage = (rawEvent) => {
+        try {
+          handleEvent(JSON.parse(rawEvent.data));
+        } catch (_error) {
+          addEvent("error", "Événement de veille illisible.");
+        }
+      };
+      proactiveSource.onerror = () => {
+        // EventSource reconnects automatically; avoid a noisy UI on transient disconnects.
+      };
+    }
+
     confirmationApprove.addEventListener("click", () => resolveConfirmation(true));
     confirmationCancel.addEventListener("click", () => resolveConfirmation(false));
 
@@ -867,14 +995,102 @@
       try {
         const response = await fetch(`${apiBase}/jarvis/status`, { cache: "no-store" });
         if (!response.ok) {
-          throw new Error("offline");
+          throw new Error(response.status === 401 ? "auth" : "offline");
         }
-        statusDot.classList.remove("offline");
+        const data = await response.json();
+        statusDot.classList.remove("offline", "auth-required");
         statusText.textContent = "Service en ligne";
-      } catch (_error) {
-        statusDot.classList.add("offline");
-        statusText.textContent = "Service hors ligne";
+        dashboardService.textContent = "En ligne";
+        dashboardService.className = "metric-value good";
+        dashboardServiceNote.textContent = "Répond correctement";
+        updateResourceMetric(data.cpu, dashboardCpu, dashboardCpuMeter);
+        updateResourceMetric(data.ram, dashboardRam, dashboardRamMeter);
+        dashboardCpuNote.textContent = typeof data.cpu === "number" && Number.isFinite(data.cpu) ? "Utilisation actuelle" : "Donnée non fournie";
+        dashboardRamNote.textContent = typeof data.ram === "number" && Number.isFinite(data.ram) ? "Utilisation actuelle" : "Donnée non fournie";
+        dashboardUpdated.textContent = `Données actualisées à ${new Date().toLocaleTimeString()}`;
+      } catch (error) {
+        statusDot.classList.toggle("auth-required", error.message === "auth");
+        statusDot.classList.toggle("offline", error.message !== "auth");
+        statusText.textContent = error.message === "auth" ? "Authentification requise" : "Service hors ligne";
+        dashboardService.textContent = error.message === "auth" ? "Verrouillé" : "Hors ligne";
+        dashboardService.className = "metric-value warn";
+        dashboardServiceNote.textContent = error.message === "auth" ? "Authentification requise par le serveur" : "Impossible de joindre Jarvis";
+        dashboardCpu.textContent = "—";
+        dashboardRam.textContent = "—";
+        const unavailableNote = error.message === "auth" ? "Authentification requise" : "Indisponible";
+        dashboardCpuNote.textContent = unavailableNote;
+        dashboardRamNote.textContent = unavailableNote;
+        dashboardCpuMeter.style.width = "0";
+        dashboardRamMeter.style.width = "0";
+        dashboardCpuMeter.parentElement.setAttribute("aria-valuenow", "0");
+        dashboardRamMeter.parentElement.setAttribute("aria-valuenow", "0");
+        dashboardUpdated.textContent = error.message === "auth" ? "Données protégées par authentification" : "Dernière actualisation impossible";
       }
+    }
+
+    function updateResourceMetric(value, label, meter) {
+      const numericValue = value;
+      const meterElement = meter.parentElement;
+      if (typeof numericValue !== "number" || !Number.isFinite(numericValue)) {
+        label.textContent = "—";
+        meter.style.width = "0";
+        meterElement.setAttribute("aria-valuenow", "0");
+        return;
+      }
+      const bounded = Math.max(0, Math.min(100, numericValue));
+      label.textContent = `${Math.round(numericValue)}%`;
+      meter.style.width = `${bounded}%`;
+      meterElement.setAttribute("aria-valuenow", String(Math.round(bounded)));
+      meter.classList.toggle("warn", bounded >= 80);
+    }
+
+    async function refreshBrowserSessions() {
+      try {
+        const response = await fetch(`${apiBase}/jarvis/browser-sessions`, { cache: "no-store" });
+        if (!response.ok) throw new Error(response.status === 401 ? "auth" : "offline");
+        const sessions = (await response.json()).sessions || [];
+        dashboardSessionsCount.textContent = String(sessions.length);
+        dashboardSessionsNote.textContent = sessions.length === 1 ? "session" : "sessions";
+        dashboardSessions.replaceChildren();
+        if (!sessions.length) {
+          dashboardSessions.innerHTML = '<div class="empty-state">Aucune session navigateur active pour le moment.</div>';
+          return;
+        }
+        sessions.slice(0, 5).forEach(session => {
+          const row = document.createElement("div");
+          row.className = "session-item";
+          const detail = document.createElement("div");
+          detail.style.minWidth = "0";
+          const title = document.createElement("div");
+          title.className = "session-title";
+          title.textContent = session.current_title || session.session_id || "Session navigateur";
+          const url = document.createElement("div");
+          url.className = "session-url";
+          url.textContent = session.current_url || "Page non renseignée";
+          detail.append(title, url);
+          const state = document.createElement("span");
+          state.className = "pill";
+          state.textContent = session.state || "active";
+          row.append(detail, state);
+          dashboardSessions.appendChild(row);
+        });
+      } catch (error) {
+        dashboardSessionsCount.textContent = "—";
+        dashboardSessionsNote.textContent = error.message === "auth" ? "Authentification requise" : "Indisponible";
+        dashboardSessions.innerHTML = `<div class="empty-state">${error.message === "auth" ? "Clé API requise par le serveur." : "Impossible de charger les sessions."}</div>`;
+      }
+    }
+
+    function showView(view) {
+      document.body.classList.toggle("show-chat", view === "chat");
+      document.querySelectorAll(".nav-button").forEach(button => {
+        const selected = button.dataset.view === view;
+        button.classList.toggle("active", selected);
+        if (selected) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+      });
+      if (view === "chat") input.focus();
+      else { refreshStatus(); refreshBrowserSessions(); }
     }
 
     // Instance Management Functions
@@ -928,6 +1144,7 @@
         saveInstances();
         updateInstanceUI();
         refreshStatus();
+        refreshBrowserSessions();
       }
     }
 
@@ -1168,6 +1385,11 @@
     sendButton.addEventListener("click", sendMessage);
     cancelButton.addEventListener("click", () => closeStream(true));
     themeButton.addEventListener("click", toggleTheme);
+    document.querySelectorAll(".nav-button").forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
+    document.getElementById("dashboardChatButton").addEventListener("click", () => showView("chat"));
+    document.getElementById("quickChatButton").addEventListener("click", () => showView("chat"));
+    document.getElementById("quickInstancesButton").addEventListener("click", () => { renderInstanceList(); instanceModal.classList.add("active"); });
+    document.getElementById("refreshDashboard").addEventListener("click", () => { refreshStatus(); refreshBrowserSessions(); });
     input.addEventListener("input", resizeTextarea);
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {
@@ -1180,8 +1402,9 @@
     applyTheme(localStorage.getItem("jarvis-theme") || "dark");
     resizeTextarea();
     refreshStatus();
-    setInterval(refreshStatus, 15000);
-    input.focus();
+    refreshBrowserSessions();
+    startProactiveEventStream();
+    setInterval(() => { refreshStatus(); refreshBrowserSessions(); }, 15000);
   </script>
 </body>
 </html>
