@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-04T20:36:41.804535+00:00 — Devin — completed
+
+Mise à jour de la documentation du projet
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- ETAT_DES_LIEUX.md : date de révision mise à jour au 4 octobre 2026, ajout d'une section détaillée sur les améliorations vocales récentes (validation secondaire wake word, VAD spectral, transcription robuste, réinitialisation TTS, latence optimisée, wake word statique), mise à jour de la description du module Jarvis pour refléter ces améliorations; SUIVI_PROJET.md régénéré automatiquement depuis learning/agent_sessions.jsonl
+
+**Vérification**
+- Lecture des fichiers de documentation existants, régénération de SUIVI_PROJET.md via render_project_status, écriture des modifications dans ETAT_DES_LIEUX.md
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider sur matériel réel les améliorations vocales décrites (faux positifs/négatifs, latence, bruit ambiant)
+
 ### 2026-10-02T11:44:32.719185+00:00 — Codex - Audit sortie vocale — completed
 
 Évite qu'un signal d'arrêt TTS périmé coupe la réponse vocale suivante après une erreur de synthèse ou de démarrage audio.
@@ -178,22 +197,3 @@ Documentation de l'ensemble de la session : objectif OS standard, espaces proté
 
 **À suivre**
 - Arbitrer le seuil de confiance et le comportement exact dans les espaces protégés; implémenter l'alignement des décisions de politique puis faire un essai quotidien contrôlé incluant une demande d'élévation OS.
-
-### 2026-10-01T18:19:10.810654+00:00 — Codex - Audit politique de sécurité — completed
-
-Cartographie de la politique DataShield appliquée aux capacités et identification des limites du flux.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun changement produit; lecture de datashield/policy.py, datashield/defcon.py, datashield/safety.py, datashield/threat_analyzer.py, taskflow/tools.py et jarvis/agent.py.
-
-**Vérification**
-- Inspection statique des décisions ALLOW/CONFIRM/DENY et des points d'appel; aucun test exécuté.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Si une correction est demandée, faire un audit ciblé des capacités destructives pouvant devenir silencieuses via la trust matrix, du chemin provenance EXTERNAL et de la définition attendue de DEFCON4.
