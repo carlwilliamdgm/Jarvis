@@ -8,6 +8,82 @@
 
 ## Journal récent
 
+### 2026-10-02T11:44:32.719185+00:00 — Codex - Audit sortie vocale — completed
+
+Évite qu'un signal d'arrêt TTS périmé coupe la réponse vocale suivante après une erreur de synthèse ou de démarrage audio.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/voice_output.py : réinitialisation de l'événement d'arrêt au début d'une nouvelle tentative et lors des erreurs de synthèse ou sd.play.
+
+**Vérification**
+- python -m py_compile jarvis/voice_output.py réussi; git diff --check ciblé réussi; tests non exécutés conformément à la demande.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider sur matériel réel la commande stop pendant lecture et le comportement après une erreur de synthèse ou de sortie audio.
+
+### 2026-10-02T11:41:36.835445+00:00 — Codex - VAD bruit ambiant — completed
+
+Correction localisée des débordements int16 et du reset incomplet dans AdaptiveVAD.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/audio_capture.py: calcul des magnitudes float32 avant abs et remise à zéro de l'état, fenêtres de saturation et ZCR dans reset_floor.
+
+**Vérification**
+- Compilation python -m py_compile jarvis/audio_capture.py réussie; aucun test exécuté conformément à la consigne; modifications concurrentes préexistantes conservées.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider les transitions sur captures réelles incluant silence, parole faible et fort niveau, sans modifier les paramètres adaptatifs avant mesure.
+
+### 2026-10-02T11:40:49.649434+00:00 — Codex - Fiabilite transcription — completed
+
+Evite qu'une absence temporaire de trame audio soit injectee comme silence et coupe un segment Vosk.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/voice_input.py : _EngineStream signale les lectures vides comme discontinuite et renvoie un buffer vide; transcrire_flux ignore les buffers vides et remet le compteur a zero apres une lecture continue.
+
+**Vérification**
+- python -m py_compile jarvis/voice_input.py reussi; tests non executes comme demande. Revue du diff limitee au chemin transcrire_flux/_EngineStream; changement adaptatif wake word preexistant conserve sans modification.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider avec micro reel et une interruption ponctuelle de producteur que le segment Vosk reprend sans coupe; verifier le comportement apres trois lectures consecutives vides.
+
+### 2026-10-02T11:39:25.906322+00:00 — Codex - Audit wake word — completed
+
+Audit adaptation de seuil : désactivation de l'apprentissage non supervisé qui pouvait faire dériver le seuil
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/voice_input.py : adaptation dynamique désactivée; seuil statique configurable conservé et intervalle de confirmation 250 ms préservé
+
+**Vérification**
+- py_compile jarvis/voice_input.py réussi; git diff --check ciblé exécuté; tests non exécutés conformément à la demande
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Prévoir une calibration locale fondée sur des retours explicites ou données étiquetées avant de réactiver une adaptation automatique
+
 ### 2026-10-02T11:29:57.390167+00:00 — Codex - Audit renforcement mode vocal — completed
 
 Audit étendu du cycle vocal et correction d'un défaut de reconnexion pouvant créer deux threads lecteurs concurrents; confirmation wake-word espacée.
@@ -121,79 +197,3 @@ Cartographie de la politique DataShield appliquée aux capacités et identificat
 
 **À suivre**
 - Si une correction est demandée, faire un audit ciblé des capacités destructives pouvant devenir silencieuses via la trust matrix, du chemin provenance EXTERNAL et de la définition attendue de DEFCON4.
-
-### 2026-10-01T17:30:41.956613+00:00 — Codex - Branchement des services GreatOS — completed
-
-Raccordement du daemon proactif et de la consolidation au cycle de vie Uvicorn; garde de confiance avant actions; profils de directives isolés; statistiques nocturnes par profil et propositions inertes de capacités manquantes.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/agent.py, interface_morphique/server.py, interface_morphique/web/index.html, service/proactive_daemon.py, service/consolidation_scheduler.py, context_engine/trust_registry.py, context_engine/memory_tools.py, learning/consolidation_engine.py, learning/capability_proposals.py, greatos_capabilities.py et tests ciblés.
-
-**Vérification**
-- Compilation Python OK; 135 tests ciblés passés. Suite complète : 453 passés, 1 échec dû à ImageGrab.grab sans bureau interactif Windows; huit tests d'intégration exclus par pytest.ini. git diff --check ne signale qu'une ligne blanche en fin de core_intellect/intellect.py, fichier déjà modifié avant cette session.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Définir une authentification multi-utilisateur avant d'exposer des profils distincts par API; décider si les prototypes doivent être générés par LLM et comment les valider/tester avant intégration; redémarrer JarvisAgent pour activer les branchements en production; répéter le test de capture sur un bureau Windows interactif.
-
-### 2026-10-01T17:00:49.004451+00:00 — Codex - Inventaire des fils GreatOS — completed
-
-Cartographie statique des composants du plan et des points d'intégration depuis le démarrage JarvisAgent; identification des modules absents et non branchés.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun changement produit; ajout du compte rendu d'audit au journal GreatOS.
-
-**Vérification**
-- Recherches statiques des définitions et appels dans greatos.py, interface_morphique/server.py, jarvis/agent.py, context_engine, service, taskflow et learning; aucun test exécuté.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Réutiliser l'inventaire en ordre d'intégration: daemon dans lifespan (et vérifier la livraison SSE), contrôle de confiance avant exécution, parcours de user_id/API si mult-utilisateur voulu, implémenter consolidation nocturne puis propositions de capacités.
-
-### 2026-10-01T16:43:19.235574+00:00 — Codex - Vérification du plan multi-utilisateurs — completed
-
-Vérification du plan J.A.R.V.I.S : phases 1 à 4 largement présentes, mais activation du daemon, application du trust registry et phases 6-7 incomplètes ou absentes.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Aucun changement produit; rapport basé sur inspection de jarvis/agent.py, core_intellect/intellect.py, context_engine/*, service/*, taskflow/* et tests.
-
-**Vérification**
-- Inspection statique des points d'entrée, appels de fonctions, fichiers et critères décrits dans le plan; aucun test exécuté.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Brancher le daemon au démarrage réel et à la diffusion UI; imposer la vérification de confiance avant execute_capability; implémenter consolidation_engine et capability_proposals; confirmer les validations de production annoncées.
-
-### 2026-10-01T16:08:44.782251+00:00 — Devin — completed
-
-Jalon 5: Registre d'Autonomie Progressive (Trust Matrix) implémenté avec succès
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- context_engine/trust_registry.py (nouveau module), tests/test_trust_registry.py (nouveau fichier de tests)
-
-**Vérification**
-- 27 tests unitaires tous passés
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Intégrer le trust_registry dans le pipeline de décision de Core Intellect pour appliquer les niveaux d'autonomie aux actions

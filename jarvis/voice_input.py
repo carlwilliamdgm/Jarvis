@@ -143,7 +143,12 @@ TRANSCRIPTION_TIMEOUT_SECONDS = 6.0  # Réduit de 8s à 6s pour réactivité am�
 SILENCE_TIMEOUT_SECONDS = 0.6  # Réduit de 0.8s à 0.6s pour réactivité maximale
 
 # ── ADAPTIVE WAKE WORD THRESHOLD (réduction des faux positifs) ──────────────────
-_ADAPTIVE_THRESHOLD_ENABLED = True
+# Les scores sous le seuil ne sont pas des faux négatifs étiquetés et les
+# confirmations ne sont pas des faux positifs étiquetés. Ne pas apprendre le
+# seuil depuis ces pseudo-étiquettes : la boucle précédente pouvait le faire
+# dériver selon l'ordre des scores. Garder le seuil explicite/configuré jusqu'à
+# disposer d'une calibration avec retours utilisateur fiables.
+_ADAPTIVE_THRESHOLD_ENABLED = False
 _ADAPTIVE_THRESHOLD_WINDOW = 20  # Nombre de détections pour l'adaptation
 _ADAPTIVE_THRESHOLD_HISTORY: list[float] = []  # Historique des scores récents
 _ADAPTIVE_THRESHOLD_LOCK = threading.Lock()
@@ -375,6 +380,12 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                     if discontinuity_count >= max_discontinuities:
                         LOGGER.warning("Trop de discontinuités - abandon transcription")
                         break
+                else:
+                    discontinuity_count = 0
+                # Un trou de file n'est pas du silence acoustique. Ignorer le
+                # buffer vide évite de faire finaliser prématurément Vosk.
+                if not raw:
+                    continue
             if speech:
                 had_speech = True
                 last_speech_at = time.monotonic()
@@ -545,7 +556,8 @@ class _EngineStream:
 
         if frame is None:
             self.last_speech = False
-            return bytes(np.zeros(size, dtype=np.int16)), False
+            self.discontinuity = True
+            return b"", False
 
         seq = getattr(frame, "seq", 0)
         if self.last_seq is not None and seq != self.last_seq + 1:

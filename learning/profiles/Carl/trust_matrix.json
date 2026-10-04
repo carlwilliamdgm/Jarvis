@@ -41,6 +41,27 @@
       "succes_consecutifs": 1,
       "actions_totales": 1,
       "echecs": 0
+    },
+    "rapport_systeme": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    },
+    "audit_stockage": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    },
+    "top_fichiers_lourds": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
     }
   },
   "historique_resultats": [
@@ -120,6 +141,24 @@
       "date": "2026-10-02T10:51:37.809009+00:00",
       "domaine": "lire_preferences",
       "capacite": "lire_preferences",
+      "succes": true
+    },
+    {
+      "date": "2026-10-04T17:27:47.699521+00:00",
+      "domaine": "rapport_systeme",
+      "capacite": "rapport_systeme",
+      "succes": true
+    },
+    {
+      "date": "2026-10-04T17:30:50.411158+00:00",
+      "domaine": "audit_stockage",
+      "capacite": "audit_stockage",
+      "succes": true
+    },
+    {
+      "date": "2026-10-04T17:32:22.319030+00:00",
+      "domaine": "top_fichiers_lourds",
+      "capacite": "top_fichiers_lourds",
       "succes": true
     }
   ]

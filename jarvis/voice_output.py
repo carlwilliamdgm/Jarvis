@@ -127,6 +127,7 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
         LOGGER.debug("Lecture audio démarrée")
     except Exception:
         LOGGER.exception("Erreur lors de la lecture audio")
+        _TTS_STOP_EVENT.clear()
         engine.set_mode(CaptureMode.NORMAL)
         engine.drainer_et_ignorer_garde(350)
         _revenir_en_ecoute()
@@ -214,6 +215,10 @@ def parler_a_voix_haute(texte: str) -> None:
         return
 
     try:
+        # Un arrêt appartenant à une tentative précédente ne doit pas couper
+        # cette nouvelle réponse. Les arrêts reçus pendant la synthèse restent
+        # ensuite actifs jusqu'à la boucle de lecture.
+        _TTS_STOP_EVENT.clear()
         texte_nettoye = _nettoyer_markdown(texte)
         LOGGER.info(f"Texte nettoyé: '{texte_nettoye}'")
 
@@ -227,5 +232,6 @@ def parler_a_voix_haute(texte: str) -> None:
         LOGGER.info("Lecture terminée")
     except Exception:
         LOGGER.exception("Échec de la synthèse vocale Piper")
+        _TTS_STOP_EVENT.clear()
         _set_voice_state(VoiceState.ERROR)
         _revenir_en_ecoute()

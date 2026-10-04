@@ -127,14 +127,16 @@ class AdaptiveVAD:
             return False
         
         # Calcul de l'énergie avec lissage
-        energy = float(np.max(np.abs(samples)))
+        # Convert before abs: np.abs(int16(-32768)) overflows and stays negative.
+        magnitudes = np.abs(samples.astype(np.float32, copy=False))
+        energy = float(np.max(magnitudes))
         self.energy_window.append(energy)
         if len(self.energy_window) > self.energy_window_size:
             self.energy_window.pop(0)
         smoothed_energy = sum(self.energy_window) / len(self.energy_window)
         
         # Détection de saturation (clipping) - ignore les trames saturées
-        saturated = np.any(np.abs(samples) > self.saturation_threshold)
+        saturated = np.any(magnitudes > self.saturation_threshold)
         self.saturation_window.append(saturated)
         if len(self.saturation_window) > self.saturation_window_size:
             self.saturation_window.pop(0)
@@ -190,9 +192,13 @@ class AdaptiveVAD:
 
     def reset_floor(self, default_val: float = 50.0) -> None:
         self.noise_floor = default_val
+        self.is_speech_active = False
         self.consecutive_speech = 0
         self.consecutive_silence = 0
         self.energy_window.clear()
+        self.saturation_count = 0
+        self.saturation_window.clear()
+        self.zcr_window.clear()
 
 
 # ---------------------------------------------------------------------------
