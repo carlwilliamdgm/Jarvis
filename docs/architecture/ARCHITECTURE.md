@@ -1,0 +1,492 @@
+# Architecture GreatOS (PersonalOS V3)
+
+GreatOS unifie 8 modules fondamentaux : jarvis, core_intellect, context_engine, taskflow, progress_tracker, datashield, syncsphere, interface_morphique.
+
+Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `core_intellect/intellect.py`; le reste du système orchestre, sécurise, persiste ou exécute. `memory.json` porte le contexte long terme, tandis que l'historique de conversation reste volontairement limité.
+
+## Points d'entree
+
+- `greatos.py` : point d'entrée unifié et noyau GreatOS (CLI : status, snapshot, ask).
+- `jarvis/agent.py` : interface console, boucle principale, commandes de mode, orchestration des actions, mode Stark et agent autonome de veille.
+- `jarvis.cmd` : lancement Windows.
+- `monitor.py` : compatibilite pour lancer uniquement la surveillance stockage.
+- `interface_morphique/server.py` : point d'entree serveur FastAPI local, API REST, SSE et fichiers web statiques.
+- `interface_morphique/app.py` : interface graphique Tkinter, cliente du flux SSE.
+- `interface_morphique/web/index.html` : interface web autonome servie par `/web`.
+- `JarvisAgent` : tâche planifiée Windows qui lance `uvicorn interface_morphique.server:app` dans la session utilisateur.
+
+## Flux principal
+
+1. La console appelle directement `executer_interaction_utilisateur()`; Tkinter et le web l'appellent via l'API.
+2. Cette fonction applique la même préparation de message, appelle `executer_agent()` et journalise l'échange.
+3. `detecter_commande_mode()` intercepte les commandes (`!a`, `!S <objectif>`, activation/desactivation du mode action).
+4. Hors commande spéciale, `parler()` appelle `core_intellect.intellect.interpreter_objectif()`.
+5. Core Intellect renvoie une structure normalisee : objectif, type, actions et reponse naturelle.
+6. Jarvis exécute les actions via le dispatcher central `execute_capability()`, validé par DataShield et tracé dans Context Engine.
+
+Le modèle ne doit pas être appelé directement depuis les capabilities. Si une fonctionnalité doit "penser", elle remonte au Core Intellect ou reste une execution deterministe.
+
+## Core
+
+- `core_intellect/intellect.py` : cerveau unique de Jarvis. Construit le prompt d'interpretation, appelle les modeles, parse le JSON de decision et filtre les outils inconnus.
+- `core_intellect/prompt.py` : prompts systeme historiques et prompts d'action/conversation utilises par certaines surfaces.
+- `core_intellect/tool_signatures.py` : inventaire dynamique des capacites exposees. Il introspecte `tools.OUTILS` au moment de construire les prompts et l'outil `lire_capacites()`.
+- `context_engine/memory.py` : lecture/ecriture de `memory.json`, normalisation, journal d'actions, journal conversationnel et taches.
+- `core_intellect/paths.py` : chemins racine (`JARVIS_DIR`, `MEMORY_PATH`) et informations OS.
+- `datashield/safety.py` : validation des chemins, cartographie des zones protegees, confirmations ciblees et flag runtime du mode Stark.
+- `core_intellect/translator.py` : traducteur d'intentions/patterns consultable via outils.
+- `taskflow/stark_parser.py` : parseur de la grammaire Stark (`>>`, `&&`, `||`).
+- `taskflow/stark_session.py` : coordination multi-instance Stark via `stark_actif.json`.
+- `core_intellect/llm_client.py` : orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud -> Fallback local).
+- `core_intellect/cognitive_defense.py` : moteur de défense cognitive et détection des prompt injections, jailbreaks (DAN, overrides), délimiteurs usurpés et exfiltration de secrets avec support RequestOrigin (Taint).
+- `core_intellect/intent_router.py` : routeur d'intention sémantique pour adapter la température et alléger le prompt système (élagage des signatures d'outils sur les échanges conversationnels purs).
+- `core_intellect/argument_validator.py` : validateur et auto-correcteur d'arguments d'outils, normalisant les alias de paramètres et prévenant les erreurs de contrat avant passage à DataShield.
+- `taskflow/browser_session.py` : gestion de sessions de navigateur persistantes avec états, événements et exécution asynchrone.
+- `interface_morphique/browser_overlay.py` : interface visuelle flottante pour la navigation en temps réel.
+
+### Nouveaux modules Core
+
+- `jarvis/voice_state.py` : Gestion de l'etat vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partage `voice_state.json` pour l'overlay.
+- `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'etat vocal en temps reel avec style HUD (fenetre sans bordure, topmost, positionnement configurable, polling a 100ms).
+- `datashield/crypto.py` : Moteur de chiffrement AES-256-GCM avec dérivation PBKDF2 (600k itérations), détection transparente et support des snapshots chiffrés.
+- `datashield/threat_analyzer.py` : Moteur d'analyse heuristique des menaces cyber (MITRE ATT&CK), désobfuscation Base64 à la volée, blocage de sabotage (VSS) et détection d'injections.
+- `datashield/autodestruct.py` : Auto-destruction complete de Jarvis (service Windows, taches planifiees, variables d'environnement, modele Ollama, dossier Jarvis).
+- `context_engine/contextual_suggestions.py` : Generation de suggestions intelligentes basees sur les patterns comportementaux, l'etat systeme, l'heure actuelle, le contexte utilisateur et les automatisations potentielles.
+- `core_intellect/decision_analyzer.py` : Auto-reflexion sur les decisions recentes, detection de patterns d'erreur recurrents, memorisation des solutions reussies pour reutilisation future.
+- `datashield/error_classification.py` : Classification mecanique des erreurs systeme avec categories predefinies (acces_refuse, cible_introuvable, erreur_technique_outil, ressource_systeme_insuffisante, action_refusee_par_confirmation, autre).
+- `context_engine/pattern_analyzer.py` : Detection et analyse des patterns comportementaux (horaires d'utilisation, actions repetitives, sequences d'actions courantes, frequence globale).
+- `context_engine/semantic_search.py` : Indexation et recherche semantique dans l'historique des interactions avec extraction de mots-cles, detection de thematiques et analyse de connexions contextuelles.
+- `context_engine/system_monitor.py` : Surveillance continue de l'etat systeme (CPU, memoire, disque, reseau, processus) avec detection d'anomalies, enregistrement historique et analyse de tendances.
+- `jarvis/personality.py` : Gestion et adaptation de la personnalite Jarvis avec traits ajustables (sarcasme, formalite, proactivite, humour, empathie, concision, creativite) et evolution automatique basee sur les interactions.
+- `datashield/confirmations.py` : Gestion des confirmations utilisateur avec historique et patterns de refus/acceptation.
+- `core_intellect/llm_client.py` : Orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud Groq/OpenRouter -> Fallback local Ollama).
+- `taskflow/browser_session.py` : Gestion de sessions de navigateur persistantes avec états (IDLE, NAVIGATING, LOADING, INTERACTING, ERROR, CLOSED), événements et exécution asynchrone.
+- `interface_morphique/browser_overlay.py` : Interface visuelle flottante Tkinter pour la navigation en temps réel, similaire à l'overlay vocal mais pour les sessions de navigateur.
+
+## Architecture LLM et cascade de providers
+
+Jarvis utilise une architecture de cascade intelligente pour garantir réactivité et intelligence :
+
+### Cascade de providers
+
+1. **Cloud Ultra-Rapide (Priorité #1)** : Groq / OpenRouter
+   - Temps de réponse < 1s
+   - Modèles puissants (120B/70B paramètres)
+   - Priorité absolue pour réactivité maximale
+
+2. **Modèle Souverain Jarvis-GC (Fallback Hors-Ligne #1)** : The Great Corporation
+   - Base Qwen 2.5 (1.5B/3B/7B) optimisé CPU/AVX2
+   - Prompt système gravé dans le Modelfile
+   - Timeout stricte configurable (45s par défaut)
+   - Déchargement automatique après 5min d'inactivité
+   - Premier choix hors-ligne
+
+3. **Fallback Local Standard** : Ollama qwen2.5:7b
+   - Dernier recours si cloud et Jarvis-GC indisponibles
+   - Modèle standard sans optimisations spécifiques
+
+### JarvisGCProvider
+
+Le provider souverain implémente des optimisations spécifiques :
+
+- **Optimisation Windows** : 4 threads physiques pour éviter le freeze système
+- **Fail-fast** : Vérification du service Ollama avant toute tentative d'inférence
+- **Timeout stricte** : Évite les blocages avec délai configurable
+- **Gestion éco mémoire** : Déchargement automatique après inactivité
+- **Décodage structuré** : Optimisé pour tool calling et JSON
+
+### Configuration avancée
+
+Variables d'environnement pour Jarvis-GC :
+
+- `JARVIS_GC_TIMEOUT` : Timeout en secondes (défaut: 45)
+- `JARVIS_GC_THREADS` : Nombre de threads (défaut: 4)
+- `JARVIS_MODEL_HOST` : Host Ollama personnalisé (défaut: http://127.0.0.1:11434)
+
+### LLMClient
+
+L'orchestrateur central gère :
+
+- **Ordre intelligent** : Mémorisation du dernier provider fonctionnel pour optimiser le temps de réponse
+- **Routing par complexité** : Priorité différente selon la complexité de la tâche
+- **Événements** : Intégration avec event_bus pour notifier les interfaces
+- **Fallback automatique** : Transition transparente entre providers
+
+## Mode Stark
+
+Le mode Stark est active par `!S <objectif>` et vit dans `jarvis.py`.
+
+- `taskflow/stark_session.py` detecte les autres instances Stark actives avec PID + nom de process, nettoie les entrees mortes et n'interrompt jamais Stark en cas de fichier corrompu.
+- `taskflow/stark_parser.py` transforme l'objectif brut en segments executables.
+- La grammaire explicite est :
+  - `>>` : macro-etapes sequentielles, arret de la chaine si une etape echoue.
+  - `&&` : dependances gauche-droite dans un segment.
+  - `||` : alternatives/replis, premiere reussite retenue.
+- Chaque micro-objectif a un budget local de `MAX_ETAPES_PAR_MICRO_OBJECTIF = 5`.
+- Le prompt Stark donne au LLM uniquement le micro-objectif courant et le resume compact des tentatives de ce micro-objectif.
+- Deux tentatives consecutives identiques declenchent une detection de pietinement.
+- Le rapport final liste chaque macro-etape avec son statut : reussi, echoue ou jamais tente.
+
+## Capabilities
+
+Les modules `taskflow/` executent les actions concrètes. Ils ne decident pas de la strategie globale.
+
+### Contrat inter-modules des capacités
+
+Le refactor de souveraineté des modules introduit `greatos_contracts.py`,
+le vocabulaire du noyau partagé par les huit modules. Une demande est décrite par une capacité stable,
+ses arguments, sa ressource et son niveau de risque. DataShield renvoie ensuite
+une décision unique : `allow`, `confirm` ou `deny`. Le module propriétaire
+exécute seulement après cette décision et retourne à terme un résultat structuré
+(`success`, `failed`, `denied`, `cancelled` ou `timeout`).
+
+L'ensemble des capacités est désormais réparti de façon souveraine entre les modules :
+- **TaskFlow** : actions système, fichiers, commandes, organisation, automatisations, recherche web et sessions Playwright (`taskflow/files.py`, `commands.py`, `storage.py`, `organization.py`, `scheduler.py`, `watchers.py`, `custom_commands.py`, `web_search.py`, `browser_automation.py`, `browser_session.py`).
+- **DataShield** : politique DEFCON, évaluation des risques et sécurité (`datashield/policy.py`, `datashield/tools.py`).
+- **Progress Tracker** : création et suivi d'objectifs, progression, analytics et métriques d'impact (`progress_tracker/tools.py`, `progress_tracker/goals.py`, `progress_tracker/analytics.py`).
+- **SyncSphere** : création, liste et restauration de snapshots `.gos` (`syncsphere/tools.py`, `syncsphere/snapshots.py`).
+- **Interface Morphique** : overlays de navigation et vocaux, API REST et SSE (`interface_morphique/tools.py`, `interface_morphique/browser_overlay.py`, `interface_morphique/server.py`).
+- **Context Engine** : notes, préférences, mémoire durable, traçabilité des capacités et journal des agents (`context_engine/memory.py`, `context_engine/memory_tools.py`, `context_engine/agent_learning.py`).
+- **Jarvis** : agent d'orchestration conversationnelle (`jarvis/agent.py`), reconnaissance et synthèse vocale (`jarvis/voice_input.py`, `jarvis/voice_output.py`, `jarvis/clap_input.py`).
+- **Core Intellect** : décision, analyse d'intentions et planification ordonnée (`core_intellect/intellect.py`, `core_intellect/decision_analyzer.py`, `core_intellect/tool_signatures.py`).
+
+`greatos_capabilities.py` fournit le dispatcher central `execute_capability()` qui résout les alias et noms canoniques, consulte DataShield (`evaluate_capability`), exécute la fonction du module propriétaire, trace le résultat dans Context Engine (`journaliser_resultat_capacite`) et enregistre l'impact dans Progress Tracker (`enregistrer_impact_capacite`).
+
+- `taskflow/files.py` : fichiers et dossiers.
+- `taskflow/storage.py` : stockage, temp, corbeille, notifications et fichiers lourds.
+- `taskflow/commands.py` : commandes shell et PowerShell.
+- `taskflow/organization.py` : analyse et rangement de dossiers.
+- `context_engine/memory_tools.py` : notes, preferences et contexte personnel.
+- `taskflow/scheduler.py` : rappels et automatisations.
+- `taskflow/custom_commands.py` : commandes personnalisees.
+- `taskflow/watchers.py` : surveillance proactive de dossiers.
+- `jarvis/voice_input.py` : reconnaissance vocale via Vosk avec wake word "Hey Jarvis" et double-clap.
+- `jarvis/voice_output.py` : synthese vocale (TTS) via Piper avec modeles francais et anglais.
+- `jarvis/clap_input.py` : detection de double-clap pour activation vocale alternative.
+- `taskflow/calendar_integration.py` : integration avec calendrier (en developpement).
+- `taskflow/email_integration.py` : integration avec email (en developpement).
+- `taskflow/web_search.py` : recherche web avancée via DuckDuckGo, analyse de contenu de pages, extraction d'informations clés et synthèse de résultats.
+- `taskflow/browser_automation.py` : automatisation de navigateur via Playwright pour navigation interactive, clics, formulaires, captures d'écran et séquences d'actions.
+- `taskflow/browser_session.py` : outils de gestion des sessions de navigation parallèles avec overlay visuel.
+
+## Façade outils et registre LegacyToolRegistry
+
+`taskflow/tools.py` expose le registre `OUTILS`, désormais une instance de `LegacyToolRegistry(dict)` (définie dans `greatos_capabilities.py`). Cette façade assure une rétrocompatibilité à 100% avec les appels historiques (dictionnaire de callables, introspection de signatures) tout en routant chaque exécution vers le dispatcher sécurisé `execute_capability()`.
+
+Responsabilites principales :
+
+- adapter les signatures publiques des outils;
+- appliquer les confirmations d'ecriture via `confirmer_ecriture_si_requise()`;
+- court-circuiter les confirmations quand Stark est actif;
+- journaliser certaines actions composees;
+- fournir `bilan_proactif()`, `terminer_tache()`, `lire_capacites()`, `lire_journal_agents()` et les outils de consultation du traducteur.
+
+## Conscience des capacites
+
+Jarvis ne depend plus d'une liste statique pour savoir ce qu'il peut faire. L'inventaire des outils est genere en temps reel depuis `tools.OUTILS` par `core_intellect/tool_signatures.py`.
+
+Ce mecanisme alimente deux surfaces :
+
+- les prompts de decision (`core_intellect/intellect.py` et `core_intellect/prompt.py`);
+- l'outil public `lire_capacites()`, que Jarvis peut appeler lorsqu'on lui demande ce qu'il sait faire.
+
+Consequence pratique : ajouter une capability ne suffit toujours pas. Il faut l'exposer dans `tools.OUTILS`, mais une fois exposee, sa signature devient visible automatiquement dans le prompt et dans `lire_capacites()`.
+
+## Intelligence comportementale
+
+### Suggestions contextuelles
+
+Le module `context_engine/contextual_suggestions.py` genere des suggestions intelligentes basees sur plusieurs sources :
+
+- **Patterns comportementaux** : Analyse des horaires d'utilisation, actions repetitives et sequences courantes via `context_engine/pattern_analyzer.py`
+- **Etat systeme** : Surveillance du stockage et alertes when seuils critiques sont atteints
+- **Contexte temporel** : Suggestions adaptees a l'heure (routine matinale, bilan fin de journee, mode nuit)
+- **Contexte utilisateur** : Rappels en attente, automatisations dues, etat de la memoire personnelle
+- **Automatisations potentielles** : Detection d'actions repetitives suggerees pour automatisation
+
+### Analyse de performance
+
+Le module `core_intellect/decision_analyzer.py` permet a Jarvis de s'auto-analyser :
+
+- **Analyse des decisions recentes** : Taux de succes, outils les plus utilises, erreurs par outil
+- **Detection de patterns d'erreur** : Identification des erreurs recurrentes avec suggestions de correction
+- **Apprentissage des solutions** : Memorisation des solutions reussies pour reutilisation future
+- **Ajustements de strategie** : Recommandations d'amelioration basees sur l'analyse
+
+### Recherche semantique
+
+Le module `context_engine/semantic_search.py` offre des capacites de recherche avancee :
+
+- **Indexation des interactions** : Index automatique des conversations et actions avec mots-cles et thematiques
+- **Recherche semantique** : Recherche par pertinence avec scoring base sur mots-cles et themes
+- **Analyse de connexions** : Detection des connexions entre differentes thematiques
+- **Insights profonds** : Generation d'insights bases sur l'analyse contextuelle
+
+### Surveillance systeme
+
+Le module `context_engine/system_monitor.py` assure une surveillance continue :
+
+- **Monitoring temps reel** : CPU, memoire, disque, reseau, processus
+- **Detection d'anomalies** : Alertes automatiques sur les seuils critiques
+- **Historique systeme** : Enregistrement des metriques pour analyse des tendances
+- **Rapports systeme** : Generation de rapports detailles sur l'etat de la machine
+
+### Personnalite adaptative
+
+Le module `jarvis/personality.py` permet a Jarvis d'adapter son comportement :
+
+- **Traits ajustables** : Sarcasme, formalite, proactivite, humour, empathie, concision, creativite
+- **Adaptation contextuelle** : Ajustement du ton en fonction de l'humeur detectee dans le message
+- **Evolution automatique** : La personnalite evolue progressivement basee sur les interactions
+- **Rapports de personnalite** : Visualisation des traits actuels et de leur evolution
+
+## Interfaces temps reel
+
+L'API FastAPI expose plusieurs flux conversationnels et de planification :
+
+- `POST /jarvis/ask` : endpoint compatible, retourne seulement la reponse finale.
+- `GET /jarvis/stream?message=...` : endpoint SSE qui transmet les evenements intermediaires (`thinking`, `provider`, `tool_started`, `tool_completed`, `tool_failed`, `confirmation_required`, `stark_activated`, `stark_action`, `stark_terminated`, `response`, `error`, `done`).
+- `POST /jarvis/plan` : endpoint de planification ordonnée (`ExecutionPlan` / `PlanStep`) généré par Core Intellect sans exécution directe.
+- `GET /jarvis/plan/stream?goal=...` : endpoint SSE d'orchestration de plan en continu avec validation de sécurité DataShield et diffusion des étapes (`plan_created`, `step_started`, `policy_decision`, `step_completed`, `plan_completed`).
+
+Les interfaces `interface_morphique/app.py` et `interface_morphique/web/index.html` consomment ce flux pour afficher les etapes que le terminal Rich montre deja. Elles ne disposent d'aucun chemin de décision ou d'exécution distinct : API et console passent par `executer_interaction_utilisateur()`.
+
+## Interface vocale et overlay
+
+### Architecture vocale
+
+L'interface vocale de Jarvis est composee de plusieurs modules coordonnes :
+
+- `jarvis/voice_input.py` : Reconnaissance vocale via Vosk avec wake word "Hey Jarvis" et gestion des modes
+- `jarvis/voice_output.py` : Synthese vocale (TTS) via Piper avec modeles francais et anglais
+- `jarvis/clap_input.py` : Detection de double-clap pour activation vocale alternative
+- `jarvis/voice_state.py` : Gestion de l'etat vocal global avec etats : IDLE, LISTENING, THINKING, SPEAKING, ERROR
+- `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'etat vocal en temps reel
+
+### Communication etat vocal
+
+L'etat vocal est communique via :
+
+- **Echange memoire** : `jarvis/voice_state.py` utilise un verrou (`threading.Lock`) pour un acces thread-safe
+- **Fichier partage** : `voice_state.json` est ecrit par `_write_state_to_file()` pour communication avec l'overlay
+- **Polling overlay** : L'overlay lit le fichier JSON toutes les 100ms pour mettre a jour son affichage
+
+### Overlay visuel
+
+L'overlay visuel (`jarvis/voice_overlay.py`) presente les caracteristiques suivantes :
+
+- **Thread Tkinter dedie** : Fonctionne dans un thread separe, compatible avec asyncio/uvicorn
+- **Style HUD** : Fond sombre avec lueur cyan, police Segoe UI, titre "JARVIS"
+- **Etats visuels distincts** :
+  - LISTENING : Cyan + icone ◉ + libellé "ÉCOUTE"
+  - THINKING : Orange + icone ◌ + libellé "RÉFLEXION"
+  - SPEAKING : Cyan + icone ◈ + libellé "PAROLE"
+  - ERROR : Rouge + icône ⚠ + libellé "ERREUR"
+  - IDLE : Masque (pas de rendu)
+- **Non-intrusif** : Bloque les clics et entrees clavier (pass-through), ne vole pas le focus, pas d'entree dans la barre des taches
+- **Positionnement** : Bas-droite de l'ecran par defaut, configurable
+- **Integration API** : Demarre automatiquement dans `interface_morphique/server.py` via `startup_event()`, arrete proprement via `shutdown_event()`
+
+### Sessions de navigation et overlay
+
+L'architecture de navigation de Jarvis est basee sur des sessions persistantes :
+
+#### BrowserSession
+
+Chaque session de navigation (`taskflow/browser_session.py`) est un objet persistant avec :
+
+- **États structurés** : IDLE, NAVIGATING, LOADING, INTERACTING, ERROR, CLOSED
+- **Exécution asynchrone** : Boucle asyncio dans un thread dédié
+- **Méthodes synchrones** : `navigate_sync()`, `click_sync()`, `fill_sync()`, etc. pour compatibilité
+- **Méthodes non-bloquantes** : `navigate()`, `click()`, `fill()`, etc. pour parallélisme
+- **Événements** : Émission d'événements vers event_bus pour intégration système
+- **Historique** : Journalisation des actions effectuées
+- **Captures** : Screenshot automatique après navigation
+
+#### BrowserOverlay
+
+L'overlay de navigation (`interface_morphique/browser_overlay.py`) presente les caracteristiques suivantes :
+
+- **Thread Tkinter dedie** : Fonctionne dans un thread separe, compatible avec asyncio/uvicorn
+- **Style HUD** : Fond sombre avec lueur verte, police Segoe UI, titre "JARVIS BROWSER SESSIONS"
+- **États visuels distincts** :
+  - IDLE : Vert + icone ●
+  - NAVIGATING : Bleu + icone ◉
+  - LOADING : Orange + icone ◌
+  - INTERACTING : Bleu + icone ◈
+  - ERROR : Rouge + icône ⚠
+  - CLOSED : Gris + icône ○
+- **Informations détaillées** : URL actuelle, titre de page, nombre d'actions, statut de capture d'écran
+- **Gestion multi-sessions** : Affichage de toutes les sessions actives avec scroll
+- **Non-intrusif** : Transparence 0.9, topmost, fenêtre sans bordure
+- **Positionnement** : Bas-droite de l'ecran par defaut, configurable
+- **Mise à jour continue** : Polling toutes les 500ms pour affichage temps réel
+
+### Serveur FastAPI
+
+`interface_morphique/server.py` expose `app = FastAPI(title="Jarvis API", version="1.0.0")`.
+
+Routes principales :
+
+- `POST /jarvis/ask` : traitement simple, reponse finale uniquement.
+- `GET /jarvis/stream?message=...` : streaming SSE via `StreamingResponse`.
+- `GET /jarvis/status` : CPU, RAM et activite detectee.
+- `POST /jarvis/signal` : reception de signaux externes.
+- `GET /jarvis/alerts` : lecture/vidage des alertes en memoire.
+- `POST /jarvis/confirm` : endpoint de confirmation reserve aux extensions.
+- `GET /jarvis/discover` : decouverte des appareils Tailscale sur le tailnet pour la gestion multi-instance.
+- `POST /jarvis/kill` : endpoint debug garde; l'auto-destruction normale passe par la commande interne `Jarvis, auto-destruction`.
+- `/web` : fichiers statiques de `interface_morphique/web`.
+
+Au demarrage, le serveur :
+
+1. appelle `initialiser()` pour charger/normaliser `memory.json`;
+2. démarre `AutonomousAgent.run()` dans un thread daemon, comme la console;
+3. construit l'historique systeme avec `construire_prompt_action(memoire)`;
+4. garde `memoire` et `historique` comme etat global du processus API.
+
+Le SSE utilise une `queue.Queue` par connexion. Le thread de travail lie cette queue a `event_bus`, appelle `executer_interaction_utilisateur()`, puis pousse `{"type": "done"}` a la fin. Une action qui requiert une confirmation emet `confirmation_required`; l'interface repond via `POST /jarvis/confirm` avec son `session_id` et l'identifiant de l'action.
+
+### Interfaces
+
+`interface_morphique/app.py` :
+
+- client Tkinter local;
+- consomme `/jarvis/stream` avec `requests.get(..., stream=True)`;
+- met a jour l'UI via `root.after()`;
+- desactive le champ de saisie pendant le stream;
+- gestion multi-instance avec sélecteur dans le header;
+- découverte réseau Tailscale intégrée via `/jarvis/discover`.
+
+`interface_morphique/web/index.html` :
+
+- fichier HTML/CSS/JS unique;
+- consomme `/jarvis/stream` avec `EventSource`;
+- surveille `/jarvis/status`;
+- fonctionne depuis un autre appareil du reseau si le port `8000` est accessible;
+- gestion multi-instance avec localStorage et sélecteur dans le header;
+- découverte réseau Tailscale intégrée via `/jarvis/discover`.
+
+### Démarrage Windows
+
+La tâche planifiée `JarvisAgent` est le mécanisme de démarrage de référence.
+
+Il lance :
+
+```text
+python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000
+```
+
+Elle s'exécute sous le compte Windows connecté : CLI, web et Tkinter disposent donc du même profil et des mêmes permissions. `bootstrap/install.ps1` crée ou met à jour cette tâche et désactive le service historique `JarvisService` lorsqu'il existe.
+
+## Modèle de confiance et hypothèses de sécurité
+
+### Installation mono-utilisateur
+
+Jarvis est conçu comme une installation privée mono-utilisateur :
+
+- Le système n'implémente pas de gestion multi-utilisateur ou de permissions granulaires par utilisateur.
+- Toute entité ayant accès à l'API Jarvis est considérée comme pleinement autorisée à agir avec les privilèges du compte Windows utilisateur sur lequel Jarvis s'exécute.
+- L'accès à l'API Jarvis doit être compris comme une autorisation complète d'agir avec les privilèges du compte Windows utilisateur.
+
+### Périmètre réseau attendu
+
+L'accès distant à Jarvis est intentionnel et repose sur les hypothèses suivantes :
+
+- L'API Jarvis ne doit jamais être exposée publiquement sur Internet.
+- Tailscale est le périmètre réseau attendu pour l'accès distant.
+- Une compromission du compte Tailscale autorisé doit être considérée comme une compromission de l'accès à Jarvis.
+- L'endpoint `/jarvis/discover` facilite la détection des appareils Jarvis sur le tailnet pour la gestion multi-instance.
+
+### Recommandations opérationnelles
+
+Pour sécuriser l'installation Jarvis :
+
+- **Pare-feu Windows** : Restreindre l'accès au port 8000 à l'interface/réseau Tailscale lorsque possible.
+- **Contrôle des appareils** : Surveiller et contrôler les appareils et sessions autorisés sur le tailnet.
+- **Confidentialité des URLs** : Ne pas partager les URLs d'instances Jarvis avec des tiers.
+- **Mises à jour** : Garder Python, les dépendances et Jarvis à jour selon le mécanisme documenté dans `bootstrap/update.ps1`.
+- **Sécurité du poste** : Protéger le poste Windows puisque Jarvis agit sous le compte connecté.
+
+### Mode Stark
+
+Le Mode Stark est une fonctionnalité volontairement autonome :
+
+- Il peut exécuter des actions sans confirmations interactives supplémentaires.
+- Il ne doit être utilisé que pour des objectifs dont l'utilisateur accepte les effets.
+- Il reste soumis à l'autorité de l'utilisateur propriétaire de l'installation.
+- `datashield/safety.py` gère l'activation du mode Stark via `activer_mode_stark()`.
+
+### Mécanisme de démarrage
+
+Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
+
+- Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
+- Elle lance `uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000`.
+- Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
+- `bootstrap/install.ps1` configure `JarvisAgent` et désactive `JarvisService` s'il existe.
+
+### Garanties fournies
+
+Jarvis fournit les garanties suivantes :
+
+- **Pas d'auto-installation de dépendances** : Jarvis n'effectue aucune installation de dépendance au runtime. Les dépendances doivent être installées explicitement via `pip install -r requirements.txt`.
+- **Confirmation ciblée** : Les écritures vers `JARVIS_DIR` ou des zones système Windows demandent confirmation (sauf en mode Stark).
+- **Pas d'exposition publique de l'API** : L'API est conçue pour un usage local ou via Tailscale, pas pour une exposition publique.
+- **Gestion sécurisée du PAT GitHub** : Le PAT GitHub n'est jamais inclus dans l'URL Git, jamais journalisé, et stocké uniquement dans une variable d'environnement Machine.
+
+### Garanties non fournies
+
+Jarvis ne fournit pas les garanties suivantes :
+
+- **Isolation multi-utilisateur** : Jarvis n'est pas conçu pour isoler les actions entre plusieurs utilisateurs.
+- **Sécurité contre les compromissions de compte** : Une compromission du compte Windows utilisateur ou du compte Tailscale autorisé compromet l'accès à Jarvis.
+- **Protection contre les actions malveillantes** : Jarvis exécute les actions demandées via l'API avec les permissions du compte utilisateur.
+- **Audit réseau avancé** : Jarvis n'implémente pas d'audit réseau avancé au-delà de la détection Tailscale.
+
+## Securite et permissions
+
+La politique actuelle est une confirmation ciblee, pas un blocage global.
+
+- Les lectures sont libres.
+- Les ecritures dans l'espace utilisateur sont libres.
+- Les ecritures vers `JARVIS_DIR` ou des zones systeme Windows demandent confirmation.
+- `action_bloquee()` est conservee pour compatibilite et retourne toujours `False`.
+- En mode Stark, les confirmations sont desactivees pour eviter un blocage interactif pendant une boucle autonome.
+- Les automatisations refusent les outils explicitement non automatisables afin d'eviter les actions sensibles ou bloquantes planifiees.
+
+## Gestion des dependances et securite
+
+Jarvis n'effectue **aucune installation de dependance au runtime**.
+
+- **Absence d'auto-installation** : La fonction `_bootstrap_import()` dans `datashield/safety.py` ne tente jamais d'installer un package via pip. En cas d'import echoue, elle active le mode fallback et retourne None, sans effet de bord reseau ni modification de l'environnement Python.
+- **Installation des dependances** : Les dependances doivent etre installees explicitement via `pip install -r requirements.txt` lors de l'installation ou de la mise a jour. Le script `bootstrap/install.ps1` gere cette operation automatiquement.
+- **Stabilite des versions** : `requirements.txt` contient des versions strictement bornees pour garantir la reproductibilite. Pour un verrouillage complet avec hashes, la commande suivante peut etre executee : `python -m pip install -r requirements.txt --require-hashes -c constraints.txt` (ou `constraints.txt` est genere par `python -m pip freeze > constraints.txt`).
+- **Dependances optionnelles** : Les modules comme `psutil`, `win32api` et `win32security` sont importes via `_bootstrap_import()`. Si absents, Jarvis fonctionne en mode degrade (fallback) sans ces capacites specifiques.
+
+## Securite du PAT GitHub
+
+Le PAT GitHub est manipule de maniere a minimiser son exposition :
+
+- **Jamais dans l'URL Git** : Le PAT n'est jamais inclus dans l'URL du depot ou dans `.git/config`.
+- **Mecanisme GIT_ASKPASS** : Les scripts `bootstrap/install.ps1` et `bootstrap/update.ps1` utilisent un script GIT_ASKPASS temporaire qui transmet le PAT uniquement a Git pour l'authentification.
+- **Nettoyage automatique** : Le script temporaire et les variables d'environnement sont nettoyes immediatement apres utilisation, meme en cas d'erreur.
+- **Jamais dans les logs** : Le PAT n'est jamais journalise ni affiche dans les arguments de processus.
+- **Stockage env variable** : Le PAT est stocke uniquement dans la variable d'environnement Machine `GIT_PAT_JARVIS`, accessible uniquement par les scripts d'installation et de mise a jour.
+
+## Memoire et proactivite
+
+- `memory.json` stocke notes, preferences, contexte, automatisations, surveillances, journal d'actions et journal conversationnel.
+- `context_engine.memory.normaliser_memoire()` maintient le schema attendu.
+- L'agent autonome dans `jarvis.py` observe periodiquement stockage, rappels, automatisations et surveillances, puis affiche uniquement les signaux utiles.
+- La proactivite reste discrete : elle suggere ou notifie, mais les actions de rangement/suppression passent par les outils et leurs garde-fous.
+
+## Regles de conception
+
+- Core Intellect est le seul composant qui pense.
+- `tools.OUTILS` est la surface d'execution publique.
+- Les capabilities restent deterministes et petites.
+- Les chemins passent par `chemin_autorise()`.
+- Les confirmations passent par `demander_confirmation()` ou `confirmer_ecriture_si_requise()`.
+- Le contexte durable vient de `memory.json`, pas de l'historique brut envoye au modele.
+- Le mode Stark doit rester autonome, structure et economique en tokens.

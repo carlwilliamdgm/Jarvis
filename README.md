@@ -12,7 +12,8 @@ Le projet est pensé autour d'un principe simple : le raisonnement est centralis
 
 ### Premier lancement ?
 
-Pour une installation et configuration pas à pas, consultez le guide [PREMIER_LANCEMENT.md](PREMIER_LANCEMENT.md).
+- **Installation sur machine vierge** : Consultez le guide automatisé [INSTALLATION_MACHINE_VIERGE.md](docs/guides/INSTALLATION_MACHINE_VIERGE.md) pour une installation complète automatisée
+- **Configuration pas à pas** : Consultez le guide [PREMIER_LANCEMENT.md](docs/guides/PREMIER_LANCEMENT.md) pour la configuration détaillée
 
 ### Fonctionnalités avancées
 

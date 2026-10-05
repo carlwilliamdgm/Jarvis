@@ -2,7 +2,7 @@
 
 **Date de révision :** 4 octobre 2026
 
-**Statut global :** prototype local-first avancé ; refactor structurel d'unification modulaire (7 étapes) **100% achevé et stabilisé** ; **mode vocal renforcé** (octobre 2026) avec validation secondaire wake word, VAD spectral amélioré, transcription robuste et latence optimisée.
+**Statut global :** prototype local-first avancé ; refactor structurel d'unification modulaire (7 étapes) **100% achevé et stabilisé** ; **mode vocal renforcé** (octobre 2026) avec validation secondaire wake word, VAD spectral amélioré, transcription robuste et latence optimisée ; **codebase optimisé pour installation sur machine vierge** (octobre 2026) avec chemins dynamiques, profils utilisateurs automatiques et script d'installation automatisé.
 **Source de vérité :** le code et les tests du dépôt. Le [cahier des charges](Documents/CAHIER_DES_CHARGES.md) décrit la cible, pas l'état de livraison.
 
 ## Résumé
@@ -25,6 +25,35 @@ Le mode vocal a fait l'objet d'un renforcement complet avec les apports suivants
 - **Wake word statique** : Désactivation de l'apprentissage non supervisé qui pouvait faire dériver le seuil de détection ; un seuil statique configurable est conservé
 
 Ces améliorations visent à réduire les faux positifs/négatifs du wake word, améliorer la fiabilité de la transcription dans des environnements bruyants, et optimiser la latence perçue par l'utilisateur.
+
+## Installation sur machine vierge (octobre 2026)
+
+Le codebase a été adapté pour une installation transparente sur une machine Windows vierge :
+
+- **Script d'installation automatisé** (`bootstrap/install.ps1`) :
+  - Détection/installation automatique de Python 3.12
+  - Détection/installation automatique de Git
+  - Clonage sécurisé du dépôt avec gestion du PAT (jamais dans .git/config)
+  - Installation des dépendances via requirements.txt
+  - Configuration des clés API (Groq, OpenRouter) au niveau Machine
+  - Installation automatique d'Ollama et téléchargement du modèle qwen2.5:7b
+  - Configuration de la tâche planifiée JarvisAgent pour démarrage automatique
+  - Support d'un emplacement d'installation personnalisé via `-InstallDir`
+
+- **Chemins dynamiques** :
+  - Tous les scripts PowerShell utilisent `$PSScriptRoot` ou `$env:JARVIS_INSTALL_DIR`
+  - Le code Python utilise `Path(__file__).resolve().parent.parent` pour JARVIS_DIR
+  - Correction des chemins absolus dans `update_scheduled_task.ps1`, `scripts/audit/static_analysis.ps1`, `scripts/audit/architecture_docs.ps1`
+
+- **Profils utilisateurs automatiques** :
+  - Le système de profils (`context_engine/user_profile.py`) résout dynamiquement l'utilisateur via `getpass.getuser()` ou la variable `GREATOS_USER`
+  - Les profils sont créés automatiquement au premier lancement dans `learning/profiles/<user_id>/`
+  - Aucune configuration manuelle n'est nécessaire
+
+- **Documentation d'installation** :
+  - Nouveau guide [INSTALLATION_MACHINE_VIERGE.md](INSTALLATION_MACHINE_VIERGE.md) avec instructions complètes
+  - Script public `install_public.ps1` comme point d'entrée pour les nouvelles installations
+  - Script de mise à jour `bootstrap/update.ps1` pour les mises à jour automatiques
 
 ## Modules : état réel
 

@@ -1,3 +1,4 @@
+# ARCHIVÉ - Service Windows abandonné. Remplacé par JarvisAgent (tâche planifiée).
 import os
 import sys
 import tempfile

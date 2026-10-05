@@ -8,19 +8,19 @@ Ce dossier contient des tests manuels qui nécessitent une intervention humaine 
 Test direct de l'overlay vocal sans passer par uvicorn. Simule les transitions d'état automatiquement.
 
 **Exécution :**
-`powershell
-cd C:\Users\Carl\Jarvis
+```powershell
+cd %USERPROFILE%\Jarvis
 python tests\manual\test_overlay_direct.py
-`
+```
 
-### test_overlay_manuel.py  
+### test_overlay_manuel.py
 Test manuel des transitions d'état pour l'overlay. Nécessite une application ouverte pour vérifier le comportement visuel.
 
 **Exécution :**
-`powershell
-cd C:\Users\Carl\Jarvis
+```powershell
+cd %USERPROFILE%\Jarvis
 python tests\manual\test_overlay_manuel.py
-`
+```
 
 ## Notes
 
