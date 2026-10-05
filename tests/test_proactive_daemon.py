@@ -12,7 +12,7 @@ import time
 import unittest
 from unittest.mock import patch, MagicMock
 
-from service.proactive_daemon import DaemonProactif
+from jarvis.proactive_daemon import DaemonProactif
 
 
 class MockEventBus:
@@ -70,8 +70,8 @@ class TestProactiveDaemon(unittest.TestCase):
             "timestamp": "2024-01-01 12:00:00"
         }
         
-        with patch('service.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalie):
-            with patch('service.proactive_daemon.detecter_anomalies') as mock_detect:
+        with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalie):
+            with patch('jarvis.proactive_daemon.detecter_anomalies') as mock_detect:
                 mock_detect.return_value = [
                     {
                         "type": "cpu",
@@ -122,8 +122,8 @@ class TestProactiveDaemon(unittest.TestCase):
             "seuil": 90
         }
         
-        with patch('service.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalie):
-            with patch('service.proactive_daemon.detecter_anomalies', return_value=[anomalie_cpu]):
+        with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalie):
+            with patch('jarvis.proactive_daemon.detecter_anomalies', return_value=[anomalie_cpu]):
                 daemon.start()
                 time.sleep(0.4)  # Attendre plusieurs cycles (environ 3-4 cycles)
                 daemon.arreter()
@@ -178,8 +178,8 @@ class TestProactiveDaemon(unittest.TestCase):
             else:
                 return etat_normal
         
-        with patch('service.proactive_daemon.obtenir_etat_systeme_complet', side_effect=mock_etat_systeme):
-            with patch('service.proactive_daemon.detecter_anomalies') as mock_detect:
+        with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', side_effect=mock_etat_systeme):
+            with patch('jarvis.proactive_daemon.detecter_anomalies') as mock_detect:
                 mock_detect.side_effect = lambda etat: [anomalie_cpu] if etat["cpu"]["utilisation"] > 90 else []
                 
                 daemon.start()
@@ -236,7 +236,7 @@ class TestProactiveDaemon(unittest.TestCase):
         def mock_etat_avec_exception():
             raise Exception("Erreur simulée dans l'obtention de l'état")
         
-        with patch('service.proactive_daemon.obtenir_etat_systeme_complet', side_effect=mock_etat_avec_exception):
+        with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', side_effect=mock_etat_avec_exception):
             daemon.start()
             time.sleep(0.3)  # Attendre plusieurs cycles
             # Le daemon devrait toujours être en vie malgré les exceptions
@@ -278,8 +278,8 @@ class TestProactiveDaemon(unittest.TestCase):
             }
         ]
         
-        with patch('service.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalies):
-            with patch('service.proactive_daemon.detecter_anomalies', return_value=anomalies):
+        with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', return_value=etat_avec_anomalies):
+            with patch('jarvis.proactive_daemon.detecter_anomalies', return_value=anomalies):
                 daemon.start()
                 time.sleep(0.3)
                 daemon.arreter()

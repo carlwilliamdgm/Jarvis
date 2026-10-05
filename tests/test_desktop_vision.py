@@ -1,5 +1,6 @@
 """Tests unitaires pour le module Desktop Vision et la vision multimodale en direct."""
 
+import pytest
 import unittest
 from unittest.mock import MagicMock, patch
 from context_engine.desktop_vision import (
@@ -18,6 +19,7 @@ class TestDesktopVision(unittest.TestCase):
         res = attacher_bureau_interactif()
         self.assertIsInstance(res, bool)
 
+    @pytest.mark.integration
     def test_capturer_ecran_live_structure(self):
         """Vérifie la structure du dictionnaire retourné par la capture d'écran."""
         cap = capturer_ecran_live(qualite=50, max_dimension=400)

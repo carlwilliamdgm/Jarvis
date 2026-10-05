@@ -23,8 +23,18 @@ except ImportError:
         mark = _MarkStub()
     pytest = _PytestStub()  # type: ignore[assignment]
 
+import importlib.util
 import datashield.autodestruct as autodestruct
-import service.windows_service as windows_service
+
+# windows_service est archivé (service Windows abandonné, remplacé par JarvisAgent).
+# On le charge dynamiquement depuis docs/archive/ pour ne pas casser les tests existants.
+_ws_path = Path(__file__).resolve().parent.parent / "docs" / "archive" / "windows_service.py"
+_ws_spec = importlib.util.spec_from_file_location("windows_service", _ws_path)
+windows_service = importlib.util.module_from_spec(_ws_spec)  # type: ignore[arg-type]
+try:
+    _ws_spec.loader.exec_module(windows_service)  # type: ignore[union-attr]
+except Exception:
+    windows_service = None  # type: ignore[assignment]
 
 
 @pytest.mark.smoke

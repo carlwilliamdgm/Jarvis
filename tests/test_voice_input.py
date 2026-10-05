@@ -115,6 +115,7 @@ class VoiceInputTests(unittest.TestCase):
 
         with patch("jarvis.audio_capture.get_audio_capture_engine", return_value=engine), \
              patch.object(voice_input, "_new_wake_word_model", return_value=FakeWakeWordModel([0.8, 0.0])), \
+             patch.object(voice_input, "_confirm_wake_word", return_value=True), \
              patch.object(voice_input, "_jouer_phrase_reveil"), \
              patch.object(voice_input, "transcrire_et_soumettre", side_effect=transcribe) as transcribe_mock:
             text = voice_input.écouter_et_transcrire()

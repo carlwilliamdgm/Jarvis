@@ -447,7 +447,7 @@ class DocumentationConsistencyTests(unittest.TestCase):
         from taskflow.tools import OUTILS
         
         # Read the documentation file
-        doc_path = Path(__file__).parent.parent / "EXECUTION_OUTILS.md"
+        doc_path = Path(__file__).parent.parent / "docs" / "guides" / "EXECUTION_OUTILS.md"
         with open(doc_path, 'r', encoding='utf-8') as f:
             doc_content = f.read()
         

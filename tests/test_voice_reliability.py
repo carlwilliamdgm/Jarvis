@@ -32,11 +32,14 @@ class TestWakeWordConfirmation:
     def test_confirmation_requiert_plusieurs_detections(self):
         """La confirmation nécessite plusieurs détections dans la fenêtre."""
         _reset_wake_confirmation()
-        
+
         # Première détection - ne devrait pas confirmer
         assert not _confirm_wake_word(0.7)
-        
-        # Deuxième détection immédiate - devrait confirmer
+
+        # Attendre l'intervalle minimum entre deux détections (MIN_INTERVAL = 0.25s)
+        time.sleep(0.3)
+
+        # Deuxième détection - devrait confirmer
         assert _confirm_wake_word(0.75)
 
     def test_confirmation_avec_delai(self):

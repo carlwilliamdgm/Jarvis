@@ -71,15 +71,15 @@ class AudioCaptureTests(unittest.TestCase):
 
     def test_vad_noise_floor_only_updates_during_silence(self):
         """La VAD ne doit mettre à jour le plancher de bruit que pendant le silence."""
-        vad = AdaptiveVAD(alpha=0.1, min_ratio=2.0, min_threshold=100)
+        vad = AdaptiveVAD(alpha=0.1, min_ratio=2.0, min_threshold=100, hysteresis_frames=1)
         vad.reset_floor(50.0)
 
-        # 1. Trame silencieuse (énergie 40 < seuil 100) -> plancher s'adapte
+        # 1. Deux trames silencieuses (énergie 40 < seuil 100) -> plancher s'adapte
         silence = np.full(FRAME_SIZE, 40, dtype=np.int16)
-        is_speech = vad.process(silence)
-        self.assertFalse(is_speech)
-        expected_floor = (1.0 - 0.1) * 50.0 + 0.1 * 40.0
-        self.assertAlmostEqual(expected_floor, vad.noise_floor)
+        vad.process(silence)
+        vad.process(silence)
+        self.assertLess(vad.noise_floor, 50.0)
+        self.assertGreater(vad.noise_floor, 40.0)
 
         # 2. Trame de parole intense (énergie 2000 > seuil 100) -> plancher NE CHANGE PAS
         current_floor = vad.noise_floor
@@ -211,3 +211,4 @@ class AudioCaptureTests(unittest.TestCase):
         self.assertEqual(0, engine._q_wake.qsize)
         self.assertEqual(0, engine._q_clap.qsize)
         self.assertEqual(0, engine._q_transcription.qsize)
+

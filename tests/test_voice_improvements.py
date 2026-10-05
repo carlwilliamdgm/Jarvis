@@ -24,13 +24,19 @@ from jarvis.voice_input import (
 class TestAdaptiveWakeWordThreshold(unittest.TestCase):
     def setUp(self):
         """Réinitialise le seuil adaptatif avant chaque test."""
-        _reset_adaptive_threshold()
-        # Forcer le seuil à une valeur connue pour les tests
         import jarvis.voice_input as vi
+        # Activer l'adaptation dynamique localement pour tester la logique
+        # (désactivée en production depuis 02/10/2026 — seuil statique conservé)
+        self._vi = vi
+        self._original_enabled = vi._ADAPTIVE_THRESHOLD_ENABLED
+        vi._ADAPTIVE_THRESHOLD_ENABLED = True
+        _reset_adaptive_threshold()
+        # Forcer le seuil à 0.5 après le reset (qui peut lire une variable d'env)
         vi.WAKE_WORD_DETECTION_THRESHOLD = 0.5
-    
+
     def tearDown(self):
-        """Nettoie après chaque test."""
+        """Restaure l'état original après chaque test."""
+        self._vi._ADAPTIVE_THRESHOLD_ENABLED = self._original_enabled
         _reset_adaptive_threshold()
     
     def test_get_adaptive_threshold_initial(self):
