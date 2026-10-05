@@ -275,6 +275,102 @@ if (Test-Path $requirementsPath) {
     throw "requirements.txt not found"
 }
 
+# Step 3b: Playwright browser binaries (for autonomous web navigation)
+Write-Log "=== Step 3b: Playwright Chromium Browser ==="
+$playwrightInstalled = $false
+$localAppData = [System.Environment]::GetFolderPath("LocalApplicationData")
+$pwDir = Join-Path $localAppData "ms-playwright"
+if ((Test-Path $pwDir) -and ((Get-ChildItem -Path $pwDir -Filter "chromium*" -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)) {
+    Write-Log "Navigateur Chromium Playwright déjà présent — étape ignorée"
+    $playwrightInstalled = $true
+} else {
+    Write-Log "Installation de Chromium pour Playwright..."
+    try {
+        & $pythonPath -m playwright install chromium
+        if ($LASTEXITCODE -eq 0) {
+            $playwrightInstalled = $true
+            Write-Log "Chromium Playwright installé avec succès"
+        } else {
+            Write-Log "Échec de l'installation de Playwright Chromium (code: $LASTEXITCODE)" "WARN"
+        }
+    } catch {
+        Write-Log "Erreur lors de l'installation Playwright: $_" "WARN"
+    }
+}
+
+# Step 3c: Local Voice Models (Vosk STT, Piper TTS, openWakeWord)
+Write-Log "=== Step 3c: Local Voice Models ==="
+$modelsDir = Join-Path $JarvisDir "models"
+if (-not (Test-Path $modelsDir)) {
+    New-Item -ItemType Directory -Path $modelsDir -Force | Out-Null
+}
+
+# Vosk French model (~40 MB)
+$voskFrDir = Join-Path $modelsDir "vosk-model-small-fr-0.22"
+if (Test-Path $voskFrDir) {
+    Write-Log "Modèle Vosk FR déjà présent dans $voskFrDir"
+} else {
+    Write-Log "Téléchargement du modèle de reconnaissance vocale Vosk FR (~40 Mo)..."
+    try {
+        $voskZipUrl = "https://alphacephei.com/vosk/models/vosk-model-small-fr-0.22.zip"
+        $voskZipPath = Join-Path $env:TEMP "vosk-model-small-fr-0.22.zip"
+        Invoke-WebRequest -Uri $voskZipUrl -OutFile $voskZipPath -UseBasicParsing
+        Expand-Archive -Path $voskZipPath -DestinationPath $modelsDir -Force
+        Remove-Item $voskZipPath -Force -ErrorAction SilentlyContinue
+        Write-Log "Modèle Vosk FR extrait avec succès"
+    } catch {
+        Write-Log "Impossible de télécharger Vosk FR: $_" "WARN"
+    }
+}
+
+# Piper TTS French model (~28 MB)
+$piperDir = Join-Path $modelsDir "piper"
+$piperModel = Join-Path $piperDir "fr_FR-siwis-low.onnx"
+$piperConfig = Join-Path $piperDir "fr_FR-siwis-low.onnx.json"
+if (-not (Test-Path $piperDir)) {
+    New-Item -ItemType Directory -Path $piperDir -Force | Out-Null
+}
+if ((Test-Path $piperModel) -and (Test-Path $piperConfig)) {
+    Write-Log "Modèle Piper TTS FR déjà présent dans $piperDir"
+} else {
+    Write-Log "Téléchargement du modèle de synthèse vocale Piper TTS (~28 Mo)..."
+    try {
+        $piperBaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/low"
+        Invoke-WebRequest -Uri "$piperBaseUrl/fr_FR-siwis-low.onnx" -OutFile $piperModel -UseBasicParsing
+        Invoke-WebRequest -Uri "$piperBaseUrl/fr_FR-siwis-low.onnx.json" -OutFile $piperConfig -UseBasicParsing
+        Write-Log "Modèle Piper TTS FR téléchargé avec succès"
+    } catch {
+        Write-Log "Impossible de télécharger Piper TTS: $_" "WARN"
+    }
+}
+
+# openWakeWord model (hey_jarvis)
+Write-Log "Vérification du modèle de réveil openWakeWord (hey_jarvis)..."
+try {
+    & $pythonPath -c "import openwakeword.utils; openwakeword.utils.download_models(['hey_jarvis'])"
+    Write-Log "Modèle openWakeWord vérifié"
+} catch {
+    Write-Log "openWakeWord verification: $_" "WARN"
+}
+
+# Step 3d: DataShield AES-256 Crypto Key Generation
+Write-Log "=== Step 3d: DataShield AES-256 Key ==="
+$existingCrypto = [System.Environment]::GetEnvironmentVariable("JARVIS_CRYPTO_KEY", "Machine")
+if (-not [string]::IsNullOrWhiteSpace($existingCrypto)) {
+    Write-Log "Clé DataShield/crypto déjà présente au niveau Machine"
+} else {
+    try {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $cryptoKey = [Convert]::ToBase64String($bytes)
+        Set-MachineEnvironmentVariableChecked -Name "JARVIS_CRYPTO_KEY" -Value $cryptoKey
+        $env:JARVIS_CRYPTO_KEY = $cryptoKey
+        Write-Log "Clé cryptographique DataShield (AES-256-GCM) générée et enregistrée avec succès"
+    } catch {
+        Write-Log "Impossible de générer JARVIS_CRYPTO_KEY: $_" "WARN"
+    }
+}
+
 # Step 4: Configure API keys (skips prompts if keys already exist Machine-level)
 Write-Log "=== Step 4: Configure API Keys ==="
 
@@ -449,6 +545,17 @@ Write-Log "=== Step 7: Store PAT for Future Updates ==="
 $env:GIT_PAT_JARVIS = $GitHubPAT
 Write-Log "PAT stored in environment variable GIT_PAT_JARVIS (Machine-level)"
 
+# Step 7b: Create Desktop Shortcut
+Write-Log "=== Step 7b: Create Desktop Shortcut ==="
+try {
+    $desktopPath = [System.Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "GreatOS Jarvis.url"
+    "[InternetShortcut]`r`nURL=http://localhost:8000`r`nIconIndex=0" | Out-File -FilePath $shortcutPath -Encoding ASCII -Force
+    Write-Log "Raccourci 'GreatOS Jarvis' créé sur le Bureau de l'utilisateur"
+} catch {
+    Write-Log "Impossible de créer le raccourci Bureau: $_" "WARN"
+}
+
 # Step 8: Display summary
 Write-Log "=== Installation Summary ==="
 
@@ -456,6 +563,10 @@ $agentTaskRegistered = ((Get-ScheduledTask -TaskName $agentTaskName -ErrorAction
 
 $status = [ordered]@{
     "Python 3.12"       = $pythonInstalled
+    "Chromium (Playwright)" = $playwrightInstalled
+    "Modèles Vocaux Offline" = (Test-Path (Join-Path $JarvisDir "models\piper\fr_FR-siwis-low.onnx"))
+    "Clé DataShield (AES-256)" = (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable("JARVIS_CRYPTO_KEY", "Machine")))
+    "Raccourci Bureau"  = (Test-Path (Join-Path ([System.Environment]::GetFolderPath("Desktop")) "GreatOS Jarvis.url"))
     "Jarvis Repository" = (Test-Path $JarvisDir)
     "Dependencies"      = $true
     "API Keys"          = ($groqKeys.Count -gt 0)
@@ -473,3 +584,4 @@ foreach ($key in $status.Keys) {
     Write-Host ("  {0,-4} {1}" -f $mark, $key)
 }
 Write-Host "═══════════════════════════════════════════════════════════"
+

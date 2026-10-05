@@ -9,14 +9,16 @@ Ce guide détaille l'installation complète de GreatOS/Jarvis sur une machine Wi
 - **Accès réseau** : Connexion internet pour télécharger les dépendances
 - **GitHub PAT** : Personal Access Token GitHub avec scope `repo` pour cloner le dépôt privé
 
-## Méthode recommandée : Script d'installation automatisé
+## Méthode 1 (Recommandée) : Double-clic sur Setup.cmd
 
-Le script `bootstrap/install.ps1` automatise l'ensemble de l'installation :
+Si vous disposez de l'archive ou du dépôt décompressé :
+1. Faites un **double-clic sur `Setup.cmd`** à la racine.
+2. Acceptez la fenêtre d'élévation Administrateur (UAC Windows).
+3. L'installation se déroule de façon 100% autonome.
 
-### Étape 1 - Télécharger le script d'installation public
+## Méthode 2 : Téléchargement du script public d'amorçage
 
-Le script `install_public.ps1` sert de point d'entrée public :
-
+Si vous êtes sur une machine totalement vierge sans le dépôt :
 ```powershell
 # Télécharger le script depuis GitHub
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/carlwilliamdgm/Jarvis/main/install_public.ps1" -OutFile "$env:TEMP\install_public.ps1"
@@ -25,7 +27,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/carlwilliamdgm/Jarvis/
 powershell.exe -ExecutionPolicy Bypass -File "$env:TEMP\install_public.ps1"
 ```
 
-### Étape 2 - Le script install.ps1 effectuera automatiquement
+### Le script effectuera automatiquement :
 
 1. **Détection/Installation de Python 3.12**
    - Cherche Python 3.12 dans les emplacements standards
