@@ -17,3 +17,9 @@ sys.modules[__name__].__class__ = _JarvisProxy
 for _name in dir(_agent):
     if not _name.startswith("__"):
         globals()[_name] = getattr(_agent, _name)
+
+# Import optionnel du daemon proactif (déplacé depuis service/)
+try:
+    from jarvis.proactive_daemon import DaemonProactif  # noqa: F401
+except ImportError:
+    pass

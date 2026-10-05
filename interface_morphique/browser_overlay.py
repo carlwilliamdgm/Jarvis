@@ -24,7 +24,7 @@ class BrowserOverlay:
         self.running = False
         self.thread = None
         self.manager = get_session_manager()
-        self.state_file = os.path.join(os.path.dirname(__file__), "..", "browser_overlay_state.json")
+        self.state_file = os.path.join(os.path.dirname(__file__), "..", "runtime", "browser_overlay_state.json")
         
         # Configuration visuelle
         self.bg_color = "#1a1a2e"

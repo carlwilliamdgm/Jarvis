@@ -661,7 +661,7 @@ class BrowserSessionManager:
 # Instance globale du gestionnaire (singleton thread-safe)
 _session_manager: Optional[BrowserSessionManager] = None
 _manager_lock = threading.Lock()
-_STATE_FILE = os.path.join(os.path.dirname(__file__), "..", "browser_sessions_state.json")
+_STATE_FILE = os.path.join(os.path.dirname(__file__), "..", "runtime", "browser_sessions_state.json")
 
 
 def get_session_manager() -> BrowserSessionManager:

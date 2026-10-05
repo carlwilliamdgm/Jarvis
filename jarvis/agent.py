@@ -71,7 +71,7 @@ from greatos_contracts import (
 )
 from datashield.policy import evaluate_capability
 from progress_tracker import enregistrer_impact_capacite
-from service.proactive_daemon import DaemonProactif
+from jarvis.proactive_daemon import DaemonProactif
 
 import psutil
 

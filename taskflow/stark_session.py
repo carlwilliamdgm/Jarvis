@@ -10,7 +10,7 @@ import psutil
 
 from core_intellect.paths import JARVIS_DIR
 
-STARK_ACTIF_PATH = JARVIS_DIR / "stark_actif.json"
+STARK_ACTIF_PATH = JARVIS_DIR / "runtime" / "stark_actif.json"
 
 
 def verifier_instances_stark() -> list[dict]:

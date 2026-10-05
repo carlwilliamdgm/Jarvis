@@ -26,3 +26,9 @@ __all__ = [
     "oublier_contexte",
     "oublier_preference",
 ]
+
+# Import optionnel du scheduler de consolidation (déplacé depuis service/)
+try:
+    from context_engine.consolidation_scheduler import ConsolidationScheduler  # noqa: F401
+except ImportError:
+    pass

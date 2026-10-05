@@ -18,7 +18,7 @@ class VoiceState(str, Enum):
 
 
 # Fichier d'état partagé pour l'overlay (process séparé)
-VOICE_STATE_FILE = Path(__file__).parent.parent / "voice_state.json"
+VOICE_STATE_FILE = Path(__file__).resolve().parent.parent / "runtime" / "voice_state.json"
 
 
 _voice_state = VoiceState.IDLE

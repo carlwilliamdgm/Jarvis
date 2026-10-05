@@ -77,7 +77,7 @@ from jarvis.agent import (
     executer_interaction_utilisateur,
     initialiser,
 )
-from service.consolidation_scheduler import ConsolidationScheduler
+from context_engine.consolidation_scheduler import ConsolidationScheduler
 from jarvis.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
 from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale
 from jarvis.clap_input import demarrer_ecoute_clap, arreter_ecoute_clap

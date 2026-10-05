@@ -41,3 +41,16 @@ pandoc_tmp/
 .pytest_temp/
 tmp_cdc_render/
 .cursor/
+
+# Runtime state files
+runtime/
+
+# Database temporary files
+*.db-wal
+*.db-shm
+*.db-journal
+memory*.tmp
+
+# Notes de développement
+Notes dev/
+Documents/
