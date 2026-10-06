@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T14:54:58.087496+00:00 — Antigravity - Introspection Déterministe et Générique — completed
+
+Implémentation d une introspection système dynamique, déterministe et 100% générique : 1) Création de core_intellect/system_introspection.py avec 3 outils typés (consulter_etat_maison, inspecter_architecture_greatos, consulter_historique_projet). 2) Intégration dans TaskFlow et Core Intellect sans surcharger le prompt (boussole compacte <1ms via hooks Win32). 3) Nettoyage strict et suppression de toute référence utilisateur codée en dur dans le code source pour un comportement universel et agnostique. 4) Routage déterministe des intentions d introspection dans intent_router.py.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/system_introspection.py (créé), core_intellect/intellect.py (nettoyage références en dur, prompt générique et boussole réactive), core_intellect/intent_router.py (mots-clés introspection), taskflow/tools.py (enregistrement 3 outils), tests/test_system_introspection.py (4 tests)
+
+**Vérification**
+- pytest tests/test_system_introspection.py : 4 passed (100%).
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-06T14:33:46.884100+00:00 — Antigravity - Correction Thème et Switch Morphique Web — completed
 
 Correction complète du commutateur de thème (dark/light) et de l affichage de l interface web : 1) Résolution du conflit CSS destructeur où les layouts morphiques (ex: layout-focus activé par défaut) écrasaient les variables de fond en noir sur le thème clair. Découplage strict des surcharges via body:not(.light).layout-* et body.light.layout-*. 2) Correction du titre et du header en mode clair (--title-color adaptatif, header blanc au lieu de noir forcé). 3) Modernisation du bouton icon-button et suppression de l éjection intempestive vers le dashboard lors des changements de layout morphique.
@@ -172,25 +191,6 @@ Remontee de l import obtenir_infos_tailscale en haut de interface_morphique/serv
 
 **Vérification**
 - py_compile OK, pytest 23/23 tests API verts
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Aucun
-
-### 2026-10-06T10:50:07.633112+00:00 — Subagent - Simplification shim voice_overlay — completed
-
-Simplification du shim jarvis/voice_overlay.py : suppression du mecanisme __class__ proxy de module complexe, remplacement par un import direct minimal
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_overlay.py
-
-**Vérification**
-- pytest tests/test_voice_overlay.py tests/test_greatos_background_wiring.py : 14 passed, 0 failed
 
 **Blocages**
 - Aucun élément signalé.

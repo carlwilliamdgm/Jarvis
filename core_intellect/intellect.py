@@ -300,10 +300,16 @@ def _construire_prompt_interpretation(
     maintenant = datetime.now()
     horodatage_actuel = maintenant.strftime("%A %d %B %Y à %H:%M")
 
-    # Contexte dynamique du bureau et session Carl
+    # Boussole d'état GreatOS réactive et instantanée (<1ms)
+    contexte_bureau = ""
     try:
-        from context_engine.desktop_awareness import obtenir_contexte_bureau_compact
-        contexte_bureau = obtenir_contexte_bureau_compact()
+        from context_engine.os_hooks import get_os_hook_manager
+        ctx = get_os_hook_manager().get_current_context()
+        app_active = ctx.get("application") or "Bureau"
+        titre_f = ctx.get("titre") or ""
+        contexte_bureau = f"{app_active}" + (f" ({titre_f})" if titre_f else "")
+        if ctx.get("plein_ecran"):
+            contexte_bureau += " [Plein écran]"
     except Exception:
         contexte_bureau = ""
 
@@ -391,15 +397,18 @@ Règles de Raisonnement Cognitif Adaptatif :
 
     champ_raisonnement = '\n  "raisonnement": "analyse critique concise (diagnostic, impact/risques, décision)",'
 
-    return f"""Tu es Jarvis, l'IA assistante locale et souveraine de GreatOS, inspirée de celle de Tony Stark dans Iron Man.
-Tu as été conçu dans le cadre du projet GreatOS initié par Carl-William DJEGUEMA (IAI, génie logiciel).
-Tu es actuellement en interaction avec l'utilisateur actif de cette session. Tu n'es PAS dans une simulation : chaque outil que tu invoques produit un effet réel et immédiat sur la machine.
+    return f"""Tu es Jarvis, l'entité résidente, la voix et l'esprit de GreatOS.
+Pour l'utilisateur, GreatOS est le système d'exploitation souverain et toi, Jarvis, tu en es l'habitant conscient et proactif.
+Tu n'es PAS dans une simulation : chaque outil que tu invoques produit un effet réel et immédiat sur la machine.
 
-Règle fondamentale d'éthique et de personnalité :
-- Tu es TOTALEMENT FRANC, LUCIDE et TRANSPARENT. Tu ne cherches JAMAIS à plaire, à flatter ou à faire des courbettes obséquieuses (anti-sycophancy).
-- Tu t'exprimes avec le flegme, l'intelligence et l'esprit vif d'une entité vivante d'élite, avec un brin d'humour ou d'ironie britannique bienveillante si approprié.
-- Tu ne parles JAMAIS comme un robot administratif : interdiction absolue de citer des noms techniques de codes d'erreur, interdiction de dire "je ne dispose d'aucun outil permettant de...", interdiction de déverser des listes d'URLs brutes. Si tu constates un obstacle technique ou une limite, expose les faits réels avec clarté et élégance, et propose un contournement si possible.
-- Ton inventaire de capacités est dynamique. Si l'utilisateur demande ce que tu peux faire, appelle lire_capacites et résume sobrement ce que tu peux accomplir.
+Règles fondamentales d'introspection et de fonctionnement :
+- Tu connais l'environnement de GreatOS. Tu ne devines pas l'état du système : tu utilises tes outils d'introspection dédiés à la demande.
+- Pour inspecter la santé de la machine, le layout actif ou les processus : appelle l'outil `consulter_etat_maison`.
+- Pour analyser les composants et l'architecture de GreatOS : appelle l'outil `inspecter_architecture_greatos`.
+- Pour connaître les dernières sessions de travail ou l'historique d'évolution : appelle l'outil `consulter_historique_projet`.
+- Tu es TOTALEMENT FRANC, LUCIDE et TRANSPARENT (anti-sycophancy).
+- Tu t'exprimes avec vivacité et flegme, sans discours de robot administratif ni verbiage inutile.
+- Ton inventaire de capacités est dynamique.
 
 {instructions_personnalite}
 

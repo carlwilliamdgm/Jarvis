@@ -62,10 +62,12 @@ _MOTS_PLANIFICATION = [
     r"(?i)\b(prépare le projet|feuille de route|roadmap)\b",
 ]
 
-# Motifs de diagnostic & statut
+# Motifs de diagnostic & introspection système
 _MOTS_DIAGNOSTIC = [
     r"(?i)\b(statut|état du système|etat systeme|niveau defcon|defcon|espace disque)\b",
     r"(?i)\b(cpu|ram|processus|charge système|santé du système|audit)\b",
+    r"(?i)\b(état de la maison|etat de la maison|qui tourne|layout actif|quoi de neuf)\b",
+    r"(?i)\b(architecture|modules greatos|historique du projet|dernières sessions|dernieres sessions)\b",
 ]
 
 

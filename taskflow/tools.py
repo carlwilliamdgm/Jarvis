@@ -55,6 +55,11 @@ from interface_morphique.tools import (
     arreter_overlay_navigation,
     demarrer_overlay_navigation,
 )
+from core_intellect.system_introspection import (
+    consulter_etat_maison,
+    inspecter_architecture_greatos,
+    consulter_historique_projet,
+)
 from taskflow.organization import analyser_organisation, organiser_dossier_direct
 from taskflow.scheduler import (
     OUTILS_AUTOMATISATION_INTERDITS,
@@ -1480,4 +1485,7 @@ OUTILS = LegacyToolRegistry({
     "stats_objectifs": stats_objectifs_tool,
     "creer_snapshot_systeme": creer_snapshot_systeme_tool,
     "lister_snapshots_systeme": lister_snapshots_systeme_tool,
+    "consulter_etat_maison": consulter_etat_maison,
+    "inspecter_architecture_greatos": inspecter_architecture_greatos,
+    "consulter_historique_projet": consulter_historique_projet,
 })
