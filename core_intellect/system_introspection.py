@@ -13,16 +13,19 @@ from typing import Any, Dict, List, Optional
 RACINE_PROJET = Path(__file__).resolve().parent.parent
 
 # Cartographie officielle des modules GreatOS (source de vérité CDC)
+CREATEUR_GREATOS = "Carl-William DJEGUEMA (Étudiant en Génie Logiciel à l'IAI-Togo)"
+
 ARCHITECTURE_GREATOS = {
     "greatos": {
         "nom": "GreatOS Core Launcher",
+        "createur": CREATEUR_GREATOS,
         "role": "Point d'entrée principal et orchestrateur des services résidents",
         "fichiers_cles": ["greatos.py", "greatos_service.py", "jarvis_hidden.ps1"],
     },
     "core_intellect": {
-        "nom": "Core Intellect (Le Cerveau)",
-        "role": "Décision, raisonnement déterministe, routage d'intentions, planification et personnalité",
-        "fichiers_cles": ["intellect.py", "intent_router.py", "tool_registry.py", "personality.py"],
+        "nom": "Core Intellect / Jarvis (Le Cerveau Orchestrateur)",
+        "role": "Chef d'orchestre central de GreatOS : décision, raisonnement déterministe, routage d'intentions et supervision des modules",
+        "fichiers_cles": ["intellect.py", "intent_router.py", "tool_registry.py", "personality.py", "system_introspection.py"],
     },
     "context_engine": {
         "nom": "Context Engine (La Conscience)",
