@@ -60,6 +60,10 @@ from core_intellect.system_introspection import (
     inspecter_architecture_greatos,
     consulter_historique_projet,
 )
+from core_intellect.multi_criteria_decision import arbitrer_priorite_taches
+from context_engine.four_dimensions import capturer_contexte_quadridimensionnel
+from taskflow.preconfigured_workflows import executer_workflow_preconfigure
+from progress_tracker.gamification import charger_etat_gamification
 from taskflow.organization import analyser_organisation, organiser_dossier_direct
 from taskflow.scheduler import (
     OUTILS_AUTOMATISATION_INTERDITS,
@@ -1488,4 +1492,8 @@ OUTILS = LegacyToolRegistry({
     "consulter_etat_maison": consulter_etat_maison,
     "inspecter_architecture_greatos": inspecter_architecture_greatos,
     "consulter_historique_projet": consulter_historique_projet,
+    "executer_workflow_preconfigure": executer_workflow_preconfigure,
+    "arbitrer_priorite_taches": arbitrer_priorite_taches,
+    "capturer_contexte_quadridimensionnel": capturer_contexte_quadridimensionnel,
+    "charger_etat_gamification": charger_etat_gamification,
 })

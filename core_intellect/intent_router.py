@@ -92,11 +92,12 @@ def router_intention(message: str, historique_recent: list[dict] | None = None) 
     tokens = re.findall(r"\w+", texte)
     premier_mot = tokens[0] if tokens else ""
     mots_salutation_purs = {"bonjour", "salut", "hello", "bonsoir", "coucou", "hey", "hi", "merci", "parfait", "ok", "super"}
-    interlocuteur = {"jarvis", "sir", "ami", "ia", "assistant"}
+    interlocuteur = {"jarvis", "sir", "ami", "ia", "assistant", "comment", "vas", "tu", "allez", "vous", "ca", "va"}
     est_salutation = (
         texte in _SALUTATIONS
-        or (premier_mot in mots_salutation_purs and (len(tokens) <= 3 and set(tokens[1:]).issubset(interlocuteur)))
-        or any(texte.startswith(s) and len(tokens) <= 3 for s in _SALUTATIONS)
+        or (premier_mot in mots_salutation_purs and set(tokens[1:]).issubset(interlocuteur))
+        or any(texte.startswith(s) and len(tokens) <= 4 for s in _SALUTATIONS)
+        or any(s in texte for s in ("comment vas-tu", "comment tu vas", "ça va", "ca va"))
     )
     if est_salutation:
         # Vérifier qu'il n'y a pas un verbe d'action accolé (ex: "salut, supprime mon dossier")

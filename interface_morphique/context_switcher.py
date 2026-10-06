@@ -99,10 +99,18 @@ class MorphicContextEngine:
         if self._web_nav_active:
             return MorphicLayout.WEB_NAV
 
-        # 5. Priorité 5 : Plein écran ou appli de concentration (Focus)
+        # 5. Priorité 5 : Plein écran, appli de code ou Deep Work cognitif (Focus)
         processus = (self._os_context.get("processus") or "").lower().replace(".exe", "")
         est_plein_ecran = bool(self._os_context.get("plein_ecran", False))
-        if est_plein_ecran or processus in self.FOCUS_APPS:
+        est_deep_work = False
+        try:
+            from context_engine.four_dimensions import capturer_contexte_quadridimensionnel, ChargeCognitive
+            dim_ctx = capturer_contexte_quadridimensionnel()
+            est_deep_work = dim_ctx.cognitif.charge == ChargeCognitive.DEEP_WORK
+        except Exception:
+            pass
+
+        if est_plein_ecran or est_deep_work or processus in self.FOCUS_APPS:
             return MorphicLayout.FOCUS
 
         # 6. Priorité 6 : Inactivité prolongée (Idle)
