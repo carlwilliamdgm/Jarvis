@@ -1,0 +1,43 @@
+# Android & Gradle
+.gradle/
+build/
+android/app/build/
+android/.gradle/
+local.properties
+*.apk
+*.ap_
+*.aab
+*.dex
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# System & crash logs
+*.log
+*.hprof
+hs_err_pid*
+.DS_Store
+Thumbs.db
+.dist/
+*.diff
+*.patch
+

@@ -1,0 +1,111 @@
+================================================================================
+THE GREAT CORPORATION™ PROPRIETARY COMMERCIAL SOFTWARE LICENSE
+SOFTWARE END-USER LICENSE AGREEMENT (EULA)
+================================================================================
+
+Product: PHANTOM™ by The Great Corporation
+Copyright (C) 2026 The Great Corporation. All rights reserved.
+Author & Founder: Carl-William DJEGUEMA
+Website: https://github.com/The-Great-Corporation/PHANTOM-by-The-Great-Corporation
+
+IMPORTANT — READ CAREFULLY:
+This End-User License Agreement ("EULA" or "License") is a legally binding contract 
+between you (either an individual or a single legal entity, hereinafter "Licensee" or "User") 
+and The Great Corporation ("Licensor" or "TGC") governing the use of the proprietary 
+software known as "PHANTOM by The Great Corporation" (including the mobile application, 
+the desktop server, source code, binaries, configuration scripts, assets, documentation, 
+and graphical interfaces, collectively referred to as the "Software").
+
+BY INSTALLING, COPYING, ACCESSING, OR OTHERWISE USING THE SOFTWARE, YOU AGREE TO BE 
+BOUND BY THE TERMS OF THIS AGREEMENT. IF YOU DO NOT AGREE WITH ANY TERM OF THIS 
+AGREEMENT, DO NOT INSTALL, USE, OR DISTRIBUTE THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+1. GRANT OF LICENSE
+--------------------------------------------------------------------------------
+Subject to the terms and conditions of this Agreement, The Great Corporation hereby 
+grants the Licensee a non-exclusive, non-transferable, revocable, personal license to:
+  (a) Install and execute the mobile client of the Software on compatible Android devices;
+  (b) Install and execute the server component of the Software on compatible Windows PCs;
+  (c) Use the Software solely for its intended purpose of virtual gamepad emulation 
+      and remote game input control.
+
+--------------------------------------------------------------------------------
+2. OWNERSHIP AND INTELLECTUAL PROPERTY
+--------------------------------------------------------------------------------
+The Software is licensed, not sold. All rights, title, interest, patents, copyrights, 
+trade secrets, trademarks, design rights, and intellectual property rights in and to 
+the Software (including but not limited to the codebase, network protocols, input algorithms, 
+UI designs, skins, graphical assets, and documentation) remain the sole and exclusive 
+property of The Great Corporation.
+
+"PHANTOM", "The Great Corporation", "TGC", "The controller you don't hold, the power you command", 
+and associated logos and insignia are official trademarks of The Great Corporation. 
+Nothing in this Agreement grants the Licensee any right or license to use any trademark 
+or trade name of The Great Corporation without prior express written authorization.
+
+--------------------------------------------------------------------------------
+3. RESTRICTIONS
+--------------------------------------------------------------------------------
+Except as expressly permitted by applicable law or authorized in writing by TGC, Licensee shall not:
+  (a) Reverse engineer, decompile, disassemble, decrypt, extract source code from, 
+      or attempt to derive the underlying algorithms of any compiled binary component of the Software;
+  (b) Modify, adapt, translate, or create derivative works based upon the Software;
+  (c) Rent, lease, lend, sell, sublicense, redistribute, commercialize, or host the Software 
+      as a commercial service to third parties without prior written consent from TGC;
+  (d) Remove, obscure, or alter any copyright notices, trademark notices, digital signatures, 
+      or proprietary legends affixed to or contained within the Software;
+  (e) Circumvent, disable, or tamper with any technological protection, mutual authentication, 
+      HMAC validation, or security mechanism embedded within the Software.
+
+--------------------------------------------------------------------------------
+4. THIRD-PARTY COMPONENTS AND DRIVERS
+--------------------------------------------------------------------------------
+Certain components utilized by the Software (such as the ViGEmBus driver, open-source libraries, 
+or runtime dependencies) may be subject to separate third-party open-source licenses. 
+Such third-party licenses are acknowledged, and their respective terms govern the use of 
+those specific external modules. Nothing in this proprietary agreement restricts rights 
+granted to you under applicable third-party open-source terms for those independent libraries.
+
+--------------------------------------------------------------------------------
+5. UPDATES AND TERMINATION
+--------------------------------------------------------------------------------
+The Great Corporation reserves the right to deliver software updates, enhancements, 
+or modifications at its sole discretion.
+
+This License is effective until terminated. Your rights under this License will terminate 
+automatically without notice from The Great Corporation if you fail to comply with any 
+of its terms. Upon termination, you must immediately cease all use of the Software 
+and destroy all copies in your possession.
+
+--------------------------------------------------------------------------------
+6. DISCLAIMER OF WARRANTIES
+--------------------------------------------------------------------------------
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED "AS IS" 
+AND "AS AVAILABLE", WITH ALL FAULTS AND WITHOUT WARRANTY OF ANY KIND. THE GREAT CORPORATION 
+EXPRESSLY DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING BUT NOT 
+LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, 
+SATISFACTORY QUALITY, ACCURACY, AND NON-INFRINGEMENT.
+
+--------------------------------------------------------------------------------
+7. LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
+IN NO EVENT SHALL THE GREAT CORPORATION, ITS DIRECTORS, OFFICERS, EMPLOYEES, OR AFFILIATES 
+BE LIABLE FOR ANY INCIDENTAL, SPECIAL, INDIRECT, OR CONSEQUENTIAL DAMAGES WHATSOEVER, 
+INCLUDING, WITHOUT LIMITATION, DAMAGES FOR LOSS OF PROFITS, LOSS OF DATA, BUSINESS 
+INTERRUPTION, OR HARDWARE FAILURE, ARISING OUT OF OR RELATED TO YOUR USE OF OR INABILITY 
+TO USE THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+8. GOVERNING LAW AND JURISDICTION
+--------------------------------------------------------------------------------
+This Agreement shall be governed by and construed in accordance with the laws of France 
+and applicable international copyright conventions, without regard to conflict of law 
+principles. Any dispute arising out of or in connection with this License shall be subject 
+to the exclusive jurisdiction of the competent courts having jurisdiction over the 
+registered headquarters of The Great Corporation.
+
+================================================================================
+The Great Corporation™ — Excellence, Performance, Prestige.
+Satisfaction > Coût.
+================================================================================
