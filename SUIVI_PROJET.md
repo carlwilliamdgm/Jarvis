@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T11:28:07.151000+00:00 — Antigravity - Desktop Morphic Layouts — completed
+
+Alignement de l application de bureau Tkinter (app.py) sur l Interface Morphique : intégration du badge dynamique des 8 layouts CDC avec couleurs contextuelles, écoute SSE proactive en tâche de fond (/jarvis/events), synchronisation du titre de la fenêtre avec l application active et correction de l ordre d initialisation des instances.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/app.py (constantes MORPHIC_CONFIG, widget morphic_badge dans le header, méthode apply_morphic_layout, thread d écoute SSE proactive start_proactive_event_stream, correction load_instances), tests/test_desktop_app_morphic.py (créé)
+
+**Vérification**
+- pytest complet : 497 passed, 1 skipped, 9 deselected, 0 failed (89s)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Commit git de la mise à jour desktop morphique.
+
 ### 2026-10-06T11:17:20.635277+00:00 — Antigravity - Web Morphic Layouts — completed
 
 Matérialisation visuelle des 8 layouts du CDC GreatOS dans l interface Web : badge dynamique, styles adaptatifs (Focus épuré, DEFCON pulsant, Vocal HUD cyan, Task Runner ambre, Idle), interception en direct du flux SSE morphic_layout_changed et polling de secours /jarvis/layout.
@@ -178,22 +197,3 @@ Nettoyage et dynamisation complets : racine assainie, service/ réorganisé, doc
 
 **À suivre**
 - Ajouter les marqueurs pytest par module sur les fichiers de tests. Configurer un CI GitHub Actions minimal.
-
-### 2026-10-04T20:50:27.670660+00:00 — Devin — completed
-
-Adaptation du codebase pour installation sur machine vierge
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- update_scheduled_task.ps1 : remplacement des chemins absolus par $PSScriptRoot; scripts/audit/static_analysis.ps1 : utilisation de $PSScriptRoot pour déterminer le projet; scripts/audit/architecture_docs.ps1 : correction du chemin du projet; tests/manual/README.md : remplacement des chemins absolus par %USERPROFILE%; INSTALLATION_MACHINE_VIERGE.md : nouveau guide d'installation automatisée complet; README.md : ajout de référence au nouveau guide d'installation; ETAT_DES_LIEUX.md : ajout d'une section sur l'installation machine vierge et mise à jour du statut global
-
-**Vérification**
-- Vérification des chemins absolus via grep, lecture des scripts modifiés, création du nouveau guide d'installation, mise à jour de la documentation existante
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester le script d'installation sur une machine vierge pour valider le processus complet

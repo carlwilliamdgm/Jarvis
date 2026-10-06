@@ -67,6 +67,17 @@ THEMES = {
     },
 }
 
+MORPHIC_CONFIG = {
+    "chat": {"label": "Chat", "color": "#69a9e8", "bg": "#0c2a44"},
+    "focus": {"label": "Focus", "color": "#9b59b6", "bg": "#1f102e"},
+    "dashboard": {"label": "Dashboard", "color": "#55c58a", "bg": "#0d2b1a"},
+    "vocal_hud": {"label": "Vocal HUD", "color": "#00d4ff", "bg": "#08283a"},
+    "task_runner": {"label": "Task Runner", "color": "#ffa502", "bg": "#332205"},
+    "web_nav": {"label": "Web Nav", "color": "#3498db", "bg": "#0b253a"},
+    "idle": {"label": "Veille", "color": "#6f8194", "bg": "#1a1e24"},
+    "defcon_alert": {"label": "DEFCON", "color": "#ff4757", "bg": "#420a0d"},
+}
+
 
 class JarvisGUI:
     def __init__(self, root):
@@ -85,7 +96,6 @@ class JarvisGUI:
         self.api_base = os.getenv("JARVIS_API_BASE", "http://localhost:8000")
         self.instances = []
         self.active_instance_id = LOCAL_INSTANCE_ID
-        self.load_instances()
 
         self.root.configure(bg=self.theme["root"])
 
@@ -120,7 +130,7 @@ class JarvisGUI:
         self.instance_frame = tk.Frame(self.header_grid, bg=HEADER_BG)
         self.instance_frame.pack(side="right", padx=(0, 8))
         
-        self.instance_var = tk.StringVar()
+        self.instance_var = tk.StringVar(master=self.root)
         self.instance_selector = ttk.Combobox(
             self.instance_frame,
             textvariable=self.instance_var,
@@ -142,6 +152,18 @@ class JarvisGUI:
         )
         self.instance_badge.pack(side="left")
         
+        self.morphic_badge = tk.Label(
+            self.header_grid,
+            text="● CHAT",
+            bg=MORPHIC_CONFIG["chat"]["bg"],
+            fg=MORPHIC_CONFIG["chat"]["color"],
+            font=("Segoe UI", 9, "bold"),
+            padx=8,
+            pady=3,
+            relief="flat",
+        )
+        self.morphic_badge.pack(side="right", padx=(0, 6))
+
         self.manage_button = tk.Button(
             self.header_grid,
             text="⚙",
@@ -257,6 +279,11 @@ class JarvisGUI:
             font=("Segoe UI", 10),
         )
         self.clear_button.pack(side="left")
+
+        self.load_instances()
+
+        # Démarrer l'écoute proactive des événements SSE pour l'Interface Morphique
+        self.start_proactive_event_stream()
 
     def _on_frame_configure(self, _event):
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
@@ -382,6 +409,14 @@ class JarvisGUI:
             self.typing_label.configure(text="")
             timestamp = data.get("timestamp", "")
             self._add_jarvis_bubble(data.get("text", ""), timestamp)
+        elif event_type == "morphic_layout_changed":
+            layout = data.get("nouveau_layout", "chat")
+            os_ctx = data.get("os_context", {})
+            self.apply_morphic_layout(layout, os_ctx)
+        elif event_type == "os_context_changed":
+            app_name = data.get("application", "")
+            if app_name and app_name != "Inconnue":
+                self.root.title(f"Jarvis — [{app_name}]")
         elif event_type == "error":
             self._add_error(data.get("message", "Erreur inconnue."))
         elif event_type == "done":
@@ -430,6 +465,61 @@ class JarvisGUI:
             widget.configure(bg=theme["jarvis_bg"], fg=theme["jarvis_fg"], highlightbackground=theme["jarvis_border"])
         elif role == "status":
             widget.configure(bg=theme["root"])
+
+    def apply_morphic_layout(self, layout: str, os_context: dict = None):
+        """Adapte visuellement l'application Tkinter selon le layout morphique actif."""
+        cfg = MORPHIC_CONFIG.get(layout, MORPHIC_CONFIG["chat"])
+        os_ctx = os_context or {}
+        app_name = os_ctx.get("application", "")
+
+        label_text = f"● {cfg['label'].upper()}"
+        if app_name and app_name != "Inconnue":
+            label_text += f" · {app_name[:12]}"
+
+        self.morphic_badge.configure(
+            text=label_text,
+            fg=cfg["color"],
+            bg=cfg["bg"],
+        )
+
+        # Si DEFCON, alerte visuelle sur le titre
+        if layout == "defcon_alert":
+            self.root.title("⚠ GREATOS — ALERTE DEFCON ACTIVE ⚠")
+        elif layout == "focus":
+            self.root.title(f"Jarvis — [Focus: {app_name or 'Concentration'}]")
+        else:
+            self.root.title(f"Jarvis — {cfg['label']}")
+
+    def start_proactive_event_stream(self):
+        """Démarre l'écoute en arrière-plan des événements SSE /jarvis/events."""
+        def worker():
+            while True:
+                try:
+                    url = f"{self.api_base}/jarvis/events"
+                    headers = {}
+                    api_key = os.getenv("JARVIS_API_KEY")
+                    if api_key:
+                        headers["Authorization"] = f"Bearer {api_key}"
+
+                    response = requests.get(url, headers=headers, stream=True, timeout=60)
+                    if response.status_code != 200:
+                        time.sleep(5)
+                        continue
+
+                    for line in response.iter_lines(decode_unicode=True):
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw_data = line[5:].strip()
+                        try:
+                            event = json.loads(raw_data)
+                            self.root.after(0, self.handle_event, event)
+                        except Exception:
+                            continue
+                except Exception:
+                    time.sleep(5)
+
+        thread = threading.Thread(target=worker, daemon=True, name="Desktop_SSE_Listener")
+        thread.start()
 
     def toggle_theme(self):
         self.theme_name = "light" if self.theme_name == "dark" else "dark"

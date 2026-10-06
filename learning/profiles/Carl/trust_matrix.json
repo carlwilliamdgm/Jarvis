@@ -66,72 +66,72 @@
     "goals_list": {
       "niveau": 1,
       "score": 1.0,
-      "succes_consecutifs": 0,
-      "actions_totales": 5,
+      "succes_consecutifs": 1,
+      "actions_totales": 6,
       "echecs": 0
     },
     "system_execute_command": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 5,
-      "echecs": 5
+      "actions_totales": 6,
+      "echecs": 6
     },
     "lister_dossier": {
-      "niveau": 0,
+      "niveau": 1,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 4,
+      "succes_consecutifs": 0,
+      "actions_totales": 5,
       "echecs": 0
     },
     "vider_temp": {
-      "niveau": 0,
+      "niveau": 1,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 4,
+      "succes_consecutifs": 0,
+      "actions_totales": 5,
       "echecs": 0
     },
     "lire_notes": {
-      "niveau": 0,
+      "niveau": 1,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 4,
+      "succes_consecutifs": 0,
+      "actions_totales": 5,
       "echecs": 0
     },
     "supprimer": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 12,
-      "echecs": 12
+      "actions_totales": 15,
+      "echecs": 15
     },
     "stark_test_same": {
-      "niveau": 0,
+      "niveau": 1,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 4,
+      "succes_consecutifs": 0,
+      "actions_totales": 5,
       "echecs": 0
     },
     "stark_error_tool": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 12,
-      "echecs": 12
+      "actions_totales": 15,
+      "echecs": 15
     },
     "stark_type_error": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 4,
-      "echecs": 4
+      "actions_totales": 5,
+      "echecs": 5
     },
     "conversation_error_tool": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 4,
-      "echecs": 4
+      "actions_totales": 5,
+      "echecs": 5
     }
   },
   "historique_resultats": [
@@ -575,6 +575,90 @@
     },
     {
       "date": "2026-10-06T11:10:49.688591+00:00",
+      "domaine": "conversation_error_tool",
+      "capacite": "conversation_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:01.241369+00:00",
+      "domaine": "goals_list",
+      "capacite": "goals.list",
+      "succes": true
+    },
+    {
+      "date": "2026-10-06T11:27:01.398170+00:00",
+      "domaine": "system_execute_command",
+      "capacite": "system.execute_command",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:07.077942+00:00",
+      "domaine": "lister_dossier",
+      "capacite": "lister_dossier",
+      "succes": true
+    },
+    {
+      "date": "2026-10-06T11:27:07.215118+00:00",
+      "domaine": "vider_temp",
+      "capacite": "vider_temp",
+      "succes": true
+    },
+    {
+      "date": "2026-10-06T11:27:07.343371+00:00",
+      "domaine": "lire_notes",
+      "capacite": "lire_notes",
+      "succes": true
+    },
+    {
+      "date": "2026-10-06T11:27:07.475682+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:07.707523+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:07.921025+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:08.175156+00:00",
+      "domaine": "stark_test_same",
+      "capacite": "stark_test_same",
+      "succes": true
+    },
+    {
+      "date": "2026-10-06T11:27:08.413850+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:08.624817+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:08.892324+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:09.263885+00:00",
+      "domaine": "stark_type_error",
+      "capacite": "stark_type_error",
+      "succes": false
+    },
+    {
+      "date": "2026-10-06T11:27:09.761407+00:00",
       "domaine": "conversation_error_tool",
       "capacite": "conversation_error_tool",
       "succes": false
