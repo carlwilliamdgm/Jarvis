@@ -48,7 +48,7 @@ def valider_et_corriger_arguments(outil: str, args: dict[str, Any] | None) -> Va
     2. Inspecte la signature de la fonction dans OUTILS.
     3. Vérifie la présence des arguments positionnels/obligatoires.
     """
-    from taskflow.tools import OUTILS
+    from core_intellect.tool_registry import OUTILS
 
     if outil not in OUTILS:
         return ValidationResult(

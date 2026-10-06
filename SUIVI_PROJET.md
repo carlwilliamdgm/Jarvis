@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T11:45:26.560934+00:00 — Antigravity - Nettoyage & Découplage Tool Registry — completed
+
+Audit des flux inter-modules et assainissement complet : 1) Purge de 173 fichiers .pyc et caches résiduels. 2) Suppression de l import mort taskflow.storage dans context_engine/system_monitor.py. 3) Inversion de dépendance majeure : création de core_intellect/tool_registry.py fournissant un registre neutre d outils/capacités (OUTILS proxy) pour Core Intellect. intellect.py, argument_validator.py et tool_signatures.py ne dépendent plus directement de taskflow.tools.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/tool_registry.py (créé - registre d outils neutre), core_intellect/intellect.py (import OUTILS depuis core_intellect.tool_registry), core_intellect/argument_validator.py (import OUTILS depuis core_intellect.tool_registry), core_intellect/tool_signatures.py (import OUTILS depuis core_intellect.tool_registry), context_engine/system_monitor.py (suppression import mort taskflow.storage)
+
+**Vérification**
+- pytest complet : 497 passed, 1 skipped, 9 deselected, 0 failed (79s)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-06T11:28:07.151000+00:00 — Antigravity - Desktop Morphic Layouts — completed
 
 Alignement de l application de bureau Tkinter (app.py) sur l Interface Morphique : intégration du badge dynamique des 8 layouts CDC avec couleurs contextuelles, écoute SSE proactive en tâche de fond (/jarvis/events), synchronisation du titre de la fenêtre avec l application active et correction de l ordre d initialisation des instances.
@@ -178,22 +197,3 @@ Nettoyage complet du projet : racine assainie, service/ réorganisé, docs/ cent
 
 **À suivre**
 - Ajouter les marqueurs @pytest.mark.xxx dans les fichiers de tests existants pour filtrage par module. Configurer un CI GitHub Actions minimal (.github/workflows/ci.yml). Supprimer les dossiers Documents/ et Notes dev/ maintenant vides.
-
-### 2026-10-05T10:18:32.985800+00:00 — Antigravity - Nettoyage GreatOS — completed
-
-Nettoyage et dynamisation complets : racine assainie, service/ réorganisé, docs/ centralisée, runtime/ isolé, healthcheck et run.ps1 créés
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Étapes 1-6 : suppression tmp, déplacement bootstrap/scripts, docs/guides, docs/architecture, docs/archive, runtime/, scripts/healthcheck.py, scripts/run.ps1, correction imports service->jarvis/context_engine, pytest.ini mis à jour
-
-**Vérification**
-- 105 tests passés avant et après toutes les modifications (suite core 7 fichiers)
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Ajouter les marqueurs pytest par module sur les fichiers de tests. Configurer un CI GitHub Actions minimal.

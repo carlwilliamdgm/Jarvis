@@ -32,7 +32,7 @@ def _signature_callable(nom: str, fonction) -> SignatureOutil:
 
 def lister_signatures_outils() -> list[SignatureOutil]:
     """Return the current public tool registry as exact call signatures."""
-    from taskflow.tools import OUTILS
+    from core_intellect.tool_registry import OUTILS
 
     return [
         _signature_callable(nom, fonction)

@@ -40,7 +40,7 @@ from core_intellect.cognitive_defense import (
 from core_intellect.intent_router import router_intention, IntentCategory
 from core_intellect.argument_validator import valider_et_corriger_arguments
 from greatos_contracts import RequestOrigin
-from taskflow.tools import OUTILS
+from core_intellect.tool_registry import OUTILS
 
 OS = platform.system()
 HOME = Path.home()
