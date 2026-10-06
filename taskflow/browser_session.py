@@ -79,10 +79,10 @@ class BrowserSession:
             except Exception:
                 pass
         
-        # Intégrer avec le système event_bus de Jarvis si disponible
+        # Intégrer avec le système event_bus de GreatOS si disponible
         try:
-            from jarvis import event_bus
-            event_bus.emit("browser_session", event)
+            from core_intellect.event_bus import get_event_bus
+            get_event_bus().emit("browser_session", event)
         except (ImportError, Exception):
             pass
     

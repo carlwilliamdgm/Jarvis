@@ -57,6 +57,109 @@
       --warning: #9a6410;
     }
 
+    /* === INTERFACE MORPHIQUE (8 Layouts Contextuels GreatOS) === */
+    .morphic-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .morphic-badge .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Layout 1: Chat (Défaut) */
+    body.layout-chat .morphic-badge { color: var(--accent); border-color: rgba(105, 169, 232, 0.3); }
+
+    /* Layout 2: Focus (Productivité / Plein écran / IDE) */
+    body.layout-focus {
+      --chat: #06070a;
+      --page: #040407;
+      --border: #141824;
+    }
+    body.layout-focus .morphic-badge {
+      color: #9b59b6;
+      border-color: rgba(155, 89, 182, 0.4);
+      background: rgba(155, 89, 182, 0.08);
+    }
+    body.layout-focus .app-header {
+      padding-top: 6px;
+      padding-bottom: 6px;
+      opacity: 0.85;
+      transition: opacity 0.2s ease;
+    }
+    body.layout-focus .app-header:hover { opacity: 1; }
+
+    /* Layout 3: Dashboard */
+    body.layout-dashboard .morphic-badge { color: var(--good); border-color: rgba(85, 197, 138, 0.4); }
+
+    /* Layout 4: Vocal HUD */
+    body.layout-vocal_hud {
+      box-shadow: inset 0 0 40px rgba(0, 212, 255, 0.08);
+    }
+    body.layout-vocal_hud .morphic-badge {
+      color: #00d4ff;
+      border-color: rgba(0, 212, 255, 0.5);
+      background: rgba(0, 212, 255, 0.1);
+      box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+    }
+
+    /* Layout 5: Task Runner (Stark / Autonome) */
+    body.layout-task_runner {
+      box-shadow: inset 0 0 35px rgba(255, 165, 2, 0.08);
+    }
+    body.layout-task_runner .morphic-badge {
+      color: #ffa502;
+      border-color: rgba(255, 165, 2, 0.5);
+      background: rgba(255, 165, 2, 0.1);
+    }
+
+    /* Layout 6: Web Nav */
+    body.layout-web_nav .morphic-badge {
+      color: #3498db;
+      border-color: rgba(52, 152, 219, 0.4);
+    }
+
+    /* Layout 7: Idle */
+    body.layout-idle {
+      opacity: 0.75;
+      filter: saturate(0.8);
+      transition: opacity 0.5s ease;
+    }
+    body.layout-idle .morphic-badge {
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
+    /* Layout 8: DEFCON Alert (Urgence / Sécurité) */
+    body.layout-defcon_alert {
+      --page: #150505;
+      --border: #6a1a1a;
+      box-shadow: inset 0 0 50px rgba(255, 71, 87, 0.2);
+      animation: pulseDefcon 2s infinite ease-in-out;
+    }
+    body.layout-defcon_alert .morphic-badge {
+      color: #ff4757;
+      border-color: #ff4757;
+      background: rgba(255, 71, 87, 0.2);
+    }
+    @keyframes pulseDefcon {
+      0%, 100% { box-shadow: inset 0 0 30px rgba(255, 71, 87, 0.15); }
+      50% { box-shadow: inset 0 0 60px rgba(255, 71, 87, 0.35); }
+    }
+
     html,
     body {
       margin: 0;
@@ -676,6 +779,11 @@
           <select id="instanceSelect" class="instance-select" title="Sélectionner l'instance Jarvis"></select>
           <span id="instanceBadge" class="instance-badge"></span>
         </div>
+        <div id="morphicBadge" class="morphic-badge" title="Layout contextuel actif (Interface Morphique GreatOS)">
+          <span class="dot"></span>
+          <span id="morphicLayoutName">Chat</span>
+          <span id="morphicAppName" style="opacity: 0.6; font-size: 10px; margin-left: 2px;"></span>
+        </div>
         <div class="status">
           <span id="statusDot" class="dot"></span>
           <span id="statusText">Service en ligne</span>
@@ -793,7 +901,48 @@
     const confirmationDescription = document.getElementById("confirmationDescription");
     const confirmationCancel = document.getElementById("confirmationCancel");
     const confirmationApprove = document.getElementById("confirmationApprove");
+    const morphicBadge = document.getElementById("morphicBadge");
+    const morphicLayoutName = document.getElementById("morphicLayoutName");
+    const morphicAppName = document.getElementById("morphicAppName");
+    let currentMorphicLayout = "chat";
     let discoveryActive = false;
+
+    const MORPHIC_LABELS = {
+      chat: "Chat",
+      focus: "Focus",
+      dashboard: "Dashboard",
+      vocal_hud: "Vocal HUD",
+      task_runner: "Task Runner",
+      web_nav: "Web Nav",
+      idle: "Veille",
+      defcon_alert: "DEFCON Alerte",
+    };
+
+    function applyMorphicLayout(layout, osContext = {}) {
+      if (!layout) return;
+      currentMorphicLayout = layout;
+
+      // Nettoyer anciennes classes de layout
+      document.body.classList.remove(
+        "layout-chat", "layout-focus", "layout-dashboard", "layout-vocal_hud",
+        "layout-task_runner", "layout-web_nav", "layout-idle", "layout-defcon_alert"
+      );
+      document.body.classList.add(`layout-${layout}`);
+
+      // Mettre à jour le badge visuel
+      if (morphicLayoutName) {
+        morphicLayoutName.textContent = MORPHIC_LABELS[layout] || layout;
+      }
+      if (morphicAppName) {
+        const app = osContext.application || "";
+        morphicAppName.textContent = app && app !== "Inconnue" ? `· ${app}` : "";
+      }
+
+      // Si le layout est dashboard, synchroniser la vue active
+      if (layout === "dashboard") {
+        showView("dashboard");
+      }
+    }
     
     let source = null;
     let proactiveSource = null;
@@ -889,6 +1038,12 @@
         addEvent("status-line", `Veille GreatOS — anomalie ${data.type || "système"} résolue.`);
       } else if (type === "capability_proposal") {
         addEvent("status-line", `Capacité candidate enregistrée pour revue : ${data.capability || "capacité inconnue"} (${data.proposal_id || ""}).`);
+      } else if (type === "morphic_layout_changed") {
+        applyMorphicLayout(data.nouveau_layout, data.os_context);
+      } else if (type === "os_context_changed") {
+        if (morphicAppName && data.application) {
+          morphicAppName.textContent = `· ${data.application}`;
+        }
       } else if (type === "done") {
         closeStream(false);
       }
@@ -1398,13 +1553,26 @@
       }
     });
 
+    async function refreshMorphicLayout() {
+      try {
+        const response = await fetch(`${apiBase}/jarvis/layout`, { cache: "no-store" });
+        if (response.ok) {
+          const data = await response.json();
+          applyMorphicLayout(data.layout, data.os_context);
+        }
+      } catch (_e) {
+        // En cas d'erreur réseau, garder le layout actuel
+      }
+    }
+
     loadInstances();
     applyTheme(localStorage.getItem("jarvis-theme") || "dark");
     resizeTextarea();
     refreshStatus();
     refreshBrowserSessions();
+    refreshMorphicLayout();
     startProactiveEventStream();
-    setInterval(() => { refreshStatus(); refreshBrowserSessions(); }, 15000);
+    setInterval(() => { refreshStatus(); refreshBrowserSessions(); refreshMorphicLayout(); }, 15000);
   </script>
 </body>
 </html>

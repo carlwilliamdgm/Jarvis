@@ -1,8 +1,10 @@
 """System Monitor - Surveillance continue de l'état système."""
 
+import json
 import psutil
 import platform
 import socket
+import subprocess
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 
@@ -390,3 +392,55 @@ def obtenir_tendances_systeme(heures: int = 24) -> Dict[str, Any]:
         "cpu_tendance": cpu_tendance,
         "timestamp_analyse": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
+
+
+def obtenir_infos_tailscale() -> Dict:
+    """Détecte l'IP Tailscale locale et les appareils distants connectés sur le Tailnet.
+
+    Déplacé depuis interface_morphique/server.py vers context_engine/system_monitor.py
+    car c'est une fonction de monitoring réseau, pas de présentation.
+    """
+    try:
+        result = subprocess.run(
+            ["tailscale", "status", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        status_data = json.loads(result.stdout)
+        self_info = status_data.get("Self", {})
+        self_ips = self_info.get("TailscaleIPs", [])
+        local_ip = next((ip for ip in self_ips if ":" not in ip), None)
+        local_hostname = self_info.get("HostName", "")
+
+        devices = []
+        peers = status_data.get("Peer", {})
+        for peer_key, peer_info in peers.items():
+            tailscale_ips = peer_info.get("TailscaleIPs", [])
+            ip = next((addr for addr in tailscale_ips if ":" not in addr), None)
+            hostname = peer_info.get("HostName", peer_info.get("DNSName", peer_key))
+            is_online = peer_info.get("Online", False)
+            os_type = peer_info.get("OS", "unknown")
+            dns_name = peer_info.get("DNSName", "").rstrip(".")
+
+            if ip and hostname:
+                devices.append({
+                    "nom": hostname,
+                    "ip": ip,
+                    "os": os_type,
+                    "online": is_online,
+                    "dns": dns_name,
+                })
+
+        return {
+            "disponible": True,
+            "self": {"nom": local_hostname, "ip": local_ip},
+            "devices": devices,
+        }
+    except Exception:
+        return {
+            "disponible": False,
+            "self": {"nom": None, "ip": None},
+            "devices": [],
+        }

@@ -8,6 +8,7 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 from typing import Dict, List
 from uuid import uuid4
 
@@ -78,7 +79,10 @@ from jarvis.agent import (
     initialiser,
 )
 from context_engine.consolidation_scheduler import ConsolidationScheduler
-from jarvis.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
+from context_engine.system_monitor import obtenir_infos_tailscale
+from context_engine.os_hooks import demarrer_os_hooks, arreter_os_hooks
+from interface_morphique.context_switcher import get_morphic_engine
+from interface_morphique.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
 from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale
 from jarvis.clap_input import demarrer_ecoute_clap, arreter_ecoute_clap
 from core_intellect.prompt import construire_prompt_action
@@ -138,6 +142,20 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Could not start browser overlay: %s", e)
 
+        # Démarrer l'interception réactive des événements OS
+        try:
+            demarrer_os_hooks()
+            logger.info("OS hooks started successfully")
+        except Exception as e:
+            logger.warning("Could not start OS hooks: %s", e)
+
+        # Démarrer le moteur de bascule contextuelle Interface Morphique
+        try:
+            get_morphic_engine().demarrer()
+            logger.info("Morphic context engine started successfully")
+        except Exception as e:
+            logger.warning("Could not start morphic engine: %s", e)
+
         logger.info("Jarvis API server started successfully")
         # Démarrer le thread de sampling CPU non-bloquant pour /jarvis/status
         _demarrer_cpu_sampler()
@@ -180,6 +198,18 @@ async def lifespan(app: FastAPI):
         logger.info("Browser overlay stopped successfully")
     except Exception as e:
         logger.warning("Could not stop browser overlay: %s", e)
+    # Arrêter les hooks OS réactifs
+    try:
+        arreter_os_hooks()
+        logger.info("OS hooks stopped successfully")
+    except Exception as e:
+        logger.warning("Could not stop OS hooks: %s", e)
+    # Arrêter le moteur morphique
+    try:
+        get_morphic_engine().arreter()
+        logger.info("Morphic context engine stopped successfully")
+    except Exception as e:
+        logger.warning("Could not stop morphic engine: %s", e)
 
 
 app = FastAPI(title="Jarvis API", version="1.0.0", lifespan=lifespan)
@@ -205,54 +235,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Jarvis-Internal-Kill"],
 )
-
-
-def obtenir_infos_tailscale() -> Dict:
-    """Détecte l'IP Tailscale locale et les appareils distants connectés sur le Tailnet."""
-    try:
-        result = subprocess.run(
-            ["tailscale", "status", "--json"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5,
-        )
-        status_data = json.loads(result.stdout)
-        self_info = status_data.get("Self", {})
-        self_ips = self_info.get("TailscaleIPs", [])
-        local_ip = next((ip for ip in self_ips if ":" not in ip), None)
-        local_hostname = self_info.get("HostName", "")
-
-        devices = []
-        peers = status_data.get("Peer", {})
-        for peer_key, peer_info in peers.items():
-            tailscale_ips = peer_info.get("TailscaleIPs", [])
-            ip = next((addr for addr in tailscale_ips if ":" not in addr), None)
-            hostname = peer_info.get("HostName", peer_info.get("DNSName", peer_key))
-            is_online = peer_info.get("Online", False)
-            os_type = peer_info.get("OS", "unknown")
-            dns_name = peer_info.get("DNSName", "").rstrip(".")
-
-            if ip and hostname:
-                devices.append({
-                    "nom": hostname,
-                    "ip": ip,
-                    "os": os_type,
-                    "online": is_online,
-                    "dns": dns_name,
-                })
-
-        return {
-            "disponible": True,
-            "self": {"nom": local_hostname, "ip": local_ip},
-            "devices": devices,
-        }
-    except Exception:
-        return {
-            "disponible": False,
-            "self": {"nom": None, "ip": None},
-            "devices": [],
-        }
 
 
 security = HTTPBearer(auto_error=False)
@@ -588,6 +570,23 @@ async def get_status(_auth: bool = Depends(verify_api_key)) -> Dict:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting status: {str(e)}")
+
+
+@app.get("/jarvis/layout")
+async def get_current_layout(_auth: bool = Depends(verify_api_key)) -> Dict:
+    """Retourne le layout contextuel actif déterminé par l'Interface Morphique."""
+    try:
+        from context_engine.os_hooks import get_os_hook_manager
+        morphic = get_morphic_engine()
+        layout = morphic.get_current_layout()
+        os_ctx = get_os_hook_manager().get_current_context()
+        return {
+            "layout": layout.value,
+            "os_context": os_ctx,
+            "timestamp": time.time(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur layout: {str(e)}")
 
 
 @app.post("/jarvis/signal")

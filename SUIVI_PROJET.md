@@ -8,6 +8,120 @@
 
 ## Journal récent
 
+### 2026-10-06T11:17:20.635277+00:00 — Antigravity - Web Morphic Layouts — completed
+
+Matérialisation visuelle des 8 layouts du CDC GreatOS dans l interface Web : badge dynamique, styles adaptatifs (Focus épuré, DEFCON pulsant, Vocal HUD cyan, Task Runner ambre, Idle), interception en direct du flux SSE morphic_layout_changed et polling de secours /jarvis/layout.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/web/index.html (styles CSS des 8 layouts, badge morphique dans le header, fonction applyMorphicLayout, écoute SSE dans handleEvent, refreshMorphicLayout à l initialisation)
+
+**Vérification**
+- pytest tests/test_morphic_api.py tests/test_morphic_switcher.py tests/test_os_hooks.py : 13 passed, 0 failed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Connecter les layouts contextuels à la GUI Tkinter desktop (app.py) ou préparer le package de lancement résident Windows.
+
+### 2026-10-06T11:11:35.587384+00:00 — Antigravity - OS Hooks & Interface Morphique — completed
+
+Transformation de GreatOS en surcouche réactive : implémentation des OS Hooks Win32 natifs (SetWinEventHook sans polling) et du moteur de bascule contextuelle MorphicContextEngine (8 layouts CDC). Ajout endpoint /jarvis/layout et intégration SSE.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- context_engine/os_hooks.py (créé - hooks Win32 réactifs temps réel), interface_morphique/context_switcher.py (créé - moteur 8 layouts CDC), interface_morphique/server.py (démarrage/arrêt os_hooks et morphic_engine dans lifespan + endpoint GET /jarvis/layout), tests/test_os_hooks.py (créé), tests/test_morphic_switcher.py (créé), tests/test_morphic_api.py (créé)
+
+**Vérification**
+- pytest complet : 495 passed, 1 skipped, 9 deselected, 0 failed (80s)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Connecter les layouts contextuels dans l interface Web (index.html / React) pour que le rendu visuel bascule physiquement lors d une transition.
+
+### 2026-10-06T10:59:24.894326+00:00 — Antigravity - Finalisation refactoring (point 3) — completed
+
+Correction du dernier couplage residuel : taskflow/browser_session.py utilise desormais get_event_bus() depuis core_intellect.event_bus sans passer par jarvis.agent. Les 3 corrections de qualite de code sont toutes appliquees et validees.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/event_bus.py (get_event_bus + register_global_bus ajoutes), jarvis/agent.py (register_global_bus appele apres creation du bus), taskflow/browser_session.py (get_event_bus() remplace import jarvis.agent), jarvis/voice_overlay.py (shim simplifie - mecanisme __class__ supprime), interface_morphique/server.py (import obtenir_infos_tailscale remonte en haut du fichier)
+
+**Vérification**
+- pytest complet : 482 passed, 1 skipped, 9 deselected, 0 failed (80s)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Implementer les 8 layouts contextuels Interface Morphique (context-aware switching). Migrer interface web vers React+Tailwind CSS.
+
+### 2026-10-06T10:50:34.106722+00:00 — Subagent - Fix import PEP8 server.py — completed
+
+Remontee de l import obtenir_infos_tailscale en haut de interface_morphique/server.py
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/server.py
+
+**Vérification**
+- py_compile OK, pytest 23/23 tests API verts
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Aucun
+
+### 2026-10-06T10:50:07.633112+00:00 — Subagent - Simplification shim voice_overlay — completed
+
+Simplification du shim jarvis/voice_overlay.py : suppression du mecanisme __class__ proxy de module complexe, remplacement par un import direct minimal
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/voice_overlay.py
+
+**Vérification**
+- pytest tests/test_voice_overlay.py tests/test_greatos_background_wiring.py : 14 passed, 0 failed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Aucun
+
+### 2026-10-06T10:44:26.985375+00:00 — Antigravity - Refactoring Interface Morphique — completed
+
+Refactoring complet du codebase : 4 corrections architecturales, 482/482 tests verts maintenus
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/voice_overlay.py (cree), core_intellect/event_bus.py (cree), core_intellect/personality.py (cree), context_engine/system_monitor.py (obtenir_infos_tailscale ajoutee), jarvis/voice_overlay.py (shim), jarvis/personality.py (shim), jarvis/agent.py (EventBus inline supprime), interface_morphique/server.py (tailscale + voice_overlay import corriges), taskflow/tools.py (import corrige), taskflow/browser_session.py (event_bus import corrige), core_intellect/intellect.py (personality import corrige), tests/test_voice_overlay.py (imports + patches mis a jour), interface_morphique/tools.py et __init__.py (exports vocal overlay ajoutes)
+
+**Vérification**
+- pytest complet : 482 passed, 1 skipped, 9 deselected, 0 failed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Implementer les 8 layouts contextuels de Interface Morphique selon le CDC (context-aware switching). Migrer l interface web de HTML vanilla vers React+Tailwind CSS (Phase 2 CDC). Renforcer Progress Tracker (dashboard, visualisations). Configurer CI GitHub Actions.
+
 ### 2026-10-05T10:54:18.736236+00:00 — Senior Software Engineer — completed
 
 Nettoyage integral et dynamisation : 482/482 tests au vert, restructuration docs/, scripts/ et runtime/, elimination des blocages tests vocaux
@@ -83,117 +197,3 @@ Adaptation du codebase pour installation sur machine vierge
 
 **À suivre**
 - Tester le script d'installation sur une machine vierge pour valider le processus complet
-
-### 2026-10-04T20:36:41.804535+00:00 — Devin — completed
-
-Mise à jour de la documentation du projet
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- ETAT_DES_LIEUX.md : date de révision mise à jour au 4 octobre 2026, ajout d'une section détaillée sur les améliorations vocales récentes (validation secondaire wake word, VAD spectral, transcription robuste, réinitialisation TTS, latence optimisée, wake word statique), mise à jour de la description du module Jarvis pour refléter ces améliorations; SUIVI_PROJET.md régénéré automatiquement depuis learning/agent_sessions.jsonl
-
-**Vérification**
-- Lecture des fichiers de documentation existants, régénération de SUIVI_PROJET.md via render_project_status, écriture des modifications dans ETAT_DES_LIEUX.md
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Valider sur matériel réel les améliorations vocales décrites (faux positifs/négatifs, latence, bruit ambiant)
-
-### 2026-10-02T11:44:32.719185+00:00 — Codex - Audit sortie vocale — completed
-
-Évite qu'un signal d'arrêt TTS périmé coupe la réponse vocale suivante après une erreur de synthèse ou de démarrage audio.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_output.py : réinitialisation de l'événement d'arrêt au début d'une nouvelle tentative et lors des erreurs de synthèse ou sd.play.
-
-**Vérification**
-- python -m py_compile jarvis/voice_output.py réussi; git diff --check ciblé réussi; tests non exécutés conformément à la demande.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Valider sur matériel réel la commande stop pendant lecture et le comportement après une erreur de synthèse ou de sortie audio.
-
-### 2026-10-02T11:41:36.835445+00:00 — Codex - VAD bruit ambiant — completed
-
-Correction localisée des débordements int16 et du reset incomplet dans AdaptiveVAD.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/audio_capture.py: calcul des magnitudes float32 avant abs et remise à zéro de l'état, fenêtres de saturation et ZCR dans reset_floor.
-
-**Vérification**
-- Compilation python -m py_compile jarvis/audio_capture.py réussie; aucun test exécuté conformément à la consigne; modifications concurrentes préexistantes conservées.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Valider les transitions sur captures réelles incluant silence, parole faible et fort niveau, sans modifier les paramètres adaptatifs avant mesure.
-
-### 2026-10-02T11:40:49.649434+00:00 — Codex - Fiabilite transcription — completed
-
-Evite qu'une absence temporaire de trame audio soit injectee comme silence et coupe un segment Vosk.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_input.py : _EngineStream signale les lectures vides comme discontinuite et renvoie un buffer vide; transcrire_flux ignore les buffers vides et remet le compteur a zero apres une lecture continue.
-
-**Vérification**
-- python -m py_compile jarvis/voice_input.py reussi; tests non executes comme demande. Revue du diff limitee au chemin transcrire_flux/_EngineStream; changement adaptatif wake word preexistant conserve sans modification.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Valider avec micro reel et une interruption ponctuelle de producteur que le segment Vosk reprend sans coupe; verifier le comportement apres trois lectures consecutives vides.
-
-### 2026-10-02T11:39:25.906322+00:00 — Codex - Audit wake word — completed
-
-Audit adaptation de seuil : désactivation de l'apprentissage non supervisé qui pouvait faire dériver le seuil
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_input.py : adaptation dynamique désactivée; seuil statique configurable conservé et intervalle de confirmation 250 ms préservé
-
-**Vérification**
-- py_compile jarvis/voice_input.py réussi; git diff --check ciblé exécuté; tests non exécutés conformément à la demande
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Prévoir une calibration locale fondée sur des retours explicites ou données étiquetées avant de réactiver une adaptation automatique
-
-### 2026-10-02T11:29:57.390167+00:00 — Codex - Audit renforcement mode vocal — completed
-
-Audit étendu du cycle vocal et correction d'un défaut de reconnexion pouvant créer deux threads lecteurs concurrents; confirmation wake-word espacée.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/audio_capture.py : reconnexion du flux dans le thread capture propriétaire sans relancer un deuxième worker; jarvis/voice_input.py : espacement minimal des détections wake-word confirmées.
-
-**Vérification**
-- py_compile réussi sur audio_capture.py et voice_input.py; tests non exécutés. git diff --check remonte des espaces finaux dans les modifications vocales préexistantes des deux fichiers.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Valider le reconnect micro en conditions réelles et mesurer le délai de confirmation wake-word avec différents niveaux de bruit.

@@ -372,7 +372,7 @@ Règles impératives du Mode Stark (Plein Accès & Raisonnement Renforcé) :
 """
 
     # Adapter le ton en fonction du contexte
-    from jarvis.personality import adapter_ton_contextuel, generer_prompt_personnalite
+    from core_intellect.personality import adapter_ton_contextuel, generer_prompt_personnalite
     ton_contextuel = adapter_ton_contextuel(message_actuel) if message_actuel else "ton naturel et équilibré"
     
     # Obtenir les instructions de personnalité

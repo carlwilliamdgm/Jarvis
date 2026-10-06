@@ -1308,7 +1308,7 @@ def decouvrir_appareils_tailscale() -> str:
     if decision.decision == SecurityDecision.DENY:
         return resultat_erreur(decision.reason, categorie="defcon_blocked")
     try:
-        from interface_morphique.server import obtenir_infos_tailscale
+        from context_engine.system_monitor import obtenir_infos_tailscale
         info = obtenir_infos_tailscale()
         if not info.get("disponible"):
             return "Tailscale n'est pas disponible ou actif sur cette machine."

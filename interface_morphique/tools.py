@@ -27,3 +27,22 @@ def arreter_overlay_navigation() -> str:
     except Exception as e:
         return resultat_erreur(f"Erreur lors de l'arrêt de l'overlay: {str(e)}", e)
 
+
+def demarrer_overlay_vocal() -> str:
+    """Démarre l'overlay HUD vocal en temps réel."""
+    try:
+        from interface_morphique.voice_overlay import demarrer_overlay_vocal as _demarrer
+        _demarrer()
+        return "Overlay vocal démarré avec succès"
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors du démarrage de l'overlay vocal: {str(e)}", e)
+
+
+def arreter_overlay_vocal() -> str:
+    """Arrête l'overlay HUD vocal."""
+    try:
+        from interface_morphique.voice_overlay import arreter_overlay_vocal as _arreter
+        _arreter()
+        return "Overlay vocal arrêté"
+    except Exception as e:
+        return resultat_erreur(f"Erreur lors de l'arrêt de l'overlay vocal: {str(e)}", e)
