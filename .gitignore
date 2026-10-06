@@ -54,3 +54,7 @@ memory*.tmp
 # Notes de développement
 Notes dev/
 Documents/
+
+# Secrets & Clés d'environnement
+.env
+.env.*

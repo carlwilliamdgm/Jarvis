@@ -1,5 +1,6 @@
 """Tests d'intégration pour l'endpoint /jarvis/layout et le streaming morphique."""
 
+import os
 import unittest
 from fastapi.testclient import TestClient
 
@@ -10,9 +11,11 @@ from interface_morphique.context_switcher import MorphicLayout, get_morphic_engi
 class TestMorphicAPI(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
+        api_key = os.environ.get("JARVIS_API_KEY", "")
+        self.headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     def test_get_current_layout_api(self):
-        response = self.client.get("/jarvis/layout")
+        response = self.client.get("/jarvis/layout", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn("layout", data)
@@ -24,13 +27,13 @@ class TestMorphicAPI(unittest.TestCase):
         engine = get_morphic_engine()
         # Simuler un déclencheur vocal
         engine.notifier_evenement("vocal_state_changed", {"state": "listening"})
-        response = self.client.get("/jarvis/layout")
+        response = self.client.get("/jarvis/layout", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["layout"], MorphicLayout.VOCAL_HUD.value)
 
         # Réinitialiser
         engine.notifier_evenement("vocal_state_changed", {"state": "idle"})
-        response = self.client.get("/jarvis/layout")
+        response = self.client.get("/jarvis/layout", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["layout"], MorphicLayout.CHAT.value)
 

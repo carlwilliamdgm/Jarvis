@@ -118,21 +118,39 @@ async def lifespan(app: FastAPI):
         app.state.agent_stop_event = agent_stop_event
 
         # Démarrer l'overlay visuel vocal
-        demarrer_overlay_vocal()
-
-        # Démarrer l'écoute vocale (wake word)
         try:
-            demarrer_ecoute_vocale()
-            logger.info("Voice listener started successfully")
+            demarrer_overlay_vocal()
         except Exception as e:
-            logger.warning("Could not start voice listener: %s", e)
+            logger.warning("Could not start voice overlay: %s", e)
 
-        # Démarrer l'écoute double-clap
-        try:
-            demarrer_ecoute_clap()
-            logger.info("Double-clap listener started successfully")
-        except Exception as e:
-            logger.warning("Could not start double-clap listener: %s", e)
+        # Démarrer la voix uniquement si un micro est disponible et si non désactivé
+        _voice_disabled = os.environ.get("GREATOS_DISABLE_VOICE", "").lower() in ("1", "true", "yes")
+        _mic_available = False
+        if not _voice_disabled:
+            try:
+                import sounddevice as _sd
+                _devs = _sd.query_devices()
+                _mic_available = any(d.get("max_input_channels", 0) > 0 for d in _devs)
+            except Exception:
+                _mic_available = False
+
+        if _mic_available and not _voice_disabled:
+            # Démarrer l'écoute vocale (wake word)
+            try:
+                demarrer_ecoute_vocale()
+                logger.info("Voice listener started successfully")
+            except Exception as e:
+                logger.warning("Could not start voice listener: %s", e)
+
+            # Démarrer l'écoute double-clap
+            try:
+                demarrer_ecoute_clap()
+                logger.info("Double-clap listener started successfully")
+            except Exception as e:
+                logger.warning("Could not start double-clap listener: %s", e)
+        else:
+            reason = "désactivée via GREATOS_DISABLE_VOICE" if _voice_disabled else "aucun microphone détecté"
+            logger.info("Écoute vocale ignorée au démarrage (%s).", reason)
 
         # Démarrer l'overlay visuel de navigation
         try:

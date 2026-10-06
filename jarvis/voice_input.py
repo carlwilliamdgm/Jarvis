@@ -498,6 +498,7 @@ def transcrire_et_soumettre(audio_stream: Any, initial_pcm: bytes | None = None)
 
 def _new_wake_word_model() -> Any:
     """Construit le détecteur local ``hey_jarvis`` avec le runtime ONNX Windows."""
+    import openwakeword
     from openwakeword.model import Model
 
     return Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")

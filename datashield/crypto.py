@@ -177,6 +177,11 @@ class CryptoEngine:
         self._load_passphrase()
 
     def _load_passphrase(self) -> None:
+        try:
+            from datashield.env_loader import charger_environnement
+            charger_environnement()
+        except Exception:
+            pass
         raw = os.environ.get(_ENV_KEY, "").strip()
         if raw:
             self._passphrase = raw.encode("utf-8")

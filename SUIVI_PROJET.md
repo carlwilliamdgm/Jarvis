@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T14:19:57.457074+00:00 — Antigravity - Production Readiness & Service Background — completed
+
+Finalisation du pack production pour GreatOS : 1) Chiffrement AES-256-GCM DataShield activé avec clés cryptographiques réelles générées via scripts/setup_production.py et persistées dans .env protégé. 2) Intégration et validation du lancement silencieux via la tâche planifiée Windows JarvisAgent (jarvis_hidden.ps1 corrigé pour uvicorn avec array args et gestion de doublon de port). 3) Démarrage audio conditionnel à la présence d un micro pour éviter les crashs de service. 4) Suite de tests validée avec headers auth Bearer.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- .gitignore (.env ignoré), datashield/env_loader.py (créé), datashield/crypto.py (chargement auto .env), scripts/setup_production.py (créé), jarvis_hidden.ps1 (corrigé array args et port lock), greatos_service.py (créé gestionnaire probe), interface_morphique/server.py (audio conditionnel et try/except overlay), tests/test_morphic_api.py (headers auth)
+
+**Vérification**
+- pytest complet : 496 passed, 2 skipped, 9 deselected, 0 failed. Service Windows actif via ScheduledTask JarvisAgent et répondant sur port 8000.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Développement de la Phase 2 : Knowledge Graph personnel et apprentissage de patterns de travail par observation.
+
 ### 2026-10-06T11:45:26.560934+00:00 — Antigravity - Nettoyage & Découplage Tool Registry — completed
 
 Audit des flux inter-modules et assainissement complet : 1) Purge de 173 fichiers .pyc et caches résiduels. 2) Suppression de l import mort taskflow.storage dans context_engine/system_monitor.py. 3) Inversion de dépendance majeure : création de core_intellect/tool_registry.py fournissant un registre neutre d outils/capacités (OUTILS proxy) pour Core Intellect. intellect.py, argument_validator.py et tool_signatures.py ne dépendent plus directement de taskflow.tools.
@@ -178,22 +197,3 @@ Nettoyage integral et dynamisation : 482/482 tests au vert, restructuration docs
 
 **À suivre**
 - Terrain pret pour les futurs developpements sur une base 100% saine
-
-### 2026-10-05T10:23:09.943455+00:00 — Antigravity - Nettoyage et Dynamisation GreatOS — completed
-
-Nettoyage complet du projet : racine assainie, service/ réorganisé, docs/ centralisée, runtime/ isolé, tests corrigés, healthcheck et run.ps1 créés. 121/121 tests verts.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Étape 1: suppression .tmp, monitor.py->scripts/, install_web_search.py->bootstrap/, .gitignore étendu, .dist/ supprimé. Étape 2: windows_service.py archivé dans docs/archive/, proactive_daemon.py->jarvis/, consolidation_scheduler.py->context_engine/, imports corrigés dans agent.py et server.py. Étape 3: docs/ créé avec guides/, architecture/, archive/, 5 guides déplacés, cahier des charges déplacé. Étape 4: pytest.ini enrichi de 9 marqueurs par module. Étape 5: runtime/ créé, 4 fichiers JSON d'état déplacés dedans, 3 modules mis à jour. Étape 6: scripts/healthcheck.py et scripts/run.ps1 créés. Correction tests: test_voice_improvements (activation locale _ADAPTIVE_THRESHOLD_ENABLED), test_desktop_vision (marqueur @pytest.mark.integration pour capturer_ecran_live_structure).
-
-**Vérification**
-- 121/121 tests core passés après toutes les modifications. Healthcheck: systeme operationnel. 0 regression introduite.
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Ajouter les marqueurs @pytest.mark.xxx dans les fichiers de tests existants pour filtrage par module. Configurer un CI GitHub Actions minimal (.github/workflows/ci.yml). Supprimer les dossiers Documents/ et Notes dev/ maintenant vides.
