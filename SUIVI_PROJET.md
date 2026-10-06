@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T14:24:09.781557+00:00 — Antigravity - Politique de Confiance Réseau (Localhost & Tailscale) — completed
+
+Implémentation de la politique d accès transparent pour appareils de confiance : 1) Les requêtes issues de localhost (127.0.0.1, ::1, testclient) et du réseau privé Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) sont authentifiées automatiquement sans exiger de jeton Bearer manuel. 2) Les requêtes provenant d autres réseaux externes non approuvés exigent obligatoirement le Bearer Token JARVIS_API_KEY (401 sinon). 3) 5 tests unitaires dédiés créés dans tests/test_trusted_devices_auth.py et validés.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/server.py (ajout est_adresse_de_confiance et mise à jour verify_api_key), tests/test_trusted_devices_auth.py (nouveau fichier de tests)
+
+**Vérification**
+- pytest tests/test_trusted_devices_auth.py : 5 passed (100%). Appel réel HTTP localhost retour 200 sans token.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-06T14:19:57.457074+00:00 — Antigravity - Production Readiness & Service Background — completed
 
 Finalisation du pack production pour GreatOS : 1) Chiffrement AES-256-GCM DataShield activé avec clés cryptographiques réelles générées via scripts/setup_production.py et persistées dans .env protégé. 2) Intégration et validation du lancement silencieux via la tâche planifiée Windows JarvisAgent (jarvis_hidden.ps1 corrigé pour uvicorn avec array args et gestion de doublon de port). 3) Démarrage audio conditionnel à la présence d un micro pour éviter les crashs de service. 4) Suite de tests validée avec headers auth Bearer.
@@ -178,22 +197,3 @@ Refactoring complet du codebase : 4 corrections architecturales, 482/482 tests v
 
 **À suivre**
 - Implementer les 8 layouts contextuels de Interface Morphique selon le CDC (context-aware switching). Migrer l interface web de HTML vanilla vers React+Tailwind CSS (Phase 2 CDC). Renforcer Progress Tracker (dashboard, visualisations). Configurer CI GitHub Actions.
-
-### 2026-10-05T10:54:18.736236+00:00 — Senior Software Engineer — completed
-
-Nettoyage integral et dynamisation : 482/482 tests au vert, restructuration docs/, scripts/ et runtime/, elimination des blocages tests vocaux
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Racine assainie, service/ eclate vers modules proprietaires, docs/ unifiee, scripts/run.ps1 et healthcheck.py operationnels, runtime/ isole, test_voice_input/test_audio_capture/test_voice_reliability/test_phase4_hardening/test_desktop_vision repares
-
-**Vérification**
-- pytest complet : 482 passed, 1 skipped, 9 deselected, 0 failed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Terrain pret pour les futurs developpements sur une base 100% saine

@@ -1,6 +1,7 @@
 from collections import deque
 import asyncio
 from datetime import datetime
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -257,18 +258,48 @@ app.add_middleware(
 
 security = HTTPBearer(auto_error=False)
 
+TAILSCALE_IPV4_SUBNET = ipaddress.ip_network("100.64.0.0/10")
+TAILSCALE_IPV6_SUBNET = ipaddress.ip_network("fd7a:115c:a1e0::/48")
+
+
+def est_adresse_de_confiance(client_host: str | None) -> bool:
+    """Détermine si le client provient de localhost ou du réseau privé Tailscale."""
+    if not client_host:
+        return False
+    if client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+    try:
+        ip = ipaddress.ip_address(client_host)
+        if ip.is_loopback:
+            return True
+        if ip.version == 4 and ip in TAILSCALE_IPV4_SUBNET:
+            return True
+        if ip.version == 6 and ip in TAILSCALE_IPV6_SUBNET:
+            return True
+    except ValueError:
+        pass
+    return False
+
 
 def verify_api_key(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> bool:
-    """Valide l'authentification par Bearer Token / API Key."""
+    """Valide l'authentification :
+    - Appareils de confiance (localhost ou Tailnet Tailscale) : accès automatique direct.
+    - Autres accès distants : clé secrète JARVIS_API_KEY obligatoire en Bearer token.
+    """
+    client_host = request.client.host if request.client else None
+    if est_adresse_de_confiance(client_host):
+        return True
+
     api_key = os.environ.get("JARVIS_API_KEY")
     if not api_key:
         return True
     if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Jeton d'authentification manquant",
+            detail="Jeton d'authentification requis pour appareil externe non approuvé",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not secrets.compare_digest(credentials.credentials, api_key):
