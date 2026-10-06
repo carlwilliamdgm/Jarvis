@@ -31,30 +31,32 @@
       --accent: #69a9e8;
       --good: #55c58a;
       --warning: #e9b85f;
+      --title-color: #ffffff;
     }
 
     body.light {
-      --page: #e8edf3;
-      --chat: #f8fafc;
-      --header: #0a0a0f;
-      --footer: #eef3f8;
-      --border: #cad4df;
-      --text: #263746;
-      --muted: #587083;
+      --page: #f1f5f9;
+      --chat: #ffffff;
+      --header: #ffffff;
+      --footer: #f8fafc;
+      --border: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
       --input-bg: #ffffff;
-      --input-border: #b8c7d8;
-      --input-text: #23384d;
-      --button: #1a4a6a;
-      --user-bg: #d8ebfb;
-      --user-border: #8ab8d8;
-      --user-text: #0d2a44;
-      --jarvis-bg: #ffffff;
-      --jarvis-border: #cad4df;
-      --jarvis-text: #263746;
+      --input-border: #94a3b8;
+      --input-text: #0f172a;
+      --button: #2563eb;
+      --user-bg: #dbeafe;
+      --user-border: #93c5fd;
+      --user-text: #1e3a8a;
+      --jarvis-bg: #f8fafc;
+      --jarvis-border: #e2e8f0;
+      --jarvis-text: #0f172a;
       --panel: #ffffff;
-      --accent: #246da8;
-      --good: #218653;
-      --warning: #9a6410;
+      --accent: #2563eb;
+      --good: #16a34a;
+      --warning: #d97706;
+      --title-color: #0f172a;
     }
 
     /* === INTERFACE MORPHIQUE (8 Layouts Contextuels GreatOS) === */
@@ -84,10 +86,15 @@
     body.layout-chat .morphic-badge { color: var(--accent); border-color: rgba(105, 169, 232, 0.3); }
 
     /* Layout 2: Focus (Productivité / Plein écran / IDE) */
-    body.layout-focus {
+    body:not(.light).layout-focus {
       --chat: #06070a;
       --page: #040407;
       --border: #141824;
+    }
+    body.light.layout-focus {
+      --chat: #f8fafc;
+      --page: #e2e8f0;
+      --border: #cbd5e1;
     }
     body.layout-focus .morphic-badge {
       color: #9b59b6;
@@ -134,8 +141,8 @@
 
     /* Layout 7: Idle */
     body.layout-idle {
-      opacity: 0.75;
-      filter: saturate(0.8);
+      opacity: 0.82;
+      filter: saturate(0.85);
       transition: opacity 0.5s ease;
     }
     body.layout-idle .morphic-badge {
@@ -144,20 +151,30 @@
     }
 
     /* Layout 8: DEFCON Alert (Urgence / Sécurité) */
-    body.layout-defcon_alert {
+    body:not(.light).layout-defcon_alert {
       --page: #150505;
       --border: #6a1a1a;
       box-shadow: inset 0 0 50px rgba(255, 71, 87, 0.2);
-      animation: pulseDefcon 2s infinite ease-in-out;
+      animation: pulseDefconDark 2s infinite ease-in-out;
+    }
+    body.light.layout-defcon_alert {
+      --page: #fef2f2;
+      --border: #f87171;
+      box-shadow: inset 0 0 50px rgba(239, 68, 68, 0.15);
+      animation: pulseDefconLight 2s infinite ease-in-out;
     }
     body.layout-defcon_alert .morphic-badge {
-      color: #ff4757;
-      border-color: #ff4757;
-      background: rgba(255, 71, 87, 0.2);
+      color: #ef4444;
+      border-color: #ef4444;
+      background: rgba(239, 68, 68, 0.15);
     }
-    @keyframes pulseDefcon {
+    @keyframes pulseDefconDark {
       0%, 100% { box-shadow: inset 0 0 30px rgba(255, 71, 87, 0.15); }
       50% { box-shadow: inset 0 0 60px rgba(255, 71, 87, 0.35); }
+    }
+    @keyframes pulseDefconLight {
+      0%, 100% { box-shadow: inset 0 0 25px rgba(239, 68, 68, 0.1); }
+      50% { box-shadow: inset 0 0 50px rgba(239, 68, 68, 0.25); }
     }
 
     html,
@@ -247,7 +264,7 @@
     }
 
     .title {
-      color: #fff;
+      color: var(--title-color);
       font-size: 28px;
       font-weight: 700;
       letter-spacing: 0;
@@ -308,14 +325,23 @@
     .icon-button {
       width: 42px;
       height: 42px;
-      border: 1px solid #16405f;
-      background: var(--button);
-      color: #fff;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
       border-radius: 8px;
       font-size: 20px;
       line-height: 1;
       cursor: pointer;
       flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+    .icon-button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
     }
 
     .instance-selector {
@@ -591,13 +617,13 @@
     }
 
     .event.status-line {
-      color: #2a4a6a;
+      color: var(--accent);
       font-style: italic;
       padding-left: 3px;
     }
 
     .event.provider {
-      color: #1a6a3a;
+      color: var(--good);
       padding-left: 3px;
     }
 
@@ -938,10 +964,6 @@
         morphicAppName.textContent = app && app !== "Inconnue" ? `· ${app}` : "";
       }
 
-      // Si le layout est dashboard, synchroniser la vue active
-      if (layout === "dashboard") {
-        showView("dashboard");
-      }
     }
     
     let source = null;

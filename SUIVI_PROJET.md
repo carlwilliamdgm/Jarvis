@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T14:33:46.884100+00:00 — Antigravity - Correction Thème et Switch Morphique Web — completed
+
+Correction complète du commutateur de thème (dark/light) et de l affichage de l interface web : 1) Résolution du conflit CSS destructeur où les layouts morphiques (ex: layout-focus activé par défaut) écrasaient les variables de fond en noir sur le thème clair. Découplage strict des surcharges via body:not(.light).layout-* et body.light.layout-*. 2) Correction du titre et du header en mode clair (--title-color adaptatif, header blanc au lieu de noir forcé). 3) Modernisation du bouton icon-button et suppression de l éjection intempestive vers le dashboard lors des changements de layout morphique.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/web/index.html (styles CSS clairs/sombres, variables de layouts, bouton de thème, suppression showView automatique)
+
+**Vérification**
+- Fetch HTTP 200 sur /web/, pytest tests/test_morphic_api.py et tests/test_trusted_devices_auth.py verts.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-06T14:24:09.781557+00:00 — Antigravity - Politique de Confiance Réseau (Localhost & Tailscale) — completed
 
 Implémentation de la politique d accès transparent pour appareils de confiance : 1) Les requêtes issues de localhost (127.0.0.1, ::1, testclient) et du réseau privé Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) sont authentifiées automatiquement sans exiger de jeton Bearer manuel. 2) Les requêtes provenant d autres réseaux externes non approuvés exigent obligatoirement le Bearer Token JARVIS_API_KEY (401 sinon). 3) 5 tests unitaires dédiés créés dans tests/test_trusted_devices_auth.py et validés.
@@ -178,22 +197,3 @@ Simplification du shim jarvis/voice_overlay.py : suppression du mecanisme __clas
 
 **À suivre**
 - Aucun
-
-### 2026-10-06T10:44:26.985375+00:00 — Antigravity - Refactoring Interface Morphique — completed
-
-Refactoring complet du codebase : 4 corrections architecturales, 482/482 tests verts maintenus
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- interface_morphique/voice_overlay.py (cree), core_intellect/event_bus.py (cree), core_intellect/personality.py (cree), context_engine/system_monitor.py (obtenir_infos_tailscale ajoutee), jarvis/voice_overlay.py (shim), jarvis/personality.py (shim), jarvis/agent.py (EventBus inline supprime), interface_morphique/server.py (tailscale + voice_overlay import corriges), taskflow/tools.py (import corrige), taskflow/browser_session.py (event_bus import corrige), core_intellect/intellect.py (personality import corrige), tests/test_voice_overlay.py (imports + patches mis a jour), interface_morphique/tools.py et __init__.py (exports vocal overlay ajoutes)
-
-**Vérification**
-- pytest complet : 482 passed, 1 skipped, 9 deselected, 0 failed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Implementer les 8 layouts contextuels de Interface Morphique selon le CDC (context-aware switching). Migrer l interface web de HTML vanilla vers React+Tailwind CSS (Phase 2 CDC). Renforcer Progress Tracker (dashboard, visualisations). Configurer CI GitHub Actions.
