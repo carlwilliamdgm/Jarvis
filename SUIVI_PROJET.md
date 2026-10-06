@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-06T15:24:42.285558+00:00 — Antigravity - Séparation Rôles CDC Jarvis vs Core Intellect — completed
+
+Alignement architectural strict sur le CDC GreatOS (Section 4) : 1) Formalisation contractuelle des frontières : Jarvis (Module 4.1) est l interface conversationnelle, le visage et la voix qui dialogue avec l utilisateur ; Core Intellect (Module 4.2) est le cerveau décisionnel silencieux qui réfléchit, évalue et planifie. 2) Mise à jour des modules racines core_intellect/__init__.py et jarvis/__init__.py pour sceller cette distinction.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/__init__.py, jarvis/__init__.py
+
+**Vérification**
+- pytest tests/test_system_introspection.py tests/test_core_intellect_defense_and_router.py : 24 passed (100%).
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-06T14:57:30.903375+00:00 — Antigravity - Filiation du Créateur et Rôle Orchestrateur de Jarvis — completed
 
 Ancrage de l identité fondatrice dans GreatOS : 1) Filiation généalogique établie : Carl-William DJEGUEMA (IAI-Togo, Génie Logiciel) inscrit comme créateur et architecte originel de GreatOS dans le prompt système et la cartographie d architecture. 2) Formalisation du rôle de Jarvis : chef d orchestre central de la surcouche GreatOS (pilotant Context Engine, TaskFlow, DataShield et Interface Morphique). 3) Distinction nette entre identité de conception pérenne et adaptation dynamique à l utilisateur de session.
@@ -178,22 +197,3 @@ Transformation de GreatOS en surcouche réactive : implémentation des OS Hooks 
 
 **À suivre**
 - Connecter les layouts contextuels dans l interface Web (index.html / React) pour que le rendu visuel bascule physiquement lors d une transition.
-
-### 2026-10-06T10:59:24.894326+00:00 — Antigravity - Finalisation refactoring (point 3) — completed
-
-Correction du dernier couplage residuel : taskflow/browser_session.py utilise desormais get_event_bus() depuis core_intellect.event_bus sans passer par jarvis.agent. Les 3 corrections de qualite de code sont toutes appliquees et validees.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- core_intellect/event_bus.py (get_event_bus + register_global_bus ajoutes), jarvis/agent.py (register_global_bus appele apres creation du bus), taskflow/browser_session.py (get_event_bus() remplace import jarvis.agent), jarvis/voice_overlay.py (shim simplifie - mecanisme __class__ supprime), interface_morphique/server.py (import obtenir_infos_tailscale remonte en haut du fichier)
-
-**Vérification**
-- pytest complet : 482 passed, 1 skipped, 9 deselected, 0 failed (80s)
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Implementer les 8 layouts contextuels Interface Morphique (context-aware switching). Migrer interface web vers React+Tailwind CSS.

@@ -1,5 +1,12 @@
 # jarvis/__init__.py
-"""Module Jarvis - Interface conversationnelle et agent exécutif (GreatOS Module 1)."""
+"""Module Jarvis - Interface conversationnelle, voix et visage de GreatOS (CDC GreatOS Module 4.1).
+
+Rôle : Le visage et la voix de GreatOS.
+- Interface principale en langage naturel (français/anglais)
+- Écoute vocale, restitution audio et personnalités conversationnelles
+- Orchestrateur général des interactions utilisateur
+- Transmet les intentions à Core Intellect pour la réflexion silencieuse
+"""
 import sys
 import jarvis.agent as _agent
 
