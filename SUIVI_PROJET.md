@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-08T15:31:51.210165+00:00 — Antigravity - Portabilité et Déploiement Dynamique Universel — completed
+
+Rendre GreatOS 100% portable et déployable sur n importe quel ordinateur et chemin : 1) Audit complet confirmant l absence de tout chemin absolu utilisateur en dur dans le code source. 2) Création de install.ps1 (Windows) et install.sh (Linux/macOS) pour une installation 'one-click' portable (.venv, dépendances, génération .env cryptographique, service). 3) Création de scripts/installer_service_windows.ps1 et scripts/desinstaller_service_windows.ps1 résolvant dynamiquement le compte utilisateur (\Carl) et le chemin (\). 4) Conditionnement de requirements.txt (pywin32 sous win32 uniquement). 5) Création de tests/test_portability.py validant la portabilité.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- install.ps1 (créé), install.sh (créé), requirements.txt (cross-platform), scripts/installer_service_windows.ps1 (créé), scripts/desinstaller_service_windows.ps1 (créé), tests/test_portability.py (créé)
+
+**Vérification**
+- pytest tests/test_portability.py : 4/4 passed (100%).
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Validation git commit.
+
 ### 2026-10-08T15:27:26.196645+00:00 — Antigravity - Implémentation Complète des 8 Piliers CDC — completed
 
 Implémentation complète et rigoureuse des 8 Modules fondamentaux du Cahier des Charges GreatOS (Section 4) : 1) Jarvis (4.1) : routage d intention et dialogue réactif sans surcharge. 2) Core Intellect (4.2) : moteur décisionnel multi-critères (urgence, importance, effort) et arbitrage de conflits. 3) Context Engine (4.3) : conscience contextuelle quadridimensionnelle (temporelle, cognitive, opérationnelle, spatiale). 4) TaskFlow (4.4) : catalogue de workflows préconfigurés (session_dev, nettoyage_systeme, etc.). 5) Progress Tracker (4.5) : moteur de gamification (XP, streaks, niveaux de maîtrise). 6) DataShield (4.6) : politique DEFCON 1 à 5 et blocage d injections. 7) SyncSphere (4.7) : snapshots souverains chiffrés AES-256. 8) Interface Morphique (4.8) : 8 layouts contextuels synchronisés avec la dimension cognitive Deep Work. Synchronisation documentation et 100% de tests au vert.
@@ -178,22 +197,3 @@ Alignement de l application de bureau Tkinter (app.py) sur l Interface Morphique
 
 **À suivre**
 - Commit git de la mise à jour desktop morphique.
-
-### 2026-10-06T11:17:20.635277+00:00 — Antigravity - Web Morphic Layouts — completed
-
-Matérialisation visuelle des 8 layouts du CDC GreatOS dans l interface Web : badge dynamique, styles adaptatifs (Focus épuré, DEFCON pulsant, Vocal HUD cyan, Task Runner ambre, Idle), interception en direct du flux SSE morphic_layout_changed et polling de secours /jarvis/layout.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- interface_morphique/web/index.html (styles CSS des 8 layouts, badge morphique dans le header, fonction applyMorphicLayout, écoute SSE dans handleEvent, refreshMorphicLayout à l initialisation)
-
-**Vérification**
-- pytest tests/test_morphic_api.py tests/test_morphic_switcher.py tests/test_os_hooks.py : 13 passed, 0 failed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Connecter les layouts contextuels à la GUI Tkinter desktop (app.py) ou préparer le package de lancement résident Windows.
