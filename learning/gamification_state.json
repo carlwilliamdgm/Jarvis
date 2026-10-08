@@ -1,8 +1,8 @@
 {
-  "niveau": 1,
-  "titre_rang": "Initi\u00e9 GreatOS",
-  "points_xp": 450,
-  "xp_palier_suivant": 500,
+  "niveau": 2,
+  "titre_rang": "Praticien de l'Automatisation",
+  "points_xp": 500,
+  "xp_palier_suivant": 1500,
   "objectifs_accomplis": 0,
   "streak_actuel_jours": 0,
   "meilleur_streak": 0

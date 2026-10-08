@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-08T16:09:51.515080+00:00 — Antigravity Config Automations — completed
+
+Configuration de la fréquence de mise à jour automatique à 2 fois par jour (toutes les 12h)
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- bootstrap/install.ps1, scripts/installer_service_windows.ps1, scripts/desinstaller_service_windows.ps1, docs/guides/INSTALLATION_MACHINE_VIERGE.md
+
+**Vérification**
+- pytest tests/test_portability.py tests/test_eight_modules_cdc.py: 12 passed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Prêt pour déploiement multi-machines
+
 ### 2026-10-08T15:48:56.936543+00:00 — Antigravity Documentaliste — completed
 
 Mise a jour exhaustive de toute la documentation du projet selon le CDC et la portabilite dynamique
@@ -178,22 +197,3 @@ Finalisation du pack production pour GreatOS : 1) Chiffrement AES-256-GCM DataSh
 
 **À suivre**
 - Développement de la Phase 2 : Knowledge Graph personnel et apprentissage de patterns de travail par observation.
-
-### 2026-10-06T11:45:26.560934+00:00 — Antigravity - Nettoyage & Découplage Tool Registry — completed
-
-Audit des flux inter-modules et assainissement complet : 1) Purge de 173 fichiers .pyc et caches résiduels. 2) Suppression de l import mort taskflow.storage dans context_engine/system_monitor.py. 3) Inversion de dépendance majeure : création de core_intellect/tool_registry.py fournissant un registre neutre d outils/capacités (OUTILS proxy) pour Core Intellect. intellect.py, argument_validator.py et tool_signatures.py ne dépendent plus directement de taskflow.tools.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- core_intellect/tool_registry.py (créé - registre d outils neutre), core_intellect/intellect.py (import OUTILS depuis core_intellect.tool_registry), core_intellect/argument_validator.py (import OUTILS depuis core_intellect.tool_registry), core_intellect/tool_signatures.py (import OUTILS depuis core_intellect.tool_registry), context_engine/system_monitor.py (suppression import mort taskflow.storage)
-
-**Vérification**
-- pytest complet : 497 passed, 1 skipped, 9 deselected, 0 failed (79s)
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Validation git commit.

@@ -556,6 +556,43 @@ try {
     Write-Log "Impossible de créer le raccourci Bureau: $_" "WARN"
 }
 
+# Step 7c: Register Auto-Update Scheduled Task (twice a day / every 12 hours)
+Write-Log "=== Step 7c: Register Auto-Update Scheduled Task ==="
+$updateTaskName = "JarvisAutoUpdate"
+$updateScriptPath = Join-Path $JarvisDir "bootstrap\update.ps1"
+
+try {
+    Unregister-ScheduledTask -TaskName $updateTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    $updateAction = New-ScheduledTaskAction `
+        -Execute "powershell.exe" `
+        -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$updateScriptPath`"" `
+        -WorkingDirectory $JarvisDir
+    
+    # Trigger: Daily starting at 04:00, repeated every 12 hours (twice a day: 04:00 & 16:00)
+    $updateTrigger = New-ScheduledTaskTrigger -Daily -At 4am
+    $updateTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 4am -RepetitionInterval (New-TimeSpan -Hours 12) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+    
+    $updateSettings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -StartWhenAvailable `
+        -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+
+    $updatePrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
+    
+    Register-ScheduledTask `
+        -TaskName $updateTaskName `
+        -Action $updateAction `
+        -Trigger $updateTrigger `
+        -Principal $updatePrincipal `
+        -Settings $updateSettings `
+        -Description "Mise a jour automatique de GreatOS / Jarvis deux fois par jour (toutes les 12 heures)." `
+        -Force | Out-Null
+    Write-Log "Scheduled task $updateTaskName registered (frequency: twice a day / every 12h)"
+} catch {
+    Write-Log "Impossible d'enregistrer la tache de mise a jour automatique $updateTaskName : $_" "WARN"
+}
+
 # Step 8: Display summary
 Write-Log "=== Installation Summary ==="
 

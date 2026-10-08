@@ -12,7 +12,8 @@ if (Test-Path $pythonExe) {
 try {
     Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-    Write-Host "[OK] Tâche planifiée '$taskName' désinstallée." -ForegroundColor Green
+    Unregister-ScheduledTask -TaskName "JarvisAutoUpdate" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "[OK] Tâches planifiées '$taskName' et 'JarvisAutoUpdate' désinstallées." -ForegroundColor Green
 } catch {
-    Write-Host "[INFO] Aucune tâche planifiée '$taskName' trouvée." -ForegroundColor Gray
+    Write-Host "[INFO] Aucune tâche planifiée trouvée." -ForegroundColor Gray
 }

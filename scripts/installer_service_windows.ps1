@@ -83,6 +83,46 @@ try {
     Write-Host "[OK] Tâche planifiée '$taskName' créée avec succès (droits standards)." -ForegroundColor Green
 }
 
+# 7b. Enregistrer la tâche planifiée de mise à jour automatique (2 fois par jour / toutes les 12 heures)
+$updateTaskName = "JarvisAutoUpdate"
+$updateScript   = Join-Path $projectRoot "bootstrap\update.ps1"
+
+if (Test-Path $updateScript) {
+    try {
+        Unregister-ScheduledTask -TaskName $updateTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+        $updateAction = New-ScheduledTaskAction `
+            -Execute "powershell.exe" `
+            -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$updateScript`"" `
+            -WorkingDirectory $projectRoot
+
+        # Déclencheur : Quotidien à 04:00, répété toutes les 12 heures (04:00 et 16:00)
+        $updateTrigger = New-ScheduledTaskTrigger -Daily -At 4am
+        $updateTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 4am -RepetitionInterval (New-TimeSpan -Hours 12) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+
+        $updateSettings = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -DontStopIfGoingOnBatteries `
+            -StartWhenAvailable `
+            -ExecutionTimeLimit (New-TimeSpan -Hours 1)
+
+        $updatePrincipal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive
+
+        Register-ScheduledTask `
+            -TaskName $updateTaskName `
+            -Action $updateAction `
+            -Trigger $updateTrigger `
+            -Settings $updateSettings `
+            -Principal $updatePrincipal `
+            -Description "Mise à jour automatique de GreatOS 2 fois par jour (toutes les 12 heures)." `
+            | Out-Null
+
+        Write-Host "[OK] Tâche de mise à jour automatique '$updateTaskName' configurée (2 fois par jour / 12h)." -ForegroundColor Green
+    } catch {
+        Write-Host "[AVERTISSEMENT] Impossible de créer la tâche '$updateTaskName' : $_" -ForegroundColor Yellow
+    }
+}
+
 # 8. Démarrer immédiatement si demandé
 if ($DemarrerImmediatement) {
     Write-Host "[INFO] Démarrage de GreatOS en arrière-plan..." -ForegroundColor Cyan
