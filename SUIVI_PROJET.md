@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-08T15:48:56.936543+00:00 — Antigravity Documentaliste — completed
+
+Mise a jour exhaustive de toute la documentation du projet selon le CDC et la portabilite dynamique
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- README.md, ARCHITECTURE.md, docs/architecture/ARCHITECTURE.md, docs/architecture/GreatOS_Module_Map.md, docs/guides/INSTALLATION_MACHINE_VIERGE.md, docs/guides/PREMIER_LANCEMENT.md, ETAT_DES_LIEUX.md
+
+**Vérification**
+- pytest tests/test_eight_modules_cdc.py tests/test_portability.py tests/test_api_state_consistency.py: 23 passed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Continuer le suivi de developpement conformement aux jalons de la Phase 1
+
 ### 2026-10-08T15:31:51.210165+00:00 — Antigravity - Portabilité et Déploiement Dynamique Universel — completed
 
 Rendre GreatOS 100% portable et déployable sur n importe quel ordinateur et chemin : 1) Audit complet confirmant l absence de tout chemin absolu utilisateur en dur dans le code source. 2) Création de install.ps1 (Windows) et install.sh (Linux/macOS) pour une installation 'one-click' portable (.venv, dépendances, génération .env cryptographique, service). 3) Création de scripts/installer_service_windows.ps1 et scripts/desinstaller_service_windows.ps1 résolvant dynamiquement le compte utilisateur (\Carl) et le chemin (\). 4) Conditionnement de requirements.txt (pywin32 sous win32 uniquement). 5) Création de tests/test_portability.py validant la portabilité.
@@ -178,22 +197,3 @@ Audit des flux inter-modules et assainissement complet : 1) Purge de 173 fichier
 
 **À suivre**
 - Validation git commit.
-
-### 2026-10-06T11:28:07.151000+00:00 — Antigravity - Desktop Morphic Layouts — completed
-
-Alignement de l application de bureau Tkinter (app.py) sur l Interface Morphique : intégration du badge dynamique des 8 layouts CDC avec couleurs contextuelles, écoute SSE proactive en tâche de fond (/jarvis/events), synchronisation du titre de la fenêtre avec l application active et correction de l ordre d initialisation des instances.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- interface_morphique/app.py (constantes MORPHIC_CONFIG, widget morphic_badge dans le header, méthode apply_morphic_layout, thread d écoute SSE proactive start_proactive_event_stream, correction load_instances), tests/test_desktop_app_morphic.py (créé)
-
-**Vérification**
-- pytest complet : 497 passed, 1 skipped, 9 deselected, 0 failed (89s)
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Commit git de la mise à jour desktop morphique.

@@ -1,8 +1,51 @@
 # Architecture GreatOS (PersonalOS V3)
 
-GreatOS unifie 8 modules fondamentaux : jarvis, core_intellect, context_engine, taskflow, progress_tracker, datashield, syncsphere, interface_morphique.
+GreatOS unifie **8 modules fondamentaux souverains** selon le Cahier des Charges 2025–2033 conçu par Carl-William DJEGUEMA :
+jarvis, core_intellect, context_engine, 	askflow, progress_tracker, datashield, syncsphere, interface_morphique.
 
-Jarvis est un agent IA local-first en Python. Le composant qui raisonne est `core_intellect/intellect.py`; le reste du système orchestre, sécurise, persiste ou exécute. `memory.json` porte le contexte long terme, tandis que l'historique de conversation reste volontairement limité.
+### Séparation Architecturale Stricte :
+- **Jarvis** est le **visage et la voix** : il converse avec l'utilisateur, accueille ses requêtes, gère la synthèse/reconnaissance vocale et orchestre les étapes de plans.
+- **Core Intellect** est le **cerveau décisionnel invisible** : il réfléchit en silence, pondère l'urgence/importance/effort, résout les conflits et conçoit des plans ordonnés (ExecutionPlan).
+
+`	ext
+                               ┌────────────────────────────────┐
+                               │       INTERFACE MORPHIQUE      │
+                               │   (8 Layouts, Web, Tkinter)    │
+                               └──────────────┬─────────────────┘
+                                              │  Requêtes utilisateur
+                                              ▼
+                               ┌────────────────────────────────┐
+                               │             JARVIS             │
+                               │  (Visage, Dialogue, Voix,      │
+                               │     Orchestrateur de Plans)    │
+                               └──────────────┬─────────────────┘
+                                              │
+                      ┌───────────────────────┴───────────────────────┐
+                      ▼                                               ▼
+       ┌──────────────────────────────┐                ┌──────────────────────────────┐
+       │        CONTEXT ENGINE        │ ─────────────► │        CORE INTELLECT        │
+       │    (Les Sens de GreatOS :    │ Contexte multi-│    (Cerveau Décisionnel :    │
+       │  4 Dimensions : Temporelle,  │ dimensionnel   │  Matrice Urgence/Importance, │
+       │ Cognitive, Opérationnelle,   │                │   Résolution de conflits,    │
+       │  Spatiale / Système)         │                │     Cascade LLM Hybride)     │
+       └──────────────────────────────┘                └──────────────┬───────────────┘
+                      ▲                                               │  Plan structuré
+                      │ Traces & Preuves                              ▼
+                      │                                ┌──────────────────────────────┐
+                      │                                │          DATASHIELD          │
+                      │                                │   (Sécurité Multicouche :    │
+                      │                                │  DEFCON 1-5, Crypto AES-256, │
+                      │                                │    Validation Capacités)     │
+                      │                                └──────────────┬───────────────┘
+                      │                                               │ Autorisation (Allow)
+                      │               ┌───────────────────────────────┼───────────────────────────────┐
+                      │               ▼                               ▼                               ▼
+       ┌──────────────┴───────────────┐                ┌──────────────┴───────────────┐ ┌─────────────┴──────────────┐
+       │       PROGRESS TRACKER       │                │           TASKFLOW           │ │         SYNCSPHERE         │
+       │    (Suivi d'Objectifs &      │                │  (Workflows préconfigurés,   │ │ (Snapshots souverains .gos,│
+       │  Gamification : XP, Streaks) │                │  Automatisation, Outils OS)  │ │   Sauvegarde chiffrée)     │
+       └──────────────────────────────┘                └──────────────────────────────┘ └────────────────────────────┘
+`
 
 ## Points d'entree
 
@@ -44,24 +87,57 @@ Le modèle ne doit pas être appelé directement depuis les capabilities. Si une
 - `taskflow/browser_session.py` : gestion de sessions de navigateur persistantes avec états, événements et exécution asynchrone.
 - `interface_morphique/browser_overlay.py` : interface visuelle flottante pour la navigation en temps réel.
 
-### Nouveaux modules Core
+### Modules Clés par Domaine (8 Modules CDC)
 
-- `jarvis/voice_state.py` : Gestion de l'etat vocal global (IDLE, LISTENING, THINKING, SPEAKING, ERROR) avec communication via fichier JSON partage `voice_state.json` pour l'overlay.
-- `jarvis/voice_overlay.py` : Overlay visuel flottant Tkinter affichant l'etat vocal en temps reel avec style HUD (fenetre sans bordure, topmost, positionnement configurable, polling a 100ms).
-- `datashield/crypto.py` : Moteur de chiffrement AES-256-GCM avec dérivation PBKDF2 (600k itérations), détection transparente et support des snapshots chiffrés.
-- `datashield/threat_analyzer.py` : Moteur d'analyse heuristique des menaces cyber (MITRE ATT&CK), désobfuscation Base64 à la volée, blocage de sabotage (VSS) et détection d'injections.
-- `datashield/autodestruct.py` : Auto-destruction complete de Jarvis (service Windows, taches planifiees, variables d'environnement, modele Ollama, dossier Jarvis).
-- `context_engine/contextual_suggestions.py` : Generation de suggestions intelligentes basees sur les patterns comportementaux, l'etat systeme, l'heure actuelle, le contexte utilisateur et les automatisations potentielles.
-- `core_intellect/decision_analyzer.py` : Auto-reflexion sur les decisions recentes, detection de patterns d'erreur recurrents, memorisation des solutions reussies pour reutilisation future.
-- `datashield/error_classification.py` : Classification mecanique des erreurs systeme avec categories predefinies (acces_refuse, cible_introuvable, erreur_technique_outil, ressource_systeme_insuffisante, action_refusee_par_confirmation, autre).
-- `context_engine/pattern_analyzer.py` : Detection et analyse des patterns comportementaux (horaires d'utilisation, actions repetitives, sequences d'actions courantes, frequence globale).
-- `context_engine/semantic_search.py` : Indexation et recherche semantique dans l'historique des interactions avec extraction de mots-cles, detection de thematiques et analyse de connexions contextuelles.
-- `context_engine/system_monitor.py` : Surveillance continue de l'etat systeme (CPU, memoire, disque, reseau, processus) avec detection d'anomalies, enregistrement historique et analyse de tendances.
-- `jarvis/personality.py` : Gestion et adaptation de la personnalite Jarvis avec traits ajustables (sarcasme, formalite, proactivite, humour, empathie, concision, creativite) et evolution automatique basee sur les interactions.
-- `datashield/confirmations.py` : Gestion des confirmations utilisateur avec historique et patterns de refus/acceptation.
-- `core_intellect/llm_client.py` : Orchestrateur central des requêtes LLM avec cascade intelligente (Jarvis-GC souverain -> Cloud Groq/OpenRouter -> Fallback local Ollama).
-- `taskflow/browser_session.py` : Gestion de sessions de navigateur persistantes avec états (IDLE, NAVIGATING, LOADING, INTERACTING, ERROR, CLOSED), événements et exécution asynchrone.
-- `interface_morphique/browser_overlay.py` : Interface visuelle flottante Tkinter pour la navigation en temps réel, similaire à l'overlay vocal mais pour les sessions de navigateur.
+#### 1. Jarvis (Interface Conversationnelle & Visage)
+- jarvis/agent.py : Orchestrateur de dialogue et de plans (orchestrer_plan), pipeline d'interaction bilingue FR/EN, agent autonome de veille.
+- jarvis/voice_state.py & jarvis/voice_overlay.py : Gestion de l'état vocal (IDLE, LISTENING, THINKING, SPEAKING, ERROR) et HUD flottant Tkinter en temps réel.
+- jarvis/voice_input.py & jarvis/voice_output.py : Moteur vocal Vosk et synthèse Piper TTS avec détection double-clap (clap_input.py).
+- jarvis/personality.py : Personnalité adaptative avec ajustement continu de traits (sarcasme, proactivité, concision).
+
+#### 2. Core Intellect (Cerveau Décisionnel Invisible)
+- core_intellect/multi_criteria_decision.py : Matrice décisionnelle multi-critères (Urgence, Importance, Effort) et algorithme d'arbitrage/résolution automatique des conflits.
+- core_intellect/intellect.py : Cerveau unique sans action directe, analyse d'intention et planification ordonnée (ExecutionPlan).
+- core_intellect/system_introspection.py : Introspection locale et déterministe de l'état de l'OS sans dépendance LLM.
+- core_intellect/llm_client.py : Orchestrateur central avec cascade intelligente (Cloud Groq/OpenRouter -> Modèle souverain Jarvis-GC -> Fallback local Ollama).
+- core_intellect/cognitive_defense.py : Moteur de défense cognitive contre injections de prompts, jailbreaks et fuites de données.
+- core_intellect/decision_analyzer.py : Auto-réflexion sur les décisions passées et mémorisation des résolutions réussies.
+
+#### 3. Context Engine (Conscience Contextuelle & Perception)
+- context_engine/four_dimensions.py : Perception continue sur 4 dimensions (Temporelle, Cognitive, Opérationnelle, Spatiale) et prédictions contextuelles proactives.
+- context_engine/memory.py : Persistance souveraine (memory.json / SQLite), gestion du profil utilisateur et traçabilité sécurisée des capacités.
+- context_engine/agent_learning.py : Journal durable d'apprentissage inter-agents (learning/agent_sessions.jsonl).
+- context_engine/system_monitor.py : Surveillance continue des ressources système (CPU, RAM, disque, réseau, processus, détection Tailscale).
+- context_engine/semantic_search.py : Indexation et recherche sémantique dans l'historique d'interaction.
+
+#### 4. TaskFlow (Automatisation de Workflows & Exécution)
+- 	askflow/preconfigured_workflows.py : Workflows automatisés prêts à l'emploi (session_dev, 
+ettoyage_systeme, sauvegarde_securisee, synthese_projet).
+- 	askflow/tools.py : Façade et registre typé LegacyToolRegistry redirigeant chaque capacité vers le dispatcher central sécurisé.
+- 	askflow/browser_automation.py & 	askflow/browser_session.py : Navigation web dynamique Playwright et sessions parallèles non bloquantes.
+- 	askflow/scheduler.py & 	askflow/watchers.py : Planificateur de tâches différées et surveillance de dossiers critiques.
+
+#### 5. Progress Tracker (Suivi d'Objectifs & Gamification)
+- progress_tracker/gamification.py : Système complet de jeu (XP, niveaux, bonus multiplicateurs, streaks d'activité journalière).
+- progress_tracker/goals.py : Gestion hiérarchique des objectifs (quantitatifs, qualitatifs, habitudes).
+- progress_tracker/analytics.py : Statistiques de progression et suivi d'accomplissement.
+- progress_tracker/tools.py : Mesure systématique de l'impact des capacités exécutées (enregistrer_impact_capacite).
+
+#### 6. DataShield (Sécurité Multicouche)
+- datashield/policy.py : Autorité centrale d'évaluation (evaluate_capability) avec politique à 5 niveaux DEFCON.
+- datashield/crypto.py : Chiffrement symétrique AES-256-GCM et dérivation de clé PBKDF2 (600 000 itérations).
+- datashield/safety.py & datashield/confirmations.py : Confinement de chemins, listes de confiance et confirmations ciblées.
+- datashield/threat_analyzer.py : Analyseur heuristique des menaces cyber (MITRE ATT&CK) et blocage de sabotage système.
+- datashield/autodestruct.py : Procédure d'auto-destruction contrôlée en cas de compromission critique.
+
+#### 7. SyncSphere (Continuité & Synchronisation)
+- syncsphere/snapshots.py & syncsphere/tools.py : Création, énumération et restauration transactionnelle d'archives chiffrées souveraines .gos avec intégrité SHA-256.
+
+#### 8. Interface Morphique (Interface Adaptative)
+- interface_morphique/layouts.py : Gestion des 8 dispositions d'interface contextuelles (Compact, Focus, Dashboard, etc.) et thèmes (Dark/Light).
+- interface_morphique/server.py : Serveur FastAPI local unifié (API REST, SSE temps réel, documentation /docs).
+- interface_morphique/app.py : Application de bureau Tkinter locale.
+- interface_morphique/voice_overlay.py & interface_morphique/browser_overlay.py : HUDs flottants temps réel.
 
 ## Architecture LLM et cascade de providers
 

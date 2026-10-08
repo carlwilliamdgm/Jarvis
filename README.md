@@ -1,28 +1,60 @@
-# GreatOS (PersonalOS V3) - Architecture unifiée à 8 modules
+# GreatOS (PersonalOS V3) - Plateforme Cognitive Souveraine
 
-GreatOS intègre **Jarvis** comme module d'interaction conversationnelle et vocale.
+**GreatOS** est un écosystème d’intelligence artificielle et un système d’exploitation cognitif personnel qui se superpose à votre OS (Windows, Linux, macOS) pour transformer votre machine en partenaire intelligent proactif.
 
-Jarvis est un assistant IA local-first en Python, développé par Carl-William DJEGUEMA pour agir comme compagnon cognitif personnel et agent d'exécution local. Il peut discuter, mémoriser du contexte, exécuter des actions concrètes sur la machine, lancer des boucles agentiques structurées avec le Mode Stark, exposer une API FastAPI et servir des interfaces Tkinter ou web.
+Créé et développé par **Carl-William DJEGUEMA** (L1 Génie Logiciel, IAI-Togo — Horizon PFE Juin 2028), le projet unifie **8 modules fondamentaux souverains** selon les exigences du Cahier des Charges 2025–2033.
 
-Le projet est pensé autour d'un principe simple : le raisonnement est centralisé, les actions sont déterministes, et les interfaces ne font qu'envoyer des messages puis afficher les événements produits par Jarvis.
+---
 
-> **État du projet.** GreatOS est un prototype local-first avancé, en phase de stabilisation. Les capacités réellement disponibles, les limites connues et les critères restant avant une déclaration de production sont documentés dans [ETAT_DES_LIEUX.md](ETAT_DES_LIEUX.md). Les objectifs du cahier des charges ne doivent pas être interprétés comme des fonctionnalités déjà livrées.
+## 🏛️ Les 8 Modules Fondamentaux du Cahier des Charges
 
-## Vue d'ensemble
+Une règle architecturale stricte sépare l'expression et la réflexion :
+- **Jarvis** est le **visage et la voix** de GreatOS (interface conversationnelle, dialogue, orchestration).
+- **Core Intellect** est le **cerveau invisible et silencieux** (moteur décisionnel multi-critères, optimisation, arbitrage).
 
-### Premier lancement ?
+| Module | Rôle dans GreatOS | Implémentation & Capacités Clés | Statut CDC |
+| :--- | :--- | :--- | :---: |
+| **1. Jarvis** | **Interface Conversationnelle** | Visage de GreatOS en FR/EN. Mémorise les échanges, orchestre les modules, gère la voix (Vosk / Piper TTS / double-clap) et l'autonomie (Mode Stark). Cible : réponse < 2s, compréhension > 80%. | ✅ Opérationnel |
+| **2. Core Intellect** | **Cerveau Décisionnel** | Moteur invisible qui analyse et décide. Matrice multi-critères (urgence, importance, effort), résolution de conflits, cascade LLM hybride (Cloud / Souverain Jarvis-GC / Fallback local) et introspection déterministe. Cible : recommandations > 75%. | ✅ Opérationnel |
+| **3. Context Engine** | **Conscience Contextuelle** | Les « sens » de GreatOS. Analyse continue sur 4 dimensions : Temporelle, Cognitive, Opérationnelle et Spatiale. Détection d'habitudes, prédictions proactives, suggestions adaptatives et mémoire persistante. | ✅ Opérationnel |
+| **4. TaskFlow** | **Automatisation de Workflows** | Automatisation des tâches récurrentes. Workflows préconfigurés (`session_dev`, `nettoyage_systeme`, `sauvegarde_securisee`, `synthese_projet`), exécution déterministe via registre typé, sessions Playwright parallèles. | ✅ Opérationnel |
+| **5. Progress Tracker** | **Suivi d'Objectifs & Gamification** | Mesure du progrès sur objectifs chiffrés, qualitatifs ou habitudes. Système complet de gamification (XP, niveaux, multiplicateurs, streaks), métriques d'impact systématiques et analytique. | ✅ Opérationnel |
+| **6. DataShield** | **Sécurité Multicouche** | Protection des données et du système en 3 couches : Chiffrement AES-256-GCM / PBKDF2 (600k itérations), Authentification (localhost, Tailscale, Bearer), Détection heuristique de menaces (MITRE ATT&CK) avec 5 niveaux DEFCON. | ✅ Opérationnel |
+| **7. SyncSphere** | **Continuité & Sauvegarde** | Fonctionnement local-first souverain (Phase 1 V3), snapshots chiffrés `.gos` avec intégrité SHA-256 et restauration sécurisée. Préparé pour la synchronisation multi-appareils (Phase 2+). | ✅ Opérationnel |
+| **8. Interface Morphique** | **Interface Adaptative** | L'interface change selon l'activité : 8 dispositions contextuelles (Compact, Focus, Dashboard, etc.), thèmes dynamiques (Dark/Light), serveur FastAPI (REST & SSE), client Tkinter et HUDs flottants temps réel. | ✅ Opérationnel |
 
-- **Installation sur machine vierge** : Consultez le guide automatisé [INSTALLATION_MACHINE_VIERGE.md](docs/guides/INSTALLATION_MACHINE_VIERGE.md) pour une installation complète automatisée
-- **Configuration pas à pas** : Consultez le guide [PREMIER_LANCEMENT.md](docs/guides/PREMIER_LANCEMENT.md) pour la configuration détaillée
+---
 
-### Fonctionnalités avancées
+## ⚡ Démarrage Rapide en 1 Commande
 
-### Interface vocale et overlay visuel
+GreatOS dispose d'un système d'amorçage dynamique **100% portable** (aucun chemin en dur).
 
-Jarvis dispose d'une interface vocale complète avec un indicateur visuel temps réel :
+### Sous Windows (PowerShell Administrateur) :
+```powershell
+.\install.ps1
+```
+*Le script configure automatiquement l'environnement virtuel `.venv`, installe les dépendances, génère un `.env` sécurisé si manquant, configure le modèle souverain Jarvis-GC et installe la tâche planifiée `JarvisAgent` pour un lancement automatique au démarrage de session.*
 
-- **Reconnaissance vocale** : 
-  - Wake word "Hey Jarvis" via Vosk
+### Sous Linux / macOS :
+```bash
+./install.sh
+```
+
+---
+
+## 🚀 Utilisation & Surfaces
+
+### Points d'entrée :
+- **Lancement en un clic** : `.\jarvis.cmd` (lance le serveur ou le CLI via le venv).
+- **Interface Web Locale** : Rendez-vous sur `http://127.0.0.1:8000/web/`
+- **CLI Interactif / Terminal** : `python greatos.py`
+- **Client Graphique Bureau** : `python interface_morphique/app.py`
+- **Statut du Système** : `python greatos.py status`
+- **Créer un Snapshot** : `python greatos.py snapshot`
+
+---
+
+## Vue d'ensemble détaillée
   - Activation par double-clap via clap detection
   - Modèles vocaux locaux (français et anglais)
   

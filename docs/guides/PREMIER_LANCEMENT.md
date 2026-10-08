@@ -32,30 +32,23 @@ cd Jarvis
 
 Sinon, placez simplement le dossier Jarvis dans `%USERPROFILE%\`.
 
-## Étape 2 - Installation des dépendances
+## Étape 2 - Installation automatique recommandée via install.ps1
 
-### Méthode recommandée : via requirements.txt
+Pour configurer automatiquement l'environnement virtuel .venv, installer les dépendances et initialiser la configuration :
 
-```powershell
-cd %USERPROFILE%\Jarvis
-python -m pip install -r requirements.txt
-```
+`powershell
+.\install.ps1
+`
 
-### Installation manuelle des dépendances principales
+*Le script se charge de créer le .venv, d'installer les dépendances bornées, de configurer le modèle souverain Jarvis-GC, de générer le fichier .env si nécessaire, et d'enregistrer la tâche planifiée JarvisAgent.*
 
-Si `requirements.txt` est incomplet ou pour une installation minimale :
+### Installation manuelle alternative via pip :
 
-```powershell
-cd %USERPROFILE%\Jarvis
-python -m pip install fastapi uvicorn requests pywin32 psutil rich ollama groq plyer
-```
-
-### Avec le chemin Python explicite (si nécessaire)
-
-```powershell
-& "C:\Program Files\Python312\python.exe" -m pip install -r requirements.txt
-```
-
+`powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+`
 ## Étape 3 - Configuration des providers LLM
 
 Jarvis peut utiliser plusieurs providers LLM. Configurez au moins un d'entre eux.

@@ -9,12 +9,23 @@ Ce guide détaille l'installation complète de GreatOS/Jarvis sur une machine Wi
 - **Accès réseau** : Connexion internet pour télécharger les dépendances
 - **GitHub PAT** : Personal Access Token GitHub avec scope `repo` pour cloner le dépôt privé
 
-## Méthode 1 (Recommandée) : Double-clic sur Setup.cmd
+## Méthode 1 (Recommandée) : Installation en une commande via install.ps1
 
-Si vous disposez de l'archive ou du dépôt décompressé :
-1. Faites un **double-clic sur `Setup.cmd`** à la racine.
-2. Acceptez la fenêtre d'élévation Administrateur (UAC Windows).
-3. L'installation se déroule de façon 100% autonome.
+Si vous disposez du dépôt cloné ou décompressé :
+
+### Sous Windows :
+Dans un terminal PowerShell avec privilèges Administrateur à la racine du projet :
+`powershell
+.\install.ps1
+`
+*Le script détecte Python, crée le virtualenv .venv, installe les dépendances, génère un .env sécurisé si absent, configure Ollama/Jarvis-GC et enregistre la tâche planifiée JarvisAgent pour un démarrage automatique silencieux de l'API.*
+
+Alternativement, vous pouvez faire un **double-clic sur Setup.cmd** à la racine pour déclencher l'installation.
+
+### Sous Linux / macOS :
+`ash
+./install.sh
+`
 
 ## Méthode 2 : Téléchargement du script public d'amorçage
 
