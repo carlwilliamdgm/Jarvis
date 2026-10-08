@@ -610,6 +610,13 @@ taskflow/
 - `stats_objectifs()` : Calcule les statistiques globales du Progress Tracker (taux de complétion, etc.).
 - `creer_snapshot_systeme(nom)` : Génère une archive locale de sauvegarde (.gos) via SyncSphere.
 - `lister_snapshots_systeme()` : Liste l'ensemble des sauvegardes locales disponibles.
+- `consulter_etat_maison(domaine)` : Retourne l'état en direct de la machine et des sous-systèmes GreatOS.
+- `inspecter_architecture_greatos(module)` : Consulte la cartographie officielle des 8 modules du CDC.
+- `consulter_historique_projet(nombre)` : Lit les dernières sessions d'apprentissage enregistrées.
+- `executer_workflow_preconfigure(identifiant)` : Lance un workflow préconfiguré TaskFlow (ex: session_dev, nettoyage_systeme).
+- `arbitrer_priorite_taches(taches)` : Évalue et classe des tâches selon la matrice multi-critères (urgence, importance, effort).
+- `capturer_contexte_quadridimensionnel()` : Évalue le contexte selon les 4 dimensions (temporelle, cognitive, opérationnelle, spatiale).
+- `charger_etat_gamification()` : Consulte les points XP, niveau et badges de l'utilisateur.
 
 ## Principes a conserver
 
