@@ -228,22 +228,20 @@ def get_memory_store(backend: Optional[str] = None) -> BaseMemoryStore:
     """
     Factory & Singleton retournant l'instance du store configuré.
 
-    Backends disponibles :
-    - ``json`` (défaut) : JsonMemoryStore standard.
-    - ``sqlite`` : SqliteMemoryStore avec WAL.
-    - ``encrypted`` : EncryptedJsonMemoryStore (AES-256-GCM, nécessite JARVIS_CRYPTO_KEY).
+    Seul le backend ``encrypted`` est sélectionnable pour la mémoire GreatOS.
+    Les implémentations JSON/SQLite non chiffrées restent internes aux tests et
+    migrations; elles ne sont jamais un fallback produit.
 
     Sélection via la variable d'environnement ``JARVIS_MEMORY_BACKEND``.
     """
-    selected = backend or os.environ.get("JARVIS_MEMORY_BACKEND", "json").lower()
+    selected = backend or os.environ.get("JARVIS_MEMORY_BACKEND", "encrypted").lower()
+    if selected != "encrypted":
+        raise RuntimeError(
+            f"Backend mémoire '{selected}' refusé : le chiffrement DataShield est obligatoire."
+        )
     if selected not in _STORES:
-        if selected == "sqlite":
-            _STORES[selected] = SqliteMemoryStore()
-        elif selected == "encrypted":
-            from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
-            _STORES[selected] = EncryptedJsonMemoryStore()
-        else:
-            _STORES[selected] = JsonMemoryStore()
+        from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
+        _STORES[selected] = EncryptedJsonMemoryStore()
     return _STORES[selected]
 
 

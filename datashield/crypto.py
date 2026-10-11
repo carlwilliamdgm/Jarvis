@@ -8,8 +8,9 @@ Ce module fournit :
 - API haut niveau utilisée par les stores mémoire et les outils DataShield.
 
 La phrase secrète maître est lue depuis la variable d'environnement
-``JARVIS_CRYPTO_KEY``. Sans elle, le module fonctionne en mode non chiffré
-et avertit dans les logs (jamais d'échec silencieux).
+``JARVIS_CRYPTO_KEY``. Sans elle ou sans la bibliothèque cryptography, les
+opérations de chiffrement échouent explicitement au lieu de conserver des
+données sensibles en clair. Le déchiffrement tolère encore les valeurs legacy.
 
 Algorithmes :
     - AES-256-GCM : confidentialité + intégrité authentifiée.
@@ -60,8 +61,20 @@ PBKDF2_ITERATIONS = 600_000
 BLOB_HEADER = b"JGCM"    # magic marker — 4 octets
 BLOB_VERSION = 1          # versionnement du format (1 octet)
 HEADER_SIZE = len(BLOB_HEADER) + 1  # 5 octets
+_BLOB_BASE64_PREFIX = base64.b64encode(BLOB_HEADER).decode("ascii")[:4]
 
 _ENV_KEY = "JARVIS_CRYPTO_KEY"
+
+
+def _decode_encrypted_blob(value: str) -> bytes | None:
+    """Décode un blob DataShield, en distinguant les valeurs legacy en clair."""
+    try:
+        blob = base64.b64decode(value, validate=True)
+    except Exception as exc:
+        if value.startswith(_BLOB_BASE64_PREFIX):
+            raise ValueError("Blob DataShield malformé.") from exc
+        return None
+    return blob if blob.startswith(BLOB_HEADER) else None
 
 
 # ─── Utilitaires bas niveau ───────────────────────────────────────────────────
@@ -160,8 +173,8 @@ class CryptoEngine:
     """Point d'accès centralisé au chiffrement DataShield.
 
     Lit la phrase secrète maître depuis l'environnement (``JARVIS_CRYPTO_KEY``).
-    Si la variable est absente, toutes les opérations passent en mode clair
-    avec un avertissement — jamais d'erreur silencieuse.
+    Si la variable ou la bibliothèque est absente, les opérations de chiffrement
+    échouent explicitement; le déchiffrement conserve la lecture legacy en clair.
 
     Usage::
 
@@ -211,20 +224,23 @@ class CryptoEngine:
     def encrypt(self, plaintext: str) -> str:
         """Chiffre une chaîne.
 
-        Si le chiffrement est désactivé, retourne la chaîne inchangée.
+        Si le chiffrement est désactivé, lève une erreur au lieu de stocker la valeur en clair.
 
         Args:
             plaintext: Texte en clair.
 
         Returns:
-            Blob base64 chiffré, ou ``plaintext`` si le chiffrement est désactivé.
+            Blob base64 chiffré.
+
+        Raises:
+            RuntimeError: Si la bibliothèque ou la clé de chiffrement est absente.
         """
         if not self.is_enabled:
-            return plaintext
+            raise RuntimeError("Chiffrement indisponible : bibliothèque ou clé DataShield absente.")
         with self._lock:
             return encrypt_str(plaintext, self._passphrase)  # type: ignore[arg-type]
 
-    def decrypt(self, value: str) -> str:
+    def decrypt(self, value: str, strict: bool = False) -> str:
         """Déchiffre une valeur produite par :meth:`encrypt`.
 
         Si le chiffrement est désactivé ou si la valeur n'est pas un blob
@@ -237,23 +253,31 @@ class CryptoEngine:
         Returns:
             Texte déchiffré ou ``value`` original si non applicable.
         """
+        try:
+            blob = _decode_encrypted_blob(value)
+        except ValueError:
+            if strict:
+                raise
+            return value
+        if blob is None:
+            return value
         if not self.is_enabled:
+            if strict:
+                raise RuntimeError("Impossible de déchiffrer : bibliothèque ou clé DataShield absente.")
             return value
         try:
-            blob = base64.b64decode(value)
-            if blob[:len(BLOB_HEADER)] != BLOB_HEADER:
-                # Valeur non chiffrée (migration transparente)
-                return value
             with self._lock:
                 return decrypt_bytes(blob, self._passphrase).decode("utf-8")  # type: ignore[arg-type]
         except Exception:
+            if strict:
+                raise
             # Valeur non chiffrée ou format inconnu — retour transparent
             return value
 
     def encrypt_bytes(self, data: bytes) -> bytes:
-        """Chiffre des bytes bruts. Retourne les bytes inchangés si désactivé."""
+        """Chiffre des bytes bruts; échoue si DataShield n'est pas prêt."""
         if not self.is_enabled:
-            return data
+            raise RuntimeError("Chiffrement indisponible : bibliothèque ou clé DataShield absente.")
         with self._lock:
             return encrypt_bytes(data, self._passphrase)  # type: ignore[arg-type]
 

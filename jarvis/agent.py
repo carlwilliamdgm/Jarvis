@@ -276,7 +276,11 @@ def estimer_complexite(message: str, intention_action: bool) -> str:
 def initialiser() -> dict:
     memoire = normaliser_memoire(charger_memoire())
     if "utilisateur" not in memoire:
-        default_nom = os.environ.get("JARVIS_USER") or os.environ.get("USERNAME") or "Carl"
+        default_nom = (
+            os.environ.get("GREATOS_USER")
+            or os.environ.get("JARVIS_USER")
+            or "utilisateur"
+        )
         default_lang = os.environ.get("JARVIS_LANG", "français")
 
         is_interactive = False
@@ -1865,7 +1869,7 @@ class AutonomousAgent:
             try:
                 reponse = chat_with_local(MODELE_LOCAL, messages)
             except Exception as e:
-                self.console.print(f"[dim yellow]Agent autonome modele indisponible : {e}[/dim yellow]")
+                self.console.print(f"[dim yellow]Agent autonome local indisponible : {e}[/dim yellow]")
                 return []
 
         if provider_cloud_reussi:

@@ -192,11 +192,21 @@ def _nettoyer_markdown(texte: str) -> str:
 
 
 def _revenir_en_ecoute() -> None:
-    """Parole/réflexion terminée → nouvelle fenêtre d'écoute 30s."""
+    """Parole/réflexion terminée → nouvelle fenêtre d'écoute de 25s."""
     from jarvis.voice_input import reset_listening_timer
 
     reset_listening_timer()
     _set_voice_state(VoiceState.LISTENING)
+
+
+def _speak_with_edge(texte: str) -> bool:
+    """Tente la synthèse cloud Edge-TTS; le pipeline Piper reste le repli local."""
+    try:
+        from jarvis.voice_output_edge import synthetiser_et_jouer
+        return bool(synthetiser_et_jouer(texte))
+    except Exception as exc:
+        LOGGER.info("[voice_output] Bascule sur Piper local (%s)", type(exc).__name__)
+    return False
 
 
 def parler_a_voix_haute(texte: str) -> None:
@@ -225,15 +235,17 @@ def parler_a_voix_haute(texte: str) -> None:
         LOGGER.info("Transition THINKING -> SPEAKING")
         _set_voice_state(VoiceState.SPEAKING)
 
-        # 1. Tentative Edge-TTS avec repli Piper inclus (hors tests unitaires)
-        is_unit_test = "PYTEST_CURRENT_TEST" in os.environ
-        played = False
-        if not is_unit_test:
+        # 1. TTS cloud en préférence, avec Piper local comme repli.
+        played = _speak_with_edge(texte_nettoye)
+
+        if played:
+            # Edge-TTS joue via winsound et ne traverse pas la lecture Piper,
+            # donc vider les trames captées pendant la réponse avant réécoute.
             try:
-                from jarvis.voice_output_edge import synthetiser_et_jouer
-                played = synthetiser_et_jouer(texte_nettoye)
-            except Exception as edge_err:
-                LOGGER.info("[voice_output] Bascule sur Piper local : %s", edge_err)
+                from jarvis.audio_capture import get_audio_capture_engine
+                get_audio_capture_engine().drainer_et_ignorer_garde(350)
+            except Exception:
+                LOGGER.debug("Garde anti-écho post Edge-TTS indisponible", exc_info=True)
 
         # 2. Pipeline officiel Piper local si Edge-TTS non joué
         if not played:

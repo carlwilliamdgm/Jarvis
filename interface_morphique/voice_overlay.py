@@ -55,6 +55,7 @@ class VoiceOverlay:
         self._canvas: Optional[tk.Canvas] = None
         self._current_state = VoiceState.IDLE
         self._current_transcript = ""
+        self._current_input_label = "Micro hôte en attente"
         self._stop_event = threading.Event()
         self._anim_tick = 0
         self._is_visible = False
@@ -86,6 +87,25 @@ class VoiceOverlay:
                 data = json.load(handle)
             state_str = data.get("state", "idle")
             text_str = str(data.get("text", "") or "")
+            input_status = data.get("audio_input", {})
+            if not isinstance(input_status, dict):
+                input_status = {}
+            input_name = input_status.get("device")
+            if input_status.get("reason") == "disabled_by_configuration":
+                self._current_input_label = "Écoute désactivée"
+            elif input_status.get("reason") == "switching_to_default_input":
+                self._current_input_label = "Changement du micro Windows…"
+            elif input_status.get("reason") == "input_stream_open_failed":
+                self._current_input_label = "Micro détecté, inaccessible"
+            elif input_status.get("available") and input_name:
+                device_label = str(input_name)
+                if len(device_label) > 24:
+                    device_label = device_label[:23] + "…"
+                self._current_input_label = f"Micro : {device_label}"
+            elif input_status.get("available"):
+                self._current_input_label = "Micro par défaut Windows"
+            else:
+                self._current_input_label = "Micro par défaut indisponible"
             return VoiceState(state_str), text_str
         except (json.JSONDecodeError, IOError, ValueError, AttributeError, TypeError, OSError):
             return None
@@ -210,7 +230,7 @@ class VoiceOverlay:
             c.create_text(text_x, 56, text="Transcription en direct", fill=self.SUBTEXT_COLOR, anchor="w", font=("Segoe UI", 7))
         else:
             c.create_text(text_x, 38, text="Parlez maintenant...", fill=self.TEXT_COLOR, anchor="w", font=("Segoe UI", 9))
-            c.create_text(text_x, 56, text="Fenêtre 30s active", fill=self.SUBTEXT_COLOR, anchor="w", font=("Segoe UI", 7))
+            c.create_text(text_x, 56, text="Fenêtre 25s active", fill=self.SUBTEXT_COLOR, anchor="w", font=("Segoe UI", 7))
 
         # Indicateur de pulsation en bas
         pulse_alpha = abs(math.sin(self._anim_tick * 0.15))
@@ -295,6 +315,7 @@ class VoiceOverlay:
         c.create_text(18, 43, text="◈", fill="#62657d", font=("Segoe UI", 18, "bold"))
         c.create_text(42, 36, text="J.A.R.V.I.S.", fill="#85889b", anchor="w", font=("Segoe UI", 9, "bold"))
         c.create_text(42, 54, text="En veille", fill="#62657d", anchor="w", font=("Segoe UI", 8))
+        c.create_text(42, 70, text=self._current_input_label, fill="#62657d", anchor="w", font=("Segoe UI", 7))
 
     def _render_current_state(self):
         """Dessine l'état courant avec ses animations dynamiques."""

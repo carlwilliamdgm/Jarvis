@@ -11,15 +11,18 @@ import getpass
 import json
 import os
 import re
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from context_engine.paths import JARVIS_DIR
+from datashield.crypto import crypto_engine
 
 
 # Chemin du dossier des profils
 PROFILES_DIR = JARVIS_DIR / "learning" / "profiles"
+_ENCRYPTED_PROFILE_KEY = "__greatos_encrypted_profile_v1__"
 
 
 def _slug_user_id(user_id: str) -> str:
@@ -146,12 +149,24 @@ def charger_profil(user_id: str | None = None) -> dict:
         try:
             with open(chemin, "r", encoding="utf-8") as f:
                 profil = json.load(f)
-                # S'assurer que le user_id correspond
-                profil["user_id"] = user_id
-                return profil
-        except (json.JSONDecodeError, IOError) as e:
-            # En cas d'erreur de lecture, recréer le profil
-            pass
+            if not isinstance(profil, dict):
+                raise RuntimeError("Contenu du profil invalide; lecture refusée.")
+            if _ENCRYPTED_PROFILE_KEY in profil:
+                if set(profil) != {_ENCRYPTED_PROFILE_KEY} or not isinstance(profil[_ENCRYPTED_PROFILE_KEY], str):
+                    raise RuntimeError("Enveloppe de profil chiffrée invalide; lecture refusée.")
+                raw_profile = crypto_engine.decrypt(profil[_ENCRYPTED_PROFILE_KEY], strict=True)
+                profil = json.loads(raw_profile)
+            else:
+                if not crypto_engine.is_enabled:
+                    raise RuntimeError("Migration du profil refusée : chiffrement DataShield indisponible.")
+                # Migre le format JSON historique vers une enveloppe intégralement chiffrée.
+                sauvegarder_profil(profil, user_id)
+            if not isinstance(profil, dict):
+                raise RuntimeError("Contenu du profil invalide; lecture refusée.")
+            profil["user_id"] = user_id
+            return profil
+        except (json.JSONDecodeError, IOError) as exc:
+            raise RuntimeError("Profil illisible; lecture refusée plutôt que recréée.") from exc
     
     # Créer un nouveau profil par défaut
     profil = _profil_par_defaut(user_id)
@@ -180,9 +195,27 @@ def sauvegarder_profil(profil: dict, user_id: str | None = None) -> None:
     if "rythme_activite" in profil:
         profil["rythme_activite"]["derniere_session"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Sauvegarder atomiquement
-    with open(chemin, "w", encoding="utf-8") as f:
-        json.dump(profil, f, ensure_ascii=False, indent=2)
+    if not crypto_engine.is_enabled:
+        raise RuntimeError("Écriture du profil refusée : chiffrement DataShield indisponible.")
+    serialized = json.dumps(profil, ensure_ascii=False, separators=(",", ":"))
+    envelope = {_ENCRYPTED_PROFILE_KEY: crypto_engine.encrypt(serialized)}
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=chemin.parent, prefix=f"{chemin.name}.",
+            suffix=".tmp", delete=False,
+        ) as f:
+            temp_path = Path(f.name)
+            json.dump(envelope, f, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, chemin)
+    finally:
+        if temp_path is not None:
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def mettre_a_jour_directive_profil(cle: str, valeur: str, user_id: str | None = None) -> None:

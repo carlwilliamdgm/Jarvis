@@ -85,10 +85,8 @@ def dechiffrer_valeur(blob: str) -> str:
     Args:
         blob: Blob base64 chiffré ou valeur en clair.
     """
-    if not crypto_engine.is_enabled:
-        return blob
     try:
-        return crypto_engine.decrypt(blob)
+        return crypto_engine.decrypt(blob, strict=True)
     except Exception as e:
         return str(resultat_erreur(f"Échec du déchiffrement : {e}", e))
 

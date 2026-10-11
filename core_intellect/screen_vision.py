@@ -1,6 +1,6 @@
 """Module de Vision d'écran pour Jarvis (GreatOS).
 
-Permet à Jarvis de 'voir' en temps réel ce qui est affiché sur l'écran de Carl :
+Permet à Jarvis d'analyser ce qui est affiché sur l'écran de l'utilisateur :
 - Code source dans l'IDE (VS Code, etc.)
 - Erreurs et exceptions dans le terminal
 - Pages web, documents, graphiques
@@ -82,7 +82,7 @@ def analyser_ecran_actuel(question: str = "Qu'y a-t-il sur mon écran ?") -> str
         client = Groq(api_key=api_key)
 
         prompt_systeme = (
-            "Tu es J.A.R.V.I.S., l'IA majordome de Carl. Tu as sous les yeux la capture de son écran.\n"
+            "Tu es J.A.R.V.I.S., l'assistant personnel de l'utilisateur. Tu analyses la capture d'écran autorisée.\n"
             "RÈGLES ABSOLUES :\n"
             "1. Sois direct, concis et utile (style Stark : 1 à 3 phrases percutantes).\n"
             "2. Si tu vois du code ou une erreur de compilation/terminal, identifie la cause exacte et donne la solution tout de suite.\n"
@@ -95,7 +95,7 @@ def analyser_ecran_actuel(question: str = "Qu'y a-t-il sur mon écran ?") -> str
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": f"{prompt_systeme}\n\nQuestion de Carl : {question}"},
+                        {"type": "text", "text": f"{prompt_systeme}\n\nQuestion de l'utilisateur : {question}"},
                         {
                             "type": "image_url",
                             "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},

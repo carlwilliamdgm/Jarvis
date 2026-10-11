@@ -394,14 +394,18 @@ class OpenRouterProvider(BaseLLMProvider):
 class OllamaProvider(BaseLLMProvider):
     """Fournisseur Ollama local avec auto-détection du modèle et timeout protecteur anti-freeze."""
 
-    def __init__(self, modele: Optional[str] = None, timeout: float = 15.0):
+    def __init__(self, modele: Optional[str] = None, timeout: Optional[float] = None):
         nom_modele = modele or get_modele_local()
         super().__init__(
             nom="Ollama",
             modeles=[nom_modele],
             niveau="local",
         )
-        self.timeout = timeout
+        timeout_value = timeout if timeout is not None else os.environ.get("JARVIS_OLLAMA_TIMEOUT", "2.0")
+        try:
+            self.timeout = max(0.1, float(timeout_value))
+        except (TypeError, ValueError):
+            self.timeout = 2.0
 
     def is_available(self) -> bool:
         return ollama is not None
@@ -567,7 +571,7 @@ _SENTINEL_SOVEREIGN = object()
 class LLMClient:
     """
     Orchestrateur central des requêtes LLM.
-    Gère la cascade de fallback : Souverain Jarvis-GC -> Cloud (Groq/OpenRouter) -> Fallback Local.
+    Gère la cascade de fallback : Cloud (Groq/OpenRouter) -> modèle souverain -> Ollama local.
     """
 
     def __init__(
@@ -635,10 +639,9 @@ class LLMClient:
         require_json: bool = False,
     ) -> Optional[dict]:
         """
-        Génère une réponse avec cascade de haute performance :
-        1. Cloud Ultra-Rapide (Groq / OpenRouter) en Priorité #1 pour réactivité instantanée (< 1s) et intelligence maximale (120B/70B).
-        2. Modèle Souverain The Great Corporation (Jarvis-GC) en Fallback Hors-Ligne #1 si le cloud est inaccessible.
-        3. Modèle local standard (Ollama fallback) en dernier recours.
+        Génère une réponse avec les fournisseurs cloud en priorité :
+        1. Fournisseurs distants configurés.
+        2. Modèle souverain puis Ollama local en secours.
         """
         cfg = config or LLMConfig()
         mem = memoire or {}
@@ -666,7 +669,8 @@ class LLMClient:
                     on_event("thinking", {"message": f"Pré-chargement du modèle de secours ({modele_local})..."})
                 prechauffer_modele_local(modele_local)
 
-        # 1. CASCADE CLOUD ULTRA-RAPIDE (Priorité #1 - Fast-Track)
+        # Fournisseurs cloud en préférence pour limiter la charge locale;
+        # les modèles locaux restent le chemin de secours.
         for tentative in range(max_tentatives):
             available_clouds = self.get_available_cloud_providers()
             ordered_clouds = self.order_cloud_providers(available_clouds, mem)

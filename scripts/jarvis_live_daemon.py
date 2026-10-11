@@ -34,8 +34,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from jarvis.audio_capture import get_audio_capture_engine
 from jarvis.voice_output_edge import synthetiser_et_jouer
-from jarvis.voice_transcription import transcrire_audio_groq
-from core_intellect.screen_vision import analyser_ecran_actuel
+from jarvis.voice_input import transcrire_audio_pcm
 from datashield.confirmations import use_voice_confirmation
 import jarvis
 
@@ -47,22 +46,9 @@ DECLENCHEURS_JARVIS = (
     "regarde mon écran", "regarde l'écran", "analyse mon écran"
 )
 
-# Mots-clés déclenchant la vision
-DECLENCHEURS_VISION = (
-    "regarde", "écran", "ecran", "vois-tu", "vois tu",
-    "analyse ce", "analyse cette", "cette erreur", "ce code",
-    "qu'est-ce qu'il y a", "qu'y a-t-il", "aide-moi avec ce"
-)
-
-
 def contient_declencheur(texte: str) -> bool:
     t = texte.lower()
     return any(d in t for d in DECLENCHEURS_JARVIS)
-
-
-def est_demande_vision(texte: str) -> bool:
-    t = texte.lower()
-    return any(v in t for v in DECLENCHEURS_VISION)
 
 
 def main():
@@ -99,7 +85,7 @@ def main():
 
     # Brancher la confirmation vocale : toute action sensible sera posée à voix
     # haute — aucun input() clavier ne sera jamais sollicité dans le démon.
-    with use_voice_confirmation(engine, synthetiser_et_jouer, transcrire_audio_groq):
+    with use_voice_confirmation(engine, synthetiser_et_jouer, transcrire_audio_pcm):
         try:
             while True:
                 frame = engine.lire_depuis_queue("wake", timeout=0.1)
@@ -137,8 +123,8 @@ def main():
                     if not en_conversation and not detecter_wakeword_local(full_pcm):
                         continue
 
-                    # Transcription haute vitesse via Groq Whisper
-                    texte = transcrire_audio_groq(full_pcm)
+                    # Groq Whisper en préférence, Vosk local si le cloud échoue.
+                    texte = transcrire_audio_pcm(full_pcm)
 
                     if not texte or len(texte.strip()) < 2:
                         continue
@@ -159,43 +145,22 @@ def main():
                             engine.drainer_et_ignorer_garde(300)
                             continue
 
-                        # Traitement vision d'écran vs Actions Windows directes vs LLM général
-                        texte_low = texte.lower()
-                        if est_demande_vision(texte):
-                            LOGGER.info("👁️ Analyse de votre écran en cours...")
-                            reponse_texte = analyser_ecran_actuel(texte)
-                        elif any(w in texte_low for w in ["monte le son", "monte le volume", "baisse le son", "baisse le volume", "coupe le son", "remets le son"]):
-                            from taskflow.windows_actions import controler_volume
-                            reponse_texte = controler_volume(texte_low)
-                        elif any(w in texte_low for w in ["pause", "mets en pause", "reprends la lecture", "musique suivante", "piste suivante"]):
-                            from taskflow.windows_actions import controler_media
-                            reponse_texte = controler_media(texte_low)
-                        elif any(w in texte_low for w in ["ouvre vs code", "ouvre vscode", "ouvre le code", "ouvre le projet"]):
-                            from taskflow.windows_actions import lancer_application
-                            reponse_texte = lancer_application("vscode")
-                        elif any(w in texte_low for w in ["ouvre le terminal", "ouvre la console", "ouvre powershell"]):
-                            from taskflow.windows_actions import lancer_application
-                            reponse_texte = lancer_application("terminal")
-                        elif any(w in texte_low for w in ["ouvre l'explorateur", "ouvre le dossier"]):
-                            from taskflow.windows_actions import lancer_application
-                            reponse_texte = lancer_application("explorateur")
-                        elif any(w in texte_low for w in ["minimise tout", "affiche le bureau", "montre le bureau"]):
-                            from taskflow.windows_actions import minimiser_tout
-                            reponse_texte = minimiser_tout()
-                        elif any(w in texte_low for w in ["verrouille le pc", "verrouille l'ordinateur", "verrouille mon pc"]):
-                            from taskflow.windows_actions import verrouiller_poste
-                            reponse_texte = verrouiller_poste()
+                        # Toute intention passe par Jarvis : politique DataShield,
+                        # confirmations vocales et outils propriétaires compris.
+                        LOGGER.info("🧠 Traitement...")
+                        res = jarvis.executer_interaction_utilisateur(
+                            texte_epure or texte,
+                            historique,
+                            memoire,
+                            ignorer_si_occupe=False,
+                            origine_vocale=False,
+                        )
+                        if isinstance(res, tuple):
+                            reponse_texte = str(res[0])
+                        elif isinstance(res, dict):
+                            reponse_texte = str(res.get("reponse", ""))
                         else:
-                            LOGGER.info("🧠 Traitement...")
-                            res = jarvis.executer_interaction_utilisateur(
-                                texte, historique, memoire, ignorer_si_occupe=False, origine_vocale=True
-                            )
-                            if isinstance(res, tuple):
-                                reponse_texte = str(res[0])
-                            elif isinstance(res, dict):
-                                reponse_texte = str(res.get("reponse", ""))
-                            else:
-                                reponse_texte = str(res or "")
+                            reponse_texte = str(res or "")
 
                         if reponse_texte:
                             LOGGER.info(f"🤖 Jarvis : {reponse_texte}")

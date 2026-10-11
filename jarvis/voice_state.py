@@ -23,6 +23,7 @@ VOICE_STATE_FILE = Path(__file__).resolve().parent.parent / "runtime" / "voice_s
 
 _voice_state = VoiceState.IDLE
 _voice_transcript = ""
+_voice_audio_input: dict[str, object] = {"available": False, "device": None, "reason": "not_initialized"}
 _voice_seq = 0
 _voice_state_lock = threading.Lock()
 
@@ -39,19 +40,20 @@ def get_voice_transcript() -> str:
         return _voice_transcript
 
 
-def _snapshot_state() -> tuple[VoiceState, str, int]:
+def _snapshot_state() -> tuple[VoiceState, str, dict[str, object], int]:
     with _voice_state_lock:
-        return _voice_state, _voice_transcript, _voice_seq
+        return _voice_state, _voice_transcript, dict(_voice_audio_input), _voice_seq
 
 
 def _write_state_to_file():
     """Écrit l'état courant dans le fichier JSON partagé pour l'overlay avec retry sécurisé."""
     import time
-    state, transcript, seq = _snapshot_state()
+    state, transcript, audio_input, seq = _snapshot_state()
     data = {
         "state": state.value,
         "seq": seq,
         "ts": time.time(),
+        "audio_input": audio_input,
     }
     if transcript:
         data["text"] = transcript
@@ -81,6 +83,22 @@ def _set_voice_transcript(text: str) -> None:
         if _voice_transcript == cleaned:
             return
         _voice_transcript = cleaned
+        _voice_seq += 1
+    _write_state_to_file()
+
+
+def _set_voice_audio_input(status: dict[str, object]) -> None:
+    """Publie au HUD l'état du microphone fourni par l'OS hôte."""
+    global _voice_audio_input, _voice_seq
+    normalized = {
+        "available": bool(status.get("available")),
+        "device": status.get("device"),
+        "reason": status.get("reason"),
+    }
+    with _voice_state_lock:
+        if _voice_audio_input == normalized:
+            return
+        _voice_audio_input = normalized
         _voice_seq += 1
     _write_state_to_file()
 

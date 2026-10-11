@@ -204,9 +204,33 @@ class VoiceInputTests(unittest.TestCase):
 
         import time
         start = time.monotonic()
-        with patch.object(voice_input, "_new_recognizer", return_value=PartialThenSilentRecognizer()):
+        with patch.dict("os.environ", {"JARVIS_USE_GROQ_WHISPER": "0"}), \
+             patch.object(voice_input, "_new_recognizer", return_value=PartialThenSilentRecognizer()):
             result = voice_input.transcrire_flux(FakeStream())
         elapsed = time.monotonic() - start
 
         self.assertEqual("bonjour jarvis", result)
         self.assertLess(elapsed, 2.0)
+
+    def test_transcrire_audio_pcm_prefers_groq_by_default(self):
+        with patch.dict("os.environ", {"JARVIS_USE_GROQ_WHISPER": "true"}), \
+             patch("jarvis.voice_transcription.transcrire_audio_groq", return_value="bonjour monsieur") as cloud, \
+             patch.object(voice_input, "_new_recognizer") as local:
+            result = voice_input.transcrire_audio_pcm(b"\x00\x00")
+
+        self.assertEqual("bonjour monsieur", result)
+        cloud.assert_called_once()
+        local.assert_not_called()
+
+    def test_transcrire_audio_pcm_falls_back_to_vosk_after_groq_error(self):
+        recognizer = SimpleNamespace(
+            AcceptWaveform=lambda _pcm: False,
+            FinalResult=lambda: '{"text": "repli local"}',
+        )
+        with patch.dict("os.environ", {"JARVIS_USE_GROQ_WHISPER": "true"}), \
+             patch("jarvis.voice_transcription.transcrire_audio_groq", side_effect=RuntimeError("indisponible")), \
+             patch.object(voice_input, "_new_recognizer", return_value=recognizer) as local:
+            result = voice_input.transcrire_audio_pcm(b"\x00\x00")
+
+        self.assertEqual("repli local", result)
+        local.assert_called_once()

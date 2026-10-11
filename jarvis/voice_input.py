@@ -175,7 +175,7 @@ _VOSK_MODEL_LANGUAGE: str | None = None
 _STOP_EVENT = threading.Event()
 _LISTENER_THREAD: threading.Thread | None = None
 _LISTENING_TIMEOUT_START: float | None = None
-_LISTENING_TIMEOUT_SECONDS = 25.0  # Réduit de 30s à 25s pour réactivité améliorée
+_LISTENING_TIMEOUT_SECONDS = 25.0
 
 
 def _language() -> str:
@@ -352,13 +352,17 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
     - Rejet des résultats trop courts (bruit)
     """
     try:
-        recognizer = _new_recognizer()
         started_at = time.monotonic()
         last_speech_at = started_at
         last_partial = ""
         had_speech = False
         fragments: list[str] = []
         has_vad = hasattr(audio_stream, "last_speech")
+        use_groq = os.getenv("JARVIS_USE_GROQ_WHISPER", "true").lower() in ("1", "true", "yes")
+        # En mode cloud, la VAD suffit à borner la capture; ne charge Vosk que
+        # si le fournisseur distant échoue. Les flux sans VAD gardent le mode
+        # local nécessaire pour détecter la fin de parole.
+        recognizer = None if use_groq and has_vad else _new_recognizer()
         pending = [initial_pcm] if initial_pcm else []
         discontinuity_count = 0
         max_discontinuities = 3  # Tolérer jusqu'à 3 discontinuités avant abandon
@@ -396,24 +400,25 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
             if speech:
                 had_speech = True
                 last_speech_at = time.monotonic()
-            if recognizer.AcceptWaveform(raw):
-                text = json.loads(recognizer.Result()).get("text", "").strip()
-                if text:
-                    fragments.append(text)
-                    last_partial = ""
-                    _set_voice_transcript(" ".join(fragments))
-            else:
-                partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
-                if partial:
-                    if partial != last_partial:
-                        last_partial = partial
-                        # Compatibilité des sources historiques sans VAD ; le
-                        # moteur unique, lui, s'appuie exclusivement sur l'énergie.
-                        if not has_vad:
-                            had_speech = True
-                            last_speech_at = time.monotonic()
-                        prefix = " ".join(fragments)
-                        _set_voice_transcript(f"{prefix} {partial}".strip())
+            if recognizer is not None:
+                if recognizer.AcceptWaveform(raw):
+                    text = json.loads(recognizer.Result()).get("text", "").strip()
+                    if text:
+                        fragments.append(text)
+                        last_partial = ""
+                        _set_voice_transcript(" ".join(fragments))
+                else:
+                    partial = json.loads(recognizer.PartialResult()).get("partial", "").strip()
+                    if partial:
+                        if partial != last_partial:
+                            last_partial = partial
+                            # Compatibilité des sources historiques sans VAD ; le
+                            # moteur unique, lui, s'appuie exclusivement sur l'énergie.
+                            if not has_vad:
+                                had_speech = True
+                                last_speech_at = time.monotonic()
+                            prefix = " ".join(fragments)
+                            _set_voice_transcript(f"{prefix} {partial}".strip())
 
             # Dès que la parole a été détectée et suivie du silence requis : sortie immédiate
             if had_speech and (time.monotonic() - last_speech_at >= SILENCE_TIMEOUT_SECONDS):
@@ -423,15 +428,13 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
             if not had_speech and (time.monotonic() - started_at >= 2.0):
                 break
 
-            # Sortie de secours si la fenêtre d'écoute globale de 30s a expiré
+            # Sortie de secours si la fenêtre d'écoute globale de 25s a expiré
             # (évite que la musique ou le bruit ambiant bloque la boucle indéfiniment)
             if _fenetre_ecoute_expiree():
-                LOGGER.info("Timeout fenêtre 30s atteint dans transcrire_flux — sortie forcée")
+                LOGGER.info("Timeout fenêtre 25s atteint dans transcrire_flux — sortie forcée")
                 break
 
-        # 1. Tentative ultra-rapide Groq Whisper si configuré et hors tests unitaires
-        is_unit_test = "PYTEST_CURRENT_TEST" in os.environ
-        use_groq = (os.getenv("JARVIS_USE_GROQ_WHISPER", "true").lower() in ("1", "true", "yes")) and not is_unit_test
+        # Groq est prioritaire; Vosk reste disponible comme repli local.
         if use_groq and collected_pcm and had_speech:
             try:
                 from jarvis.voice_transcription import transcrire_audio_groq
@@ -443,7 +446,15 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
             except Exception as exc:
                 LOGGER.debug("[transcrire_flux] Bascule sur Vosk local après échec Groq: %s", exc)
 
-        # 2. Repli local officiel : résultat Vosk déjà calculé en direct
+        # Repli local : transcrire le PCM bufferisé seulement si le cloud échoue.
+        if recognizer is None:
+            recognizer = _new_recognizer()
+            for pcm_chunk in collected_pcm:
+                if recognizer.AcceptWaveform(pcm_chunk):
+                    text = json.loads(recognizer.Result()).get("text", "").strip()
+                    if text:
+                        fragments.append(text)
+
         final_text = json.loads(recognizer.FinalResult()).get("text", "").strip()
         if final_text:
             fragments.append(final_text)
@@ -459,7 +470,36 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
         return result
     except Exception:
         LOGGER.exception("Échec de transcription Vosk (stream mort ou micro débranché)")
-        # Ne pas réarmer le timer : laisser le timeout 30s expirer naturellement
+        # Ne pas réarmer le timer : laisser le délai d'écoute de 25s expirer.
+        return None
+
+
+def transcrire_audio_pcm(pcm_data: bytes) -> str | None:
+    """Transcrit un buffer PCM via Groq en préférence, puis Vosk local en repli."""
+    if not pcm_data:
+        return None
+    if os.getenv("JARVIS_USE_GROQ_WHISPER", "true").lower() in ("1", "true", "yes"):
+        try:
+            from jarvis.voice_transcription import transcrire_audio_groq
+            transcript = transcrire_audio_groq(pcm_data)
+            if transcript:
+                return transcript
+        except Exception:
+            LOGGER.debug("Repli Groq Whisper indisponible; utilisation de Vosk local")
+    try:
+        recognizer = _new_recognizer()
+        fragments = []
+        if recognizer.AcceptWaveform(pcm_data):
+            result_text = json.loads(recognizer.Result()).get("text", "").strip()
+            if result_text:
+                fragments.append(result_text)
+        final_result = json.loads(recognizer.FinalResult()).get("text", "").strip()
+        if final_result:
+            fragments.append(final_result)
+        result = " ".join(fragments).strip()
+        return result if len(result) >= 3 else None
+    except Exception:
+        LOGGER.exception("Échec de transcription audio locale Vosk")
         return None
 
 
@@ -497,36 +537,9 @@ def _soumettre_au_pipeline(text: str) -> bool:
             parler_a_voix_haute(question)
 
         def transcrire_confirmation(pcm: bytes) -> str | None:
-            # Groq est rapide lorsqu'il est disponible; Vosk traite la réponse
-            # localement si le réseau ou le fournisseur est indisponible.
-            try:
-                from jarvis.voice_transcription import transcrire_audio_groq
-                transcript = transcrire_audio_groq(pcm)
-                if transcript:
-                    return transcript
-            except Exception:
-                LOGGER.debug("Transcription en ligne indisponible pour la confirmation vocale")
+            return transcrire_audio_pcm(pcm)
 
-            try:
-                recognizer = _new_recognizer()
-                fragments: list[str] = []
-                # Garder les blocs alignés sur les échantillons PCM 16 bits.
-                block_size = 4096
-                for offset in range(0, len(pcm) - (len(pcm) % 2), block_size):
-                    block = pcm[offset:offset + block_size]
-                    if recognizer.AcceptWaveform(block):
-                        phrase = json.loads(recognizer.Result()).get("text", "").strip()
-                        if phrase:
-                            fragments.append(phrase)
-                final = json.loads(recognizer.FinalResult()).get("text", "").strip()
-                if final:
-                    fragments.append(final)
-                return " ".join(fragments) or None
-            except Exception:
-                LOGGER.exception("Échec de la transcription Vosk de la confirmation")
-                return None
-
-        engine = get_audio_capture_engine(get_input_device())
+        engine = get_audio_capture_engine()
         with use_voice_confirmation(engine, parler_confirmation, transcrire_confirmation):
             result = jarvis.executer_interaction_utilisateur(
                 text, historique, memoire, ignorer_si_occupe=True, origine_vocale=True
@@ -577,17 +590,54 @@ def get_input_device() -> int | None:
     try:
         import sounddevice as sd
         default_dev = sd.default.device
-        if isinstance(default_dev, (list, tuple)) and len(default_dev) > 0:
+        try:
             default_in = default_dev[0]
-            if default_in is not None and default_in >= 0:
-                return int(default_in)
-        elif isinstance(default_dev, int) and default_dev >= 0:
-            return int(default_dev)
+        except (TypeError, IndexError, KeyError):
+            default_in = default_dev
+        if default_in is not None and int(default_in) >= 0:
+            return int(default_in)
     except Exception:
         pass
     return None
 
 
+
+
+def get_voice_input_status() -> dict[str, Any]:
+    """Retourne un diagnostic vocal basé sur le micro par défaut de l'hôte."""
+    disabled = os.environ.get("GREATOS_DISABLE_VOICE", "").lower() in ("1", "true", "yes")
+    try:
+        from jarvis.audio_capture import get_audio_capture_status
+        audio = get_audio_capture_status()
+    except Exception as exc:
+        audio = {"default_input": {"available": False, "error": str(exc)}}
+    default_input = audio.get("default_input", {})
+    listener_running = bool(_LISTENER_THREAD and _LISTENER_THREAD.is_alive())
+    if disabled:
+        reason = "disabled_by_configuration"
+    elif not default_input.get("available"):
+        reason = "no_host_default_input"
+    elif not listener_running:
+        reason = "listener_not_running"
+    elif audio.get("follows_system_default") and not audio.get("active_matches_default"):
+        reason = "switching_to_default_input"
+    elif not audio.get("stream_active"):
+        reason = "input_stream_not_open"
+    else:
+        reason = None
+    return {
+        "enabled": not disabled,
+        "audio_input_ready": (
+            not disabled
+            and bool(default_input.get("available"))
+            and listener_running
+            and bool(audio.get("stream_active"))
+            and audio.get("active_matches_default") is not False
+        ),
+        "reason": reason,
+        "listener_running": listener_running,
+        "audio": audio,
+    }
 
 
 class _EngineStream:
@@ -699,7 +749,7 @@ def écouter_et_transcrire() -> str | None:
         return None
 
     last_submitted: str | None = None
-    engine = get_audio_capture_engine(get_input_device())
+    engine = get_audio_capture_engine()
     if not engine.ouvrir():
         LOGGER.warning("Impossible d'ouvrir le flux audio natif — retry dans 3s")
         _set_voice_state(VoiceState.IDLE)
@@ -769,7 +819,7 @@ def écouter_et_transcrire() -> str | None:
                             _jouer_phrase_reveil()  # inclut drainer_et_ignorer_garde(350)
                         else:
                             # Réarmement en LISTENING : pas de phrase de réveil
-                            LOGGER.info("Wake word en LISTENING — réarmement 30s")
+                            LOGGER.info("Wake word en LISTENING — réarmement 25s")
                         _demarrer_fenetre_ecoute()  # sans drain supplémentaire
                         previous_state = VoiceState.LISTENING
                         continue
@@ -843,10 +893,10 @@ def demarrer_ecoute_vocale() -> None:
 
 
 def reset_listening_timer() -> None:
-    """Invalide la fenêtre 30s ; le prochain passage en LISTENING en ouvre une nouvelle."""
+    """Invalide la fenêtre 25s ; le prochain passage en LISTENING en ouvre une nouvelle."""
     global _LISTENING_TIMEOUT_START
     _LISTENING_TIMEOUT_START = None
-    LOGGER.info("Timer écoute invalidé pour le prochain cycle 30s")
+    LOGGER.info("Timer écoute invalidé pour le prochain cycle 25s")
 
 
 def arreter_ecoute_vocale() -> None:

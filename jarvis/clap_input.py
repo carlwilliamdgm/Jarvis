@@ -13,7 +13,7 @@ import time
 
 import numpy as np
 
-from jarvis.voice_input import WAKE_WORD_FRAME_LENGTH, _jouer_phrase_reveil, get_input_device, transcrire_et_soumettre
+from jarvis.voice_input import WAKE_WORD_FRAME_LENGTH, _jouer_phrase_reveil, transcrire_et_soumettre
 from jarvis.voice_state import VoiceState, _set_voice_state, get_voice_state
 
 
@@ -57,12 +57,12 @@ def _listener_loop() -> None:
     try:
         from jarvis.audio_capture import get_audio_capture_engine
         detector = DoubleClapDetector()
-        engine = get_audio_capture_engine(get_input_device())
-        if not engine.ouvrir():
-            LOGGER.warning("[ClapInput] Impossible d'ouvrir le moteur audio")
-            return
-        LOGGER.info("[ClapInput] Démarré sur queue clap du moteur unique")
+        engine = get_audio_capture_engine()
         while not _STOP_EVENT.is_set():
+            if not engine.ouvrir():
+                LOGGER.info("[ClapInput] En attente du microphone par défaut de Windows")
+                _STOP_EVENT.wait(1.0)
+                continue
             frame = engine.lire_depuis_queue("clap", timeout=0.1)
             if frame is None:
                 continue

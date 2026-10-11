@@ -1353,7 +1353,7 @@ def controler_multimedia_tool(action: str) -> str:
 
 
 def manipuler_fenetre_tool(titre: str, x: int = 0, y: int = 0, largeur: int = 1280, hauteur: int = 720) -> str:
-    """Repositionne ou redimensionne une fenêtre visible sur le bureau de Carl."""
+    """Repositionne ou redimensionne une fenêtre visible sur le bureau Windows courant."""
     decision = evaluate_capability(CapabilityRequest(
         capability="desktop.window_control",
         arguments={"titre": titre, "x": x, "y": y, "largeur": largeur, "hauteur": hauteur},
@@ -1369,7 +1369,7 @@ def manipuler_fenetre_tool(titre: str, x: int = 0, y: int = 0, largeur: int = 12
 
 
 def regarder_ecran_tool(question: str = "", zone: str = "ecran") -> str:
-    """Capture et analyse en direct ce qui est visible sur l'écran de Carl ou la fenêtre active."""
+    """Capture et analyse ce qui est visible sur l'écran ou la fenêtre active de l'utilisateur."""
     decision = evaluate_capability(CapabilityRequest(
         capability="desktop.vision_inspect",
         arguments={"question": question, "zone": zone},

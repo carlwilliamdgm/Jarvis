@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$GitHubPAT,
-    [string]$InstallDir = ""
+    [string]$InstallDir = "",
+    [string]$RepositoryUrl = $env:GREATOS_REPOSITORY_URL
 )
 
 # Bootstrap installation script for Jarvis
@@ -208,7 +209,10 @@ Install-GitIfMissing
 # .git/config — it only ever exists transiently via GIT_ASKPASS (see
 # Invoke-GitWithPAT above), for the duration of clone/pull.
 Write-Log "=== Step 2: Clone Jarvis Repository ==="
-$repoUrl = "https://github.com/carlwilliamdgm/Jarvis.git"
+if ([string]::IsNullOrWhiteSpace($RepositoryUrl)) {
+    throw "GREATOS_REPOSITORY_URL (ou -RepositoryUrl) doit pointer vers le depot officiel GreatOS."
+}
+$repoUrl = $RepositoryUrl
 
 if (Test-Path $JarvisDir) {
     $gitDir = Join-Path $JarvisDir ".git"

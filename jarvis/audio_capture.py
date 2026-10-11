@@ -43,6 +43,42 @@ FRAME_SIZE = 1_280  # 80 ms @ 16 kHz (openWakeWord + Vosk)
 DEFAULT_FRAME_LENGTH = FRAME_SIZE
 
 
+def _get_default_input_device_index() -> Optional[int]:
+    """Lit le périphérique d'entrée par défaut exposé par le backend hôte."""
+    if sd is None:
+        return None
+    try:
+        default_device = sd.default.device
+        try:
+            # sounddevice expose un _InputOutputPair indexable, qui n'est pas
+            # nécessairement une tuple/list native.
+            index = default_device[0]
+        except (TypeError, IndexError, KeyError):
+            index = default_device
+        if index is None or int(index) < 0:
+            return None
+        return int(index)
+    except Exception:
+        return None
+
+
+def _publish_audio_input_status(available: bool, reason: Optional[str] = None) -> None:
+    """Publie au HUD le périphérique hôte actuellement utilisé ou attendu."""
+    device_name = None
+    if available and sd is not None:
+        try:
+            index = _get_default_input_device_index()
+            if index is not None:
+                device_name = sd.query_devices(device=index, kind="input").get("name")
+        except Exception:
+            pass
+    try:
+        from jarvis.voice_state import _set_voice_audio_input
+        _set_voice_audio_input({"available": available, "device": device_name, "reason": reason})
+    except Exception:
+        LOGGER.debug("État microphone HUD indisponible", exc_info=True)
+
+
 # ---------------------------------------------------------------------------
 # Structures de donnees publiques
 # ---------------------------------------------------------------------------
@@ -351,6 +387,9 @@ class AudioCaptureEngine:
     _HYSTERESIS_RATIO  = 3.0
 
     def __init__(self, device_index: Optional[int] = None) -> None:
+        # None signifie que GreatOS suit en continu le périphérique par défaut
+        # de l'hôte. Un index explicite reste réservé aux intégrations/tests.
+        self._follow_system_default = device_index is None
         self.device_index    = device_index
         self.native_rate     = TARGET_SAMPLE_RATE
         self.native_channels = 1
@@ -360,6 +399,7 @@ class AudioCaptureEngine:
         self._stream: Optional[Any] = None
         self._stream_lock = threading.RLock()
         self._running = False
+        self._default_switch_pending = False
 
         # Resampler persistant (samplerate.Resampler ou None -> fallback np.interp)
         self._resampler: Optional[Any] = None
@@ -395,6 +435,7 @@ class AudioCaptureEngine:
 
         # Thread de capture
         self._capture_thread: Optional[threading.Thread] = None
+        self._next_default_check = 0.0
 
     # ------------------------------------------------------------------
     # Initialisation materielle
@@ -404,6 +445,10 @@ class AudioCaptureEngine:
         if sd is None:
             return
         try:
+            if self._follow_system_default:
+                self.device_index = _get_default_input_device_index()
+                if self.device_index is None:
+                    raise RuntimeError("Windows ne signale aucun micro par défaut")
             dev = sd.query_devices(device=self.device_index, kind="input")
             self.native_rate     = int(dev.get("default_samplerate", 44100.0))
             self.native_channels = max(1, int(dev.get("max_input_channels", 1)))
@@ -544,6 +589,33 @@ class AudioCaptureEngine:
         reconnect_delay = 1.0
         
         while self._running:
+            # PortAudio ouvre un flux sur un périphérique concret. Si Windows
+            # change son micro par défaut (ex. casque Bluetooth), fermer ce flux
+            # puis en ouvrir un seul sur le nouveau défaut.
+            now = time.monotonic()
+            if self._follow_system_default and now >= self._next_default_check:
+                self._next_default_check = now + 1.0
+                default_index = _get_default_input_device_index()
+                if default_index != self.device_index or (self._stream is None and default_index is not None):
+                    LOGGER.info(
+                        "[AudioCaptureEngine] Défaut micro hôte : %s -> %s",
+                        self.device_index, default_index,
+                    )
+                    self._default_switch_pending = True
+                    self.device_index = default_index
+                    if default_index is None:
+                        self._attempt_reconnect()
+                        _publish_audio_input_status(False, "no_host_default_input")
+                        LOGGER.warning("[AudioCaptureEngine] Aucun micro par défaut Windows disponible")
+                    else:
+                        _publish_audio_input_status(True, "switching_to_default_input")
+                        self._attempt_reconnect()
+                        native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
+
+            if self._stream is None:
+                time.sleep(0.1)
+                continue
+
             try:
                 data, overflowed = self._stream.read(native_block)
                 if overflowed:
@@ -560,6 +632,7 @@ class AudioCaptureEngine:
                 if consecutive_errors >= max_consecutive_errors:
                     LOGGER.error("[AudioCaptureEngine] Trop d'erreurs - tentative de reconnexion")
                     self._attempt_reconnect()
+                    native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
                     consecutive_errors = 0
                     time.sleep(reconnect_delay)
                     continue
@@ -584,6 +657,17 @@ class AudioCaptureEngine:
 
         LOGGER.info("[AudioCaptureEngine] Thread capture termine")
 
+    def _close_stream(self) -> None:
+        """Ferme le flux courant sans arrêter le thread propriétaire."""
+        with self._stream_lock:
+            if self._stream is not None:
+                try:
+                    self._stream.stop()
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
+
     def _attempt_reconnect(self) -> bool:
         """Reconnecte le flux depuis le thread de capture courant.
 
@@ -592,16 +676,9 @@ class AudioCaptureEngine:
         microphone et doit reprendre la lecture après la reconnexion.
         """
         LOGGER.info("[AudioCaptureEngine] Tentative de reconnexion du micro...")
-        
+
+        self._close_stream()
         with self._stream_lock:
-            # Fermer l'ancien flux si existe
-            if self._stream is not None:
-                try:
-                    self._stream.stop()
-                    self._stream.close()
-                except Exception:
-                    pass
-                self._stream = None
             self._accumulation_buffer = np.array([], dtype=np.int16)
             self._q_wake.drain()
             self._q_clap.drain()
@@ -621,6 +698,12 @@ class AudioCaptureEngine:
             if not self._running or sd is None:
                 return False
             try:
+                if self._follow_system_default:
+                    self.device_index = _get_default_input_device_index()
+                    if self.device_index is None:
+                        LOGGER.warning("[AudioCaptureEngine] Reconnexion en attente du micro par défaut Windows")
+                        _publish_audio_input_status(False, "no_host_default_input")
+                        return False
                 self._detect_native_params()
                 self._init_resampler()
                 native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
@@ -633,11 +716,17 @@ class AudioCaptureEngine:
                 )
                 stream.start()
                 self._stream = stream
+                self._default_switch_pending = False
+                _publish_audio_input_status(True)
                 LOGGER.info("[AudioCaptureEngine] Micro reconnecté")
                 return True
             except Exception as exc:
                 self._stream = None
                 LOGGER.warning("[AudioCaptureEngine] Reconnexion échouée: %s", exc)
+                _publish_audio_input_status(
+                    _get_default_input_device_index() is not None,
+                    "input_stream_open_failed",
+                )
                 return False
 
     # ------------------------------------------------------------------
@@ -647,15 +736,21 @@ class AudioCaptureEngine:
     def ouvrir(self) -> bool:
         """Ouvre le flux PortAudio unique et demarre le thread de capture."""
         with self._stream_lock:
-            if self._running and self._stream is not None:
-                return True
+            if self._running:
+                # Le thread de capture reste propriétaire pendant une
+                # reconnexion; ne jamais en lancer un second.
+                return self._stream is not None
             if sd is None:
                 LOGGER.warning("[AudioCaptureEngine] sounddevice absent")
                 return False
-            self._detect_native_params()
-            self._init_resampler()
-            native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
             try:
+                if self._follow_system_default and _get_default_input_device_index() is None:
+                    LOGGER.warning("[AudioCaptureEngine] Aucun micro par défaut Windows disponible")
+                    _publish_audio_input_status(False, "no_host_default_input")
+                    return False
+                self._detect_native_params()
+                self._init_resampler()
+                native_block = int(FRAME_SIZE * (self.native_rate / TARGET_SAMPLE_RATE))
                 self._stream = sd.RawInputStream(
                     device=self.device_index,
                     samplerate=self.native_rate,
@@ -665,6 +760,7 @@ class AudioCaptureEngine:
                 )
                 self._stream.start()
                 self._running = True
+                _publish_audio_input_status(True)
                 self._capture_thread = threading.Thread(
                     target=self._capture_loop,
                     name="jarvis-audio-capture",
@@ -675,6 +771,10 @@ class AudioCaptureEngine:
                 return True
             except Exception as exc:
                 LOGGER.exception("[AudioCaptureEngine] Echec ouverture: %s", exc)
+                _publish_audio_input_status(
+                    _get_default_input_device_index() is not None,
+                    "input_stream_open_failed",
+                )
                 self._stream  = None
                 self._running = False
                 return False
@@ -781,6 +881,59 @@ class AudioCaptureEngine:
 
 _CAPTURE_ENGINE: Optional[AudioCaptureEngine] = None
 _CAPTURE_LOCK = threading.Lock()
+
+
+def get_audio_capture_status() -> dict[str, Any]:
+    """Expose le défaut de l'hôte et le flux GreatOS, sans ouvrir de micro."""
+    default_index = _get_default_input_device_index()
+    default_info: dict[str, Any] = {"available": False, "index": default_index, "name": None}
+    if default_index is not None and sd is not None:
+        try:
+            device = sd.query_devices(device=default_index, kind="input")
+            host_api = device.get("hostapi")
+            try:
+                host_api_name = sd.query_hostapis(host_api).get("name") if host_api is not None else None
+            except Exception:
+                host_api_name = None
+            default_info.update({
+                "available": int(device.get("max_input_channels", 0)) > 0,
+                "name": device.get("name"),
+                "host_api": host_api_name,
+            })
+        except Exception as exc:
+            default_info["error"] = str(exc)
+
+    with _CAPTURE_LOCK:
+        engine = _CAPTURE_ENGINE
+    active_index = engine.device_index if engine is not None else None
+    active_name = None
+    if active_index is not None and sd is not None:
+        try:
+            active_name = sd.query_devices(device=active_index, kind="input").get("name")
+        except Exception:
+            pass
+    stream_open = bool(engine and engine._stream is not None)
+    try:
+        stream_active = bool(stream_open and getattr(engine._stream, "active", True))
+    except Exception:
+        stream_active = False
+    follows_system_default = bool(engine and engine._follow_system_default)
+    active_matches_default = (
+        default_index is not None
+        and active_index == default_index
+        and not engine._default_switch_pending
+        if follows_system_default
+        else None
+    )
+    return {
+        "default_input": default_info,
+        "active_input": {"index": active_index, "name": active_name},
+        "stream_open": stream_open,
+        "stream_active": stream_active,
+        "follows_system_default": follows_system_default,
+        "default_switch_pending": bool(engine and engine._default_switch_pending),
+        "active_matches_default": active_matches_default,
+    }
 
 
 def get_audio_capture_engine(

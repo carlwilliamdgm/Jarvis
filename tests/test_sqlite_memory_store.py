@@ -7,7 +7,6 @@ import unittest
 from unittest.mock import patch
 
 from context_engine.memory_store import (
-    JsonMemoryStore,
     SqliteMemoryStore,
     get_memory_store,
     reset_memory_stores,
@@ -16,7 +15,9 @@ from context_engine.memory_store import (
 
 class SqliteMemoryStoreTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
+        temp_root = Path(__file__).resolve().parents[1] / ".pytest_temp"
+        temp_root.mkdir(exist_ok=True)
+        self.temp_dir = tempfile.TemporaryDirectory(dir=temp_root)
         self.db_path = Path(self.temp_dir.name) / "test_memory.db"
         self.json_path = Path(self.temp_dir.name) / "test_memory.json"
 
@@ -98,14 +99,11 @@ class SqliteMemoryStoreTests(unittest.TestCase):
 
     def test_factory_switching(self):
         reset_memory_stores()
-        with patch.dict(os.environ, {"JARVIS_MEMORY_BACKEND": "json"}):
-            store = get_memory_store()
-            self.assertIsInstance(store, JsonMemoryStore)
-
-        reset_memory_stores()
-        with patch.dict(os.environ, {"JARVIS_MEMORY_BACKEND": "sqlite"}):
-            store = get_memory_store()
-            self.assertIsInstance(store, SqliteMemoryStore)
+        for backend in ("json", "sqlite", "unknown"):
+            with self.subTest(backend=backend), patch.dict(os.environ, {"JARVIS_MEMORY_BACKEND": backend}):
+                with self.assertRaisesRegex(RuntimeError, "chiffrement DataShield est obligatoire"):
+                    get_memory_store()
+            reset_memory_stores()
 
 
 if __name__ == "__main__":

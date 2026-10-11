@@ -45,6 +45,10 @@ tmp_cdc_render/
 # Runtime state files
 runtime/
 
+# Chiffres de données utilisateur locaux (ne jamais distribuer via le dépôt)
+learning/profiles/*
+learning/capability_proposals.jsonl
+
 # Database temporary files
 *.db-wal
 *.db-shm

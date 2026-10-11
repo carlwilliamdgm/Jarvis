@@ -3,6 +3,11 @@
 
 $ErrorActionPreference = "Stop"
 
+$RepositoryUrl = $env:GREATOS_REPOSITORY_URL
+if ([string]::IsNullOrWhiteSpace($RepositoryUrl)) {
+    throw "GREATOS_REPOSITORY_URL doit pointer vers le depot officiel GreatOS."
+}
+
 function Test-Command {
     param([string]$Command)
     try {
@@ -63,7 +68,7 @@ Install-GitIfMissing
 
 $GitHubPAT = $null
 while (-not $GitHubPAT) {
-    $GitHubPAT = Read-Host "Entrez votre Personal Access Token GitHub (scope: repo sur carlwilliamdgm/Jarvis)"
+    $GitHubPAT = Read-Host "Entrez votre Personal Access Token avec acces au depot GreatOS configure"
     if ([string]::IsNullOrWhiteSpace($GitHubPAT)) {
         Write-Host "Le PAT ne peut pas etre vide. Veuillez reessayer." -ForegroundColor Yellow
     }
@@ -73,7 +78,7 @@ $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "Never"
 $env:SSH_ASKPASS = ""
 
-$repoUrlClean = "https://github.com/carlwilliamdgm/Jarvis.git"
+$repoUrlClean = $RepositoryUrl
 $handoffDir = Join-Path $env:TEMP "jarvis-private-install"
 
 if (Test-Path $handoffDir) {

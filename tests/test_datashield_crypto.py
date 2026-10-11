@@ -4,8 +4,8 @@
 Couvre :
 - Chiffrement / déchiffrement round-trip (bytes et str).
 - Format du blob (magic header, version).
-- Comportement dégradé sans clé (CryptoEngine désactivé).
-- Chiffrement sélectif dans EncryptedJsonMemoryStore.
+- Échec fermé sans clé (aucun retour au stockage en clair).
+- Chiffrement intégral dans EncryptedJsonMemoryStore.
 - Migration transparente depuis un store non chiffré.
 - Outils publics (statut_chiffrement, chiffrer_valeur, dechiffrer_valeur).
 - Détection d'altération (tag GCM invalide).
@@ -130,9 +130,9 @@ class TestCryptoEngine:
         assert encrypted != original
         assert engine_with_key.decrypt(encrypted) == original
 
-    def test_encrypt_returns_plaintext_when_disabled(self, engine_no_key):
-        text = "en clair"
-        assert engine_no_key.encrypt(text) == text
+    def test_encrypt_fails_closed_when_disabled(self, engine_no_key):
+        with pytest.raises(RuntimeError, match="Chiffrement indisponible"):
+            engine_no_key.encrypt("donnée privée")
 
     def test_decrypt_returns_value_unchanged_when_disabled(self, engine_no_key):
         text = "valeur quelconque"
@@ -175,30 +175,22 @@ class TestCryptoEngine:
 # ─── Tests EncryptedJsonMemoryStore ──────────────────────────────────────────
 
 class TestEncryptedJsonMemoryStore:
-    def _make_store(self, tmp_path: Path, engine: CryptoEngine):
-        """Crée un store avec engine injecté."""
+    def test_full_memory_document_is_encrypted_on_disk(self, tmp_path, engine_with_key):
+        """Le document entier, y compris les valeurs non sensibles, est chiffré."""
         from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
-        store = EncryptedJsonMemoryStore(tmp_path / "memory.json")
-        store._inner.file_path = tmp_path / "memory.json"
-        # Injection du moteur de chiffrement via patch
-        import datashield.crypto as crypto_mod
-        return store, crypto_mod
-
-    def test_sensitive_key_is_encrypted_on_disk(self, tmp_path, engine_with_key):
-        """Une clé sensible doit être chiffrée dans le fichier JSON."""
-        from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
+        from context_engine.encrypted_memory_store import _ENVELOPE_KEY
+        expected = {"notes": ["note secrète"], "compteur": 42}
         with patch("context_engine.encrypted_memory_store.crypto_engine", engine_with_key):
             store = EncryptedJsonMemoryStore(tmp_path / "memory.json")
-            store.save({"notes": ["note secrète"], "compteur": 42})
+            store.save(expected)
 
-        # Lecture brute du fichier — la valeur de "notes" doit être un blob base64
         raw = json.loads((tmp_path / "memory.json").read_text(encoding="utf-8"))
-        assert isinstance(raw["notes"], str)
-        # Doit être décodable en bytes et commencer par le magic header
-        decoded = base64.b64decode(raw["notes"])
+        assert set(raw) == {_ENVELOPE_KEY}
+        assert isinstance(raw[_ENVELOPE_KEY], str)
+        decoded = base64.b64decode(raw[_ENVELOPE_KEY])
         assert decoded[:len(BLOB_HEADER)] == BLOB_HEADER
-        # La clé "compteur" (non sensible) est en clair
-        assert raw["compteur"] == 42
+        plaintext = engine_with_key.decrypt(raw[_ENVELOPE_KEY], strict=True)
+        assert json.loads(plaintext) == expected
 
     def test_load_decrypts_transparent(self, tmp_path, engine_with_key):
         """Le chargement redonne les valeurs originales."""
@@ -212,7 +204,7 @@ class TestEncryptedJsonMemoryStore:
         assert loaded["compteur"] == 42
 
     def test_migration_from_unencrypted_store(self, tmp_path, engine_with_key):
-        """Les valeurs non chiffrées existantes sont lues sans erreur."""
+        """La mémoire legacy reste lisible et migre en enveloppe chiffrée."""
         mem_path = tmp_path / "memory.json"
         mem_path.write_text(
             json.dumps({"notes": "note legacy", "prenom": "Carl"}),
@@ -224,16 +216,18 @@ class TestEncryptedJsonMemoryStore:
             loaded = store.load()
         # La valeur non chiffrée doit être retournée telle quelle
         assert loaded["notes"] == "note legacy"
+        from context_engine.encrypted_memory_store import _ENVELOPE_KEY
+        migrated = json.loads(mem_path.read_text(encoding="utf-8"))
+        assert set(migrated) == {_ENVELOPE_KEY}
+        assert json.loads(engine_with_key.decrypt(migrated[_ENVELOPE_KEY], strict=True)) == loaded
 
-    def test_disabled_engine_passthrough(self, tmp_path, engine_no_key):
-        """Sans clé, le store se comporte comme JsonMemoryStore."""
+    def test_disabled_engine_fails_closed_without_creating_plaintext(self, tmp_path, engine_no_key):
+        """Sans clé, le backend refuse l'ouverture au lieu d'écrire en clair."""
         from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
         with patch("context_engine.encrypted_memory_store.crypto_engine", engine_no_key):
-            store = EncryptedJsonMemoryStore(tmp_path / "memory.json")
-            data = {"notes": ["donnée privée"], "compteur": 7}
-            store.save(data)
-            loaded = store.load()
-        assert loaded == data
+            with pytest.raises(RuntimeError, match="Backend mémoire chiffré indisponible"):
+                EncryptedJsonMemoryStore(tmp_path / "memory.json")
+        assert not (tmp_path / "memory.json").exists()
 
 
 # ─── Tests outils publics DataShield ─────────────────────────────────────────
@@ -272,11 +266,15 @@ class TestDataShieldTools:
 # ─── Test get_memory_store avec backend "encrypted" ──────────────────────────
 
 class TestGetMemoryStoreEncrypted:
-    def test_encrypted_backend_returns_encrypted_store(self, tmp_path):
+    def test_encrypted_backend_returns_encrypted_store(self, tmp_path, engine_with_key):
         from context_engine.memory_store import get_memory_store, reset_memory_stores
         from context_engine.encrypted_memory_store import EncryptedJsonMemoryStore
         reset_memory_stores()
-        with patch.dict(os.environ, {"JARVIS_MEMORY_BACKEND": "encrypted"}):
+        with (
+            patch("context_engine.memory_store.MEMORY_PATH", tmp_path / "memory.json"),
+            patch("context_engine.encrypted_memory_store.crypto_engine", engine_with_key),
+            patch.dict(os.environ, {"JARVIS_MEMORY_BACKEND": "encrypted"}),
+        ):
             store = get_memory_store()
         assert isinstance(store, EncryptedJsonMemoryStore)
         reset_memory_stores()

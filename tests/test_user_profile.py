@@ -7,11 +7,12 @@ et les fonctions du contrat d'interface.
 
 import json
 import os
-import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from datashield.crypto import CryptoEngine
 
 from context_engine.user_profile import (
     resoudre_utilisateur_actif,
@@ -34,15 +35,26 @@ class TestUserProfile(unittest.TestCase):
         
         # Utiliser un dossier temporaire pour les tests
         import context_engine.user_profile as user_profile_module
-        self.temp_dir = Path(tempfile.mkdtemp())
+        temp_root = Path(__file__).resolve().parents[1] / ".pytest_temp"
+        temp_root.mkdir(exist_ok=True)
+        self._temporary_storage = tempfile.TemporaryDirectory(dir=temp_root)
+        self.addCleanup(self._temporary_storage.cleanup)
+        self.temp_dir = Path(self._temporary_storage.name)
         user_profile_module.PROFILES_DIR = self.temp_dir
+        engine = CryptoEngine.__new__(CryptoEngine)
+        engine._passphrase = b"isolated-user-profile-test-key"
+        engine._lock = threading.Lock()
+        self.crypto_patch = patch("context_engine.user_profile.crypto_engine", engine)
+        self.kdf_patch = patch("datashield.crypto.PBKDF2_ITERATIONS", 1)
+        self.crypto_patch.start()
+        self.kdf_patch.start()
     
     def tearDown(self):
         """Nettoie le dossier temporaire après chaque test."""
         import context_engine.user_profile as user_profile_module
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
         user_profile_module.PROFILES_DIR = self.original_dir
+        self.kdf_patch.stop()
+        self.crypto_patch.stop()
 
 
     def test_slug_user_id_caracteres_speciaux(self):
@@ -120,7 +132,8 @@ class TestUserProfile(unittest.TestCase):
         # Vérifier que le fichier contient les bonnes données
         with open(chemin, "r", encoding="utf-8") as f:
             data = json.load(f)
-            self.assertEqual(data["user_id"], "alice")
+            self.assertEqual(set(data), {"__greatos_encrypted_profile_v1__"})
+            self.assertNotIn("user_id", json.dumps(data))
 
     def test_charger_profil_existant(self):
         """Teste le chargement d'un profil existant."""
@@ -181,12 +194,16 @@ class TestUserProfile(unittest.TestCase):
         self.assertTrue(chemin.exists())
         
         # Vérifier le contenu
+        import context_engine.user_profile as user_profile_module
         with open(chemin, "r", encoding="utf-8") as f:
             data = json.load(f)
-            self.assertEqual(data["nom"], "Charlie")
-            self.assertEqual(data["role"], "visiteur")
-            # Vérifier que la dernière session a été mise à jour
-            self.assertNotEqual(data["rythme_activite"]["derniere_session"], "")
+            self.assertEqual(set(data), {"__greatos_encrypted_profile_v1__"})
+            plaintext = json.loads(user_profile_module.crypto_engine.decrypt(
+                data["__greatos_encrypted_profile_v1__"], strict=True,
+            ))
+            self.assertEqual(plaintext["nom"], "Charlie")
+            self.assertEqual(plaintext["role"], "visiteur")
+            self.assertNotEqual(plaintext["rythme_activite"]["derniere_session"], "")
 
     def test_sauvegarder_profil_met_a_jour_derniere_session(self):
         """Teste que sauvegarder_profil met à jour la dernière session."""
@@ -318,20 +335,17 @@ class TestUserProfile(unittest.TestCase):
             contexte = obtenir_contexte_profil_compact()
             self.assertIn("Envuser4", contexte)
 
-    def test_fichier_profil_corrompu_recree(self):
-        """Teste qu'un fichier corrompu entraîne la recréation du profil."""
+    def test_fichier_profil_corrompu_refuse(self):
+        """Teste qu'un fichier corrompu n'est jamais remplacé par un profil vide."""
         # Créer un fichier corrompu
         chemin = _chemin_profil("karen")
         chemin.parent.mkdir(parents=True, exist_ok=True)
         with open(chemin, "w", encoding="utf-8") as f:
             f.write("{invalid json content")
         
-        # Charger devrait recréer le profil
-        profil = charger_profil("karen")
-        
-        self.assertEqual(profil["user_id"], "karen")
-        self.assertEqual(profil["nom"], "Karen")
-        self.assertEqual(profil["role"], "utilisateur")
+        with self.assertRaisesRegex(RuntimeError, "Profil illisible"):
+            charger_profil("karen")
+        self.assertEqual(chemin.read_text(encoding="utf-8"), "{invalid json content")
 
     def test_user_id_force_dans_sauvegarde(self):
         """Teste que le user_id est forcé lors de la sauvegarde."""

@@ -8,192 +8,192 @@
 
 ## Journal récent
 
-### 2026-10-11T17:15:15.691196+00:00 — Codex — completed
+### 2026-10-11T23:37:57.021337+00:00 — Codex — completed
 
-Alignement de la sélection du microphone sur le défaut de l'OS hôte
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_input.py ignore désormais les overrides JARVIS_AUDIO_INPUT_DEVICE et JARVIS_MICROPHONE_DEVICE et utilise le défaut PortAudio/OS; test_voice_input actualisé pour ce contrat
-
-**Vérification**
-- Inspection du flux de sélection jusqu'à AudioCaptureEngine; git diff --check propre hors avertissements CRLF préexistants; tests non exécutés
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Si un sélecteur explicite de micro est ajouté à l'interface, le présenter comme préférence utilisateur volontaire et le synchroniser avec les réglages de l'OS; à défaut, garder l'entrée sur le périphérique système
-
-### 2026-10-11T17:11:55.648536+00:00 — Codex — completed
-
-Établissement de l'état d'intégration J.A.R.V.I.S. à partir du codebase
+Commit local préparé et créé; aucun envoi distant effectué
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- Aucun changement produit; vérification des points de démarrage du serveur, du HUD, de voice_state, du cycle vocal et des confirmations
+- Commit local regroupant les améliorations Windows, voix, vision et chiffrement; données de profil exclues du suivi Git
 
 **Vérification**
-- Lecture des dernières entrées GreatOS; rg ciblé des points d'intégration; git diff --check (aucune erreur, avertissements CRLF seulement)
+- Index propre après commit; branche locale en avance d’un commit sur origin/main
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Pour déclarer la boucle entièrement validée, exécuter un parcours d'acceptation sur la machine : wake word, écoute 25s, réponse TTS, confirmation vocale, HUD et une action vision/Windows; sinon conserver le statut intégré mais pas validé bout en bout
+- Présenter le hash et le message à l’utilisateur; attendre son accord avant push
 
-### 2026-10-11T17:09:14.555152+00:00 — Codex — completed
+### 2026-10-11T23:07:09.195386+00:00 — Codex — completed
 
-Correction du retour d'échec de la tâche JarvisAgent et activation de l'écoute vocale continue
+Chiffrement local fail-closed des données utilisateur et migration des stores concernés
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- jarvis_hidden.ps1 force GREATOS_DISABLE_VOICE=0 après chargement de .env et attend jusqu'à 90 secondes l'API, pour les démarrages à froid audio/HUD
+- Stores locaux de profil, confiance, consolidation et propositions protégés; backend mémoire produit limité au chiffrement; anciennes données suivies retirées de l'index Git
 
 **Vérification**
-- Analyse syntaxique PowerShell OK; JarvisAgent LastTaskResult=0 et état Ready; GET /jarvis/status HTTP 200; 5 périphériques d'entrée micro détectés
+- 96 tests ciblés réussis; py_compile et git diff --check réussis; enveloppes locales vérifiées sans afficher de données
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Dire Jarvis devant le microphone pour confirmer le réveil, puis valider le HUD, la conversation, une confirmation vocale hors ligne et les commandes vision/Windows
+- Faire relire le diff global et intégrer les suppressions indexées avant publication; les changements ne sont pas commités
 
-### 2026-10-11T17:05:26.495482+00:00 — Codex — review
+### 2026-10-11T22:26:20.147066+00:00 — Codex — review
 
-Correction du réglage vocal de la tâche planifiée et contrôle du démarrage GreatOS
+Revue confidentialité commerciale : aucun chemin absolu machine dans les sources ou artefacts installés; signalement d'un profil utilisateur versionné dans le clone source.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- jarvis_hidden.ps1 force GREATOS_DISABLE_VOICE=0 après chargement de .env; GreatOS relancé via JarvisAgent
+- Aucune donnée du profil utilisateur modifiée; vérification read-only de l'index Git et de install_public.ps1/bootstrap/install.ps1 confirmant le clonage du dépôt entier.
 
 **Vérification**
-- API HTTP 200; processus API et HUD observés; JarvisAgent a terminé avec LastTaskResult=1; le micro réel n'a pas été testé
+- git ls-files confirme trois fichiers dans learning/profiles/Carl; les scripts d'installation font git clone du dépôt configuré; le scan des artefacts Electron NSIS/app.asar et de desktop/release ne trouve pas le chemin machine.
 
 **Blocages**
-- Le résultat 1 de la tâche planifiée et l'absence de confirmation runtime de l'écoute empêchent de certifier le démarrage vocal complet.
+- Aucun élément signalé.
 
 **À suivre**
-- Résoudre pourquoi JarvisAgent retourne 1 alors que l'API répond, puis confirmer le wake word, la fenêtre de 25 secondes et une confirmation Vosk hors ligne sur le poste Windows
+- Obtenir le choix de stockage/migration avant d'isoler les profils hors dépôt; puis poursuivre les validations Windows et critères V3 sans toucher aux données perso ou aux décisions non spécifiées.
 
-### 2026-10-11T16:58:39.597088+00:00 — Codex — completed
+### 2026-10-11T22:22:38.229756+00:00 — Codex — in_progress
 
-Redémarrage de GreatOS via la tâche planifiée JarvisAgent et vérification du service
+Revue Windows : préférence cloud et repli local rendus indépendants de pytest, tests de fournisseur ajoutés et références au poste nettoyées.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- Aucun changement produit pendant le redémarrage; ancienne instance GreatOS et son HUD arrêtés puis tâche JarvisAgent relancée
+- jarvis/voice_input.py : retrait de la détection PYTEST_CURRENT_TEST et configuration cloud explicite; jarvis/voice_output.py : tentative Edge cloud isolée dans un helper testable avant Piper; tests/test_voice_input.py et tests/test_voice_output.py : fournisseur cloud mocké, tests de priorité/fallback; tests/test_desktop_vision.py : assertions alignées au message d'échec qui ne divulgue pas l'exception; CHANTIER_AUTONOMIE_GOUVERNANCE.md : chemins relatifs; desktop/.gitignore : ignore node_modules, dist et release; suppression du builder-debug.yml généré avec le chemin local.
 
 **Vérification**
-- JarvisAgent revenu à Ready avec LastTaskResult=0; GET /jarvis/status répond HTTP 200; une instance serveur GreatOS et un processus HUD observés
+- 70 tests ciblés verts cumulés : capacité/registre 10, crypto 28, transactions mémoire 3, voix 18, audio/vision 11; py_compile réussi; git diff --check sans erreur, avertissements CRLF seulement; scan des sources applicatives sans chemin de la machine; scan complet de desktop/release en ASCII/UTF-16 sans chemin local; les tests de capture physique et attachement au bureau sont exclus.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Valider le réveil vocal et l'affichage HUD sur le bureau Windows avec le microphone réel
+- Poursuivre l'audit des critères Windows et l'alignement capability ownership; conserver l'auth localhost/Tailscale voulue; ne pas changer la stratégie PBKDF2, le cycle de vie des clés ni le rollback externe sans décision et mécanisme spécifiés par l'utilisateur.
 
-### 2026-10-11T16:47:12.979084+00:00 — Codex — completed
+### 2026-10-11T22:11:31.303278+00:00 — Codex — in_progress
 
-Intégration unifiée du lancement vocal GreatOS, du HUD et des confirmations vocales
+Durcissement des tests et revue Windows poursuivis selon les specs; purge des références locales et de l'embranchement voix réservé à pytest.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- lancer_jarvis.bat démarre le service complet et ouvre l'interface; greatos_service.py active l'écoute vocale; jarvis/voice_input.py utilise VoiceConfirmationHandler avec fallback Vosk local; interface_morphique/voice_overlay.py affiche un HUD estompé en veille
+- jarvis/voice_input.py et jarvis/voice_output.py : préférence cloud et repli local sans condition liée à PYTEST_CURRENT_TEST; tests vocaux mockent le cloud ou forcent le fallback; CHANTIER_AUTONOMIE_GOUVERNANCE.md : liens relatifs; desktop/.gitignore : exclusion des dépendances, builds et release; retrait de desktop/release/builder-debug.yml généré avec chemin local; tests vision actualisés sur le message d'échec assaini.
 
 **Vérification**
-- Analyse AST des trois fichiers Python modifiés réussie; git diff --check sans erreur; aucune suite de tests exécutée
+- 68 tests ciblés passés : 10 capacité/registre, 28 crypto, 3 transactions mémoire, 16 voix, 11 capture audio/vision; 2 tests impliquant bureau réel exclus; py_compile réussi; git diff --check sans erreur (avertissements CRLF); balayage des sources sans référence C:\\Users\\Carl; aucune occurrence détectée dans l'installateur NSIS ni app.asar.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Valider sur la machine Windows avec microphone et modèles présents : démarrage HUD, mot-clé wake, conversation 25s, confirmation vocale hors ligne, vision d'écran et actions volume/fenêtres
+- Poursuivre la validation sur critères Windows des actions natives, module ownership et flux cloud/fallback; vérifier les critères non prouvés par test automatisé. Demander l'arbitrage de l'utilisateur pour tout mécanisme non défini explicitement dans docs/notes_dev, notamment rollback externe et cycle de vie/rotation des clés.
 
-### 2026-10-11T16:14:14.604439+00:00 — Copilot — completed
+### 2026-10-11T22:02:03.656049+00:00 — Codex — in_progress
 
-Fiabilisation du démarrage Windows et vérification finale
+Sécurisation des tests mémoire et vérification du routage des capacités poursuivies.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- bootstrap/install.ps1 crée et utilise .venv Python 3.12; tâche planifiée lancée par jarvis_hidden.ps1 avec contrôle HTTP réel; service, installateurs et délais LLM durcis
+- tests/test_memory_transaction.py : transactions isolées dans un répertoire temporaire et KDF réduite uniquement pendant le test de concurrence; greatos_capabilities.py et tests/test_greatos_modules.py : propriétaires de capacités corrigés; tests/test_datashield_crypto.py : assertions alignées sur le chiffrement AES-GCM fail-closed.
 
 **Vérification**
-- pytest complet: 521 passed, 1 skipped, 9 deselected; analyse PowerShell valide sur les scripts modifiés; bash -n install.sh; git diff --check
+- pytest tests/test_memory_transaction.py -q : 3 passed en 5.55 s; pytest tests/test_datashield_crypto.py -q : 28 passed; tests ciblés capacité/registre : 10 passed; git diff --check propre (avertissements CRLF uniquement).
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Valider le parcours install/connexion/API/conversation sur une VM Windows vierge; tester séparément les fonctions audio et bureau avec matériel et session compatibles
+- Continuer la revue Windows conforme aux docs/notes_dev : examiner les changements runtime/actions/voix, valider leurs critères documentés, préserver les choix hors périmètre et isoler toute validation des données utilisateur.
 
-### 2026-10-11T15:44:03.548506+00:00 — Copilot — completed
+### 2026-10-11T21:54:57.896911+00:00 — Codex — in_progress
 
-Évaluation de la portabilité fonctionnelle de GreatOS vers une autre machine
+Mise à jour des attentes DataShield et isolation des tests transaction mémoire hors du memory.json utilisateur.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- Aucune modification produit; analyse de 52 fichiers de tests et points d'entrée Windows/Linux/API, configurations IA et dépendances matérielles
+- tests/test_datashield_crypto.py : attentes sécuritaires AES-GCM intégral/fail-closed; tests/test_memory_transaction.py : clé de test, backend chiffré et fichier temporaire dans .pytest_temp, aucune sauvegarde/restauration des données de travail.
 
 **Vérification**
-- Suite pytest complète : 515 passed, 2 failed, 2 skipped, 9 deselected; échecs dans test_jarvis_gc_provider (limite 150ms mesurée à 1.5s) et test_proactive_daemon (alerte CPU conservée); inspection statique des imports Windows, installateurs, serveur et client LLM
+- 28 tests crypto passés en 39,89 s; 3 tests transaction mémoire passés en 157,28 s; git diff --check sans erreur.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Tester sur une VM Windows vierge la voie installée et mesurer API, conversation avec provider configuré, voix et actions système; avant de promouvoir Linux, isoler ou neutraliser proprement les imports Win32 et valider les actions OS
+- Mesurer séparément la latence d'une écriture chiffrée; demander accord avant de modifier les paramètres/stratégie KDF; poursuivre les corrections explicitement spécifiées sans lancer les tests qui écrivent dans la vraie mémoire.
 
-### 2026-10-11T14:26:37.508266+00:00 — Copilot — completed
+### 2026-10-11T21:49:04.644743+00:00 — Codex — in_progress
 
-Correction des contrôles d'installation et de la propagation des échecs sur Windows/Linux
+Alignement des tests DataShield avec les exigences de chiffrement intégral et d'échec fermé.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- install.ps1 (Python 3.12 et vérification explicite des codes de sortie), install.sh (contrôle Python 3.12 et venv), Setup.cmd/install_public.ps1 (échecs imbriqués non masqués), README.md et docs/guides/INSTALLATION_MACHINE_VIERGE.md (parcours documenté corrigé)
+- tests/test_datashield_crypto.py : tests mis à jour pour valider l'enveloppe AES-GCM complète, la migration legacy chiffrée et le refus sans clé; retrait d'un helper de test mort.
 
 **Vérification**
-- tests/test_portability.py : 4 passed; analyse syntaxique PowerShell des deux scripts : OK; bash -n install.sh : OK; git diff --check lancé
+- 28 tests DataShield crypto passés sous Python 3.12; répertoire temporaire pytest contenu dans .pytest_temp; git diff --check sans erreur.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Reproduire l'installation sur machine vierge avec ces changements; si un échec demeure, récupérer bootstrap/bootstrap_install.log ou le message PowerShell complet pour corriger la cause spécifique
+- Poursuivre les critères explicitement spécifiés; isoler les tests mémoire qui modifient actuellement le fichier mémoire utilisateur avant de les exécuter; demander validation pour les détails non spécifiés de rollback métier et de gestion/rotation des clés.
 
-### 2026-10-11T13:55:10.705322+00:00 — Copilot — completed
+### 2026-10-11T21:37:40.426771+00:00 — Codex — in_progress
 
-Évaluation du périmètre Docker pour une exécution reproductible de Jarvis sur plusieurs machines
+Correction ciblée de propriétaires de six capacités directes pour aligner les traces GreatOS sur les modules qui les implémentent.
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- Aucune modification produit; recommandation de containeriser d'abord l'API web headless et de garder audio, contrôle du bureau et intégrations Windows sur l'hôte
+- greatos_capabilities.py : propriétaires explicites Core Intellect, Context Engine et Progress Tracker; tests/test_greatos_modules.py : couverture de ces propriétaires et maintien des noms historiques.
 
 **Vérification**
-- Lecture de README, requirements.txt, interface_morphique/server.py et scripts d'entrée; vérification de l'état Git existant
+- 10 tests ciblés passent (TestCapabilityOwnership et test_legacy_tool_registry); git diff --check sans erreur, avec avertissements CRLF existants.
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Si validé, définir le périmètre de l'image API, ses volumes/configuration, et un docker-compose.yml avec healthcheck sans inclure .env ni données locales
+- Poursuivre les critères V3 explicitement définis sans modifier les exigences de sécurité locale/Tailscale voulues; demander validation avant de fixer tout détail non spécifié, notamment stratégie de rollback et de gestion des clés.
+
+### 2026-10-11T21:26:34.173883+00:00 — Codex — review
+
+Revue statique de la qualité d'ingénierie face aux critères GreatOS : base crédible, mais plusieurs critères de sécurité, résilience, souveraineté et release ne sont pas atteints ou prouvés.
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- Aucune modification produit; inspection des spécifications docs/notes_dev et des frontières API, DataShield, capability registry, UI Electron, rollback et dépôt Git.
+
+**Vérification**
+- Revue statique uniquement; aucun test exécuté. Constats sourcés dans interface_morphique/server.py, desktop/src/App.tsx, greatos_capabilities.py, datashield/crypto.py, desktop/README.md et l'état Git.
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Traiter l'authentification/gestion de session distante et son intégration au client, définir des capacités isolées par propriétaire, concevoir les compensations/rollback, mesurer couverture et critères de performance, puis vérifier l'installation bout en bout.

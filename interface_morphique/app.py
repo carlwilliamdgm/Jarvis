@@ -119,7 +119,7 @@ class JarvisGUI:
 
         self.subtitle = tk.Label(
             self.title_stack,
-            text="by Carl-William",
+            text="J.A.R.V.I.S",
             bg=HEADER_BG,
             fg="white",
             font=("Edwardian Script ITC", 17, "italic"),

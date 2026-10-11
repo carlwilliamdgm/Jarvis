@@ -71,7 +71,7 @@ flowchart TD
 ## 4. Plan d'Implémentation & Lots de Travail
 
 ### Lot 1 : Initialisation & Exemptions Native de la Trust Matrix
-* **Fichiers cibles** : [`context_engine/trust_registry.py`](file:///c:/Users/Carl/Jarvis/context_engine/trust_registry.py), [`jarvis/agent.py`](file:///c:/Users/Carl/Jarvis/jarvis/agent.py).
+* **Fichiers cibles** : `context_engine/trust_registry.py`, `jarvis/agent.py`.
 * **Actions** :
   1. Définir une liste de domaines et capacités nativement sûrs (*Safe Domains*) :
      * Multimédia & Audio (`controler_multimedia`, volume, mute, etc.).
@@ -82,13 +82,13 @@ flowchart TD
   3. Mettre à jour le profil existant de l'utilisateur (`learning/profiles/Carl/trust_matrix.json`) pour promouvoir ces domaines.
 
 ### Lot 2 : Harmonisation des seuils de risque DataShield vs Trust Matrix
-* **Fichiers cibles** : [`datashield/policy.py`](file:///c:/Users/Carl/Jarvis/datashield/policy.py), [`taskflow/tools.py`](file:///c:/Users/Carl/Jarvis/taskflow/tools.py).
+* **Fichiers cibles** : `datashield/policy.py`, `taskflow/tools.py`.
 * **Actions** :
   1. Aligner les critères : si `evaluate_capability()` de DataShield renvoie `SecurityDecision.ALLOW` avec `RiskLevel.READ`, la Trust Matrix ne doit pas exiger de confirmation interactive.
   2. Réserver `_confirmer_selon_confiance()` strictement aux opérations de niveau `RiskLevel.WRITE`, `RiskLevel.SYSTEM` ou `RiskLevel.DESTRUCTIVE`.
 
 ### Lot 3 : Protocole de confirmation multi-surface (Vocal / CLI / Démon)
-* **Fichiers cibles** : [`taskflow/tools.py`](file:///c:/Users/Carl/Jarvis/taskflow/tools.py), [`scripts/jarvis_live_daemon.py`](file:///c:/Users/Carl/Jarvis/scripts/jarvis_live_daemon.py), [`jarvis/agent.py`](file:///c:/Users/Carl/Jarvis/jarvis/agent.py).
+* **Fichiers cibles** : `taskflow/tools.py`, `scripts/jarvis_live_daemon.py`, `jarvis/agent.py`.
 * **Actions** :
   1. Remplacer le `_console.input()` universel par un gestionnaire de confirmation contextuel dépendant de la surface active :
      * `CLIProvider` : prompt console standard.
@@ -97,7 +97,7 @@ flowchart TD
   2. Éviter tout blocage (`freeze`) du thread de capture audio en mode vocal.
 
 ### Lot 4 : Posture, Observabilité & Mode Stark
-* **Fichiers cibles** : [`datashield/defcon.py`](file:///c:/Users/Carl/Jarvis/datashield/defcon.py), [`datashield/safety.py`](file:///c:/Users/Carl/Jarvis/datashield/safety.py), `jarvis/interface.py`.
+* **Fichiers cibles** : `datashield/defcon.py`, `datashield/safety.py`, `jarvis/interface.py`.
 * **Actions** :
   1. Afficher la posture active au boot de Jarvis :
      * `DEFCON: 5 (Nominal)`

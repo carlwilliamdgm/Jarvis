@@ -4,7 +4,7 @@ Zéro dictionnaire codé en dur. Zéro liste blanche statique.
 Découverte dynamique par introspection des métadonnées de binaires Windows et du fenêtrage :
 - Détection des fenêtres de premier plan et interactives
 - Extraction des noms de produits officiels via VerQueryValueW / FileDescription
-- Détection des applications utilisateur actives dans la session de Carl
+- Détection des applications utilisateur actives dans la session Windows courante
 - Primitives d'action universelles de fenêtrage (MoveWindow) et bus multimédia global
 """
 
@@ -84,7 +84,7 @@ def _extraire_description_binaire(chemin_exe: str) -> str:
 
 
 def obtenir_applications_utilisateur_dynamiques(limite: int = 10) -> List[Dict[str, str]]:
-    """Découvre dynamiquement les applications lancées dans la session de Carl, hors services système internes."""
+    """Découvre les applications de la session utilisateur courante, hors services système internes."""
     applis_decouvertes = []
     pids_vus = set()
 
@@ -98,7 +98,7 @@ def obtenir_applications_utilisateur_dynamiques(limite: int = 10) -> List[Dict[s
             if not exe or "system32" in exe.lower() or "syswow64" in exe.lower():
                 continue
 
-            # Ne retenir que les applications installées dans Program Files, AppData ou profil Carl
+            # Ne retenir que les applications installées dans Program Files ou le profil utilisateur
             est_appli_user = any(d in exe.lower() for d in ["users", "program files", "appdata"])
             if not est_appli_user:
                 continue
@@ -272,13 +272,13 @@ def envoyer_signal_multimedia_global(action: str) -> str:
         for _ in range(repetitions):
             user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY, 0)
             user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
-        return f"Signal multimédia universel '{action}' transmis avec succès."
+        return f"Commande multimédia '{action}' envoyée à Windows; effet côté application non confirmé."
     except Exception as e:
         return f"Erreur lors de la transmission du signal multimédia : {e}"
 
 
 def obtenir_contexte_bureau_compact() -> str:
-    """Génère un résumé textuel ultra-compact (< 50 tokens) de l'activité réelle de la session Carl pour Core Intellect."""
+    """Génère un résumé textuel ultra-compact (< 50 tokens) de l'activité de la session courante."""
     act = obtenir_activite_bureau_universelle()
     premier_plan = act.get("fenetre_au_premier_plan")
     applis = act.get("applications_session", [])

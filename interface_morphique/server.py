@@ -84,7 +84,7 @@ from context_engine.system_monitor import obtenir_infos_tailscale
 from context_engine.os_hooks import demarrer_os_hooks, arreter_os_hooks
 from interface_morphique.context_switcher import get_morphic_engine
 from interface_morphique.voice_overlay import demarrer_overlay_vocal, arreter_overlay_vocal
-from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale
+from jarvis.voice_input import demarrer_ecoute_vocale, arreter_ecoute_vocale, get_voice_input_status
 from jarvis.clap_input import demarrer_ecoute_clap, arreter_ecoute_clap
 from core_intellect.prompt import construire_prompt_action
 from datashield.autodestruct import schedule_autodestruction
@@ -124,19 +124,23 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning("Could not start voice overlay: %s", e)
 
-        # Démarrer la voix uniquement si un micro est disponible et si non désactivé
+        # Suivre le défaut de l'hôte même si aucun micro n'est connecté au boot.
         _voice_disabled = os.environ.get("GREATOS_DISABLE_VOICE", "").lower() in ("1", "true", "yes")
-        _mic_available = False
-        if not _voice_disabled:
-            try:
-                import sounddevice as _sd
-                _devs = _sd.query_devices()
-                _mic_available = any(d.get("max_input_channels", 0) > 0 for d in _devs)
-            except Exception:
-                _mic_available = False
+        _voice_status = get_voice_input_status()
+        _mic_available = bool(_voice_status.get("audio", {}).get("default_input", {}).get("available"))
+        try:
+            from jarvis.voice_state import _set_voice_audio_input
+            _set_voice_audio_input({
+                "available": _mic_available,
+                "device": _voice_status.get("audio", {}).get("default_input", {}).get("name"),
+                "reason": _voice_status.get("reason"),
+            })
+        except Exception:
+            logger.debug("Could not publish host microphone state to HUD", exc_info=True)
 
-        if _mic_available and not _voice_disabled:
-            # Démarrer l'écoute vocale (wake word)
+        if not _voice_disabled:
+            # Démarrer les écouteurs même sans micro présent : le moteur
+            # réessaie et suivra un défaut Windows défini plus tard.
             try:
                 demarrer_ecoute_vocale()
                 logger.info("Voice listener started successfully")
@@ -149,9 +153,10 @@ async def lifespan(app: FastAPI):
                 logger.info("Double-clap listener started successfully")
             except Exception as e:
                 logger.warning("Could not start double-clap listener: %s", e)
-        else:
-            reason = "désactivée via GREATOS_DISABLE_VOICE" if _voice_disabled else "aucun microphone détecté"
-            logger.info("Écoute vocale ignorée au démarrage (%s).", reason)
+        elif _voice_disabled:
+            logger.info("Écoute vocale ignorée au démarrage (désactivée via GREATOS_DISABLE_VOICE).")
+        if not _mic_available and not _voice_disabled:
+            logger.warning("Aucun micro par défaut Windows disponible; les écouteurs restent en attente du choix de l'hôte.")
 
         # Démarrer l'overlay visuel de navigation
         try:
@@ -238,7 +243,7 @@ ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get(
         "JARVIS_ALLOWED_ORIGINS",
-        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000",
+        "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173",
     ).split(",")
     if origin.strip()
 ]
@@ -295,7 +300,10 @@ def verify_api_key(
 
     api_key = os.environ.get("JARVIS_API_KEY")
     if not api_key:
-        return True
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentification des accès distants non configurée",
+        )
     if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -312,6 +320,9 @@ def verify_api_key(
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 app.mount("/web", StaticFiles(directory=WEB_DIR, html=True), name="web")
+DESKTOP_DIST_DIR = Path(__file__).resolve().parents[1] / "desktop" / "dist"
+if DESKTOP_DIST_DIR.is_dir():
+    app.mount("/desktop", StaticFiles(directory=DESKTOP_DIST_DIR, html=True), name="desktop")
 
 # Global agent instance
 agent = None
@@ -611,11 +622,34 @@ async def get_status(_auth: bool = Depends(verify_api_key)) -> Dict:
             cpu_percent = _cpu_percent_cache
         ram_percent = psutil.virtual_memory().percent
         active = detect_activity()
+        try:
+            from context_engine.desktop_vision import get_vision_status
+            vision_status = get_vision_status()
+        except Exception as exc:
+            logger.debug("Vision status unavailable: %s", exc)
+            vision_status = {
+                "screen_capture_supported": False,
+                "interpretation_provider": None,
+                "interpretation_ready": False,
+                "reason": type(exc).__name__,
+            }
+        try:
+            from datashield.crypto import crypto_engine
+            encryption_status = crypto_engine.status()
+        except Exception as exc:
+            logger.warning("Encryption status unavailable: %s", type(exc).__name__)
+            encryption_status = {"enabled": False, "reason": type(exc).__name__}
 
         return {
             "cpu": cpu_percent,
             "ram": ram_percent,
-            "active": active
+            "active": active,
+            "voice": get_voice_input_status(),
+            "vision": vision_status,
+            "security": {
+                "encryption": encryption_status,
+                "memory_backend": os.environ.get("JARVIS_MEMORY_BACKEND", "encrypted").lower(),
+            },
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting status: {str(e)}")

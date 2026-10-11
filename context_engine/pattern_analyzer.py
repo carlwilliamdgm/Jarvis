@@ -247,7 +247,7 @@ def obtenir_patterns_actuels() -> str:
 
 
 def evaluer_anomalie_action(nom_capacite: str, heure: int | None = None) -> dict[str, Any]:
-    """Évalue souverainement si une action présente une anomalie comportementale pour Carl.
+    """Évalue souverainement si une action présente une anomalie comportementale pour l'utilisateur.
 
     Vérifie l'heure de la journée par rapport aux plages d'activité habituelles
     et la familiarité de la capacité demandée.

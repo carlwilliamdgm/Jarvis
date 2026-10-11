@@ -36,7 +36,9 @@ class TestDesktopVision(unittest.TestCase):
         """Si la capture échoue, une erreur propre est retournée."""
         mock_capture.side_effect = RuntimeError("Display disconnected")
         res = analyser_ecran_live("Qu'est-ce que tu vois ?")
-        self.assertIn("Impossible de capturer", res)
+        self.assertIn("Échec de la capture écran locale", res)
+        self.assertIn("aucune image n'a été analysée", res)
+        self.assertNotIn("Display disconnected", res)
 
     @patch("context_engine.desktop_vision.capturer_ecran_live")
     def test_analyser_ecran_live_groq_mock(self, mock_capture):

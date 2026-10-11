@@ -54,6 +54,7 @@ class VoiceOutputTests(unittest.TestCase):
         voice = FakeEngine()
         _set_voice_state(VoiceState.THINKING)
         with patch("jarvis.voice_output.get_piper_voice", return_value=voice), \
+             patch("jarvis.voice_output._speak_with_edge", return_value=False), \
              patch("jarvis.voice_output._synthesise", return_value=(object(), 22_050)) as synthesize, \
              patch("jarvis.voice_output._lire_avec_interruption") as read:
             parler_a_voix_haute("Bonjour")
@@ -64,7 +65,8 @@ class VoiceOutputTests(unittest.TestCase):
 
     def test_tts_failure_is_contained_and_returns_to_listening(self):
         _set_voice_state(VoiceState.THINKING)
-        with patch("jarvis.voice_output.get_piper_voice", side_effect=RuntimeError("audio")):
+        with patch("jarvis.voice_output._speak_with_edge", return_value=False), \
+             patch("jarvis.voice_output.get_piper_voice", side_effect=RuntimeError("audio")):
             parler_a_voix_haute("Bonjour")
 
         self.assertEqual(VoiceState.LISTENING, get_voice_state())

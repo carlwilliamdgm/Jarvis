@@ -29,7 +29,7 @@ if exist "%~dp0bootstrap\install.ps1" (
         echo [OK] Personal Access Token GitHub detecte.
         powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap\install.ps1" -GitHubPAT "!EXISTING_PAT!"
     ) else (
-        echo Entrez votre Personal Access Token GitHub (scope: repo sur carlwilliamdgm/Jarvis) :
+        echo Entrez votre Personal Access Token GitHub avec acces au depot GreatOS configure :
         set /p "USER_PAT=PAT: "
         if "!USER_PAT!"=="" (
             echo [ERREUR] Le PAT est obligatoire pour synchroniser le projet.

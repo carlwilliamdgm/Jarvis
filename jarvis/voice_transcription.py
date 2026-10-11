@@ -1,8 +1,8 @@
-"""Module de transcription haute vitesse pour Jarvis avec repli local instantané.
+"""Repli de transcription distant optionnel pour Jarvis.
 
-Architecture résiliente :
-1. Tentative ultra-rapide sur Groq Whisper Large v3 (latence ~200 ms) avec timeout strict de 2.0s et 0 retry bloquant.
-2. Si le réseau est indisponible ou coupe : échec immédiat en <2s pour laisser Vosk local finaliser la transcription sans freeze.
+Ce module est utilisé en préférence lorsque Groq est configuré. Définir
+``JARVIS_USE_GROQ_WHISPER=0`` désactive cette tentative distante et force Vosk
+local en premier; le timeout distant reste borné et sans retry bloquant.
 """
 
 from __future__ import annotations
@@ -42,6 +42,10 @@ def transcrire_audio_groq(pcm_data: bytes, sample_rate: int = 16000) -> Optional
         wav_bytes = pcm_to_wav_bytes(pcm_data, sample_rate=sample_rate)
         audio_file = ("audio.wav", wav_bytes, "audio/wav")
         lang = os.getenv("JARVIS_VOICE_LANG", "fr").lower()
+        transcription_hints = ["Jarvis", "ordinateur", "code", "fenêtre", "exécuter"]
+        configured_user = os.getenv("JARVIS_USER", "").strip()
+        if configured_user:
+            transcription_hints.append(configured_user)
 
         reponse = client.audio.transcriptions.create(
             file=audio_file,
@@ -49,7 +53,7 @@ def transcrire_audio_groq(pcm_data: bytes, sample_rate: int = 16000) -> Optional
             language=lang,
             response_format="text",
             temperature=0.0,
-            prompt="Jarvis, Carl, ordinateur, code, fenêtre, exécuter",
+            prompt=", ".join(transcription_hints),
         )
 
         texte = str(reponse).strip()

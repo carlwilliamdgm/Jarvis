@@ -220,6 +220,22 @@ class TestSovereignModuleTools(unittest.TestCase):
 class TestCapabilityOwnership(unittest.TestCase):
     """La façade historique doit exposer une propriété de module explicite."""
 
+    def test_imported_domain_capabilities_keep_legacy_names_and_real_owners(self):
+        owners = {
+            "consulter_etat_maison": "core_intellect",
+            "inspecter_architecture_greatos": "core_intellect",
+            "consulter_historique_projet": "core_intellect",
+            "arbitrer_priorite_taches": "core_intellect",
+            "capturer_contexte_quadridimensionnel": "context_engine",
+            "charger_etat_gamification": "progress_tracker",
+        }
+        for legacy_tool, expected_owner in owners.items():
+            with self.subTest(capability=legacy_tool):
+                descriptor = resolve_capability(OUTILS, legacy_tool)
+                self.assertIsNotNone(descriptor)
+                self.assertEqual(descriptor.owner, expected_owner)
+                self.assertEqual(descriptor.name, f"taskflow.{legacy_tool}")
+
     def test_every_legacy_tool_has_one_owner(self):
         capabilities = list_capabilities(OUTILS)
         self.assertEqual(len(capabilities), len(OUTILS))

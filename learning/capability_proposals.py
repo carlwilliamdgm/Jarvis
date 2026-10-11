@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from context_engine.encrypted_user_store import append_encrypted_jsonl
 from context_engine.paths import JARVIS_DIR
 
 
@@ -31,8 +31,5 @@ def proposer_nouvelle_capacite(action_echouee: str, contexte: str = "") -> dict:
         "executable": False,
         "approval_required": True,
     }
-    PROPOSALS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with PROPOSALS_PATH.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
-        stream.flush()
+    append_encrypted_jsonl(PROPOSALS_PATH, record)
     return record

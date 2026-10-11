@@ -1,6 +1,6 @@
 """Desktop Vision - Vision multimodale en direct du poste de travail pour GreatOS.
 
-Permet à Jarvis de 'voir' en direct l'écran de Carl (ou la fenêtre active)
+Permet à Jarvis d'analyser l'écran de l'utilisateur (ou la fenêtre active)
 via capture d'écran Windows native à haute vitesse et analyse multimodale VLM (Groq qwen3.8-27b).
 """
 
@@ -11,8 +11,10 @@ import ctypes
 from ctypes import wintypes
 from datetime import datetime
 import io
+import importlib.util
 import logging
 import os
+import threading
 from typing import Any, Dict, Optional
 from PIL import Image, ImageGrab
 
@@ -20,21 +22,93 @@ logger = logging.getLogger(__name__)
 
 user32 = ctypes.windll.user32
 
+# Declare pointer-sized Win32 signatures explicitly; ctypes otherwise assumes
+# a 32-bit C int return value and can truncate HWND/HANDLE values on 64-bit Windows.
+user32.GetForegroundWindow.argtypes = []
+user32.GetForegroundWindow.restype = wintypes.HWND
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.restype = wintypes.BOOL
+user32.OpenWindowStationW.argtypes = [wintypes.LPCWSTR, wintypes.BOOL, wintypes.DWORD]
+user32.OpenWindowStationW.restype = wintypes.HANDLE
+user32.SetProcessWindowStation.argtypes = [wintypes.HANDLE]
+user32.SetProcessWindowStation.restype = wintypes.BOOL
+user32.OpenDesktopW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+user32.OpenDesktopW.restype = wintypes.HANDLE
+user32.SetThreadDesktop.argtypes = [wintypes.HANDLE]
+user32.SetThreadDesktop.restype = wintypes.BOOL
+user32.CloseWindowStation.argtypes = [wintypes.HANDLE]
+user32.CloseWindowStation.restype = wintypes.BOOL
+user32.CloseDesktop.argtypes = [wintypes.HANDLE]
+user32.CloseDesktop.restype = wintypes.BOOL
+
+_DESKTOP_HANDLE_LOCK = threading.Lock()
+_INTERACTIVE_STATION = None
+_INTERACTIVE_DESKTOP = None
+
+
+def get_vision_status() -> Dict[str, Any]:
+    """Décrit les moteurs d'interprétation cloud et locaux configurés."""
+    remote_analysis_enabled = os.environ.get("GREATOS_ALLOW_REMOTE_VISION", "true").lower() in {
+        "1", "true", "yes", "on",
+    }
+    groq_key_configured = any(
+        os.environ.get(name)
+        for name in ("GROQ_API_KEY", *(f"GROQ_API_KEY_{index}" for index in range(1, 6)))
+    )
+    groq_library_available = importlib.util.find_spec("groq") is not None
+    local_model_configured = bool(os.environ.get("JARVIS_VISION_LOCAL_MODEL", "").strip())
+    ollama_library_available = importlib.util.find_spec("ollama") is not None
+    remote_ready = remote_analysis_enabled and groq_key_configured and groq_library_available
+    local_ready = local_model_configured and ollama_library_available
+    return {
+        "screen_capture_supported": importlib.util.find_spec("PIL") is not None,
+        "screen_capture_backend": "Pillow.ImageGrab",
+        "screen_capture_runtime_verified": False,
+        "remote_analysis_enabled": remote_analysis_enabled,
+        "interpretation_provider": "groq" if remote_ready else "ollama" if local_ready else None,
+        "provider_key_configured": groq_key_configured,
+        "provider_library_available": groq_library_available,
+        "remote_interpretation_ready": remote_ready,
+        "local_model_configured": local_model_configured,
+        "local_interpretation_ready": local_ready,
+        "interpretation_ready": remote_ready or local_ready,
+        "interpretation_note": (
+            "L'analyse distante est désactivée par configuration; GREATOS_ALLOW_REMOTE_VISION=true l'autorise."
+            if not remote_analysis_enabled
+            else "Analyse Groq prioritaire; Ollama local est utilisé si un modèle visuel est configuré."
+            if local_ready
+            else "Analyse Groq prioritaire; configurez JARVIS_VISION_LOCAL_MODEL pour le repli local."
+        ),
+    }
+
 
 def attacher_bureau_interactif() -> bool:
     """Attache le thread courant à la station de bureau interactive Windows (winsta0\\default).
 
     Permet à un service ou à un processus d'arrière-plan d'accéder au vrai bureau
-    graphique de l'utilisateur interactif Carl.
+    graphique de l'utilisateur interactif.
     """
+    global _INTERACTIVE_STATION, _INTERACTIVE_DESKTOP
     try:
-        hwinsta = user32.OpenWindowStationW("winsta0", False, 0x037F)
-        if hwinsta:
-            user32.SetProcessWindowStation(hwinsta)
-            hdesk = user32.OpenDesktopW("default", 0, False, 0x01FF)
-            if hdesk:
-                user32.SetThreadDesktop(hdesk)
-                return True
+        with _DESKTOP_HANDLE_LOCK:
+            if not _INTERACTIVE_STATION:
+                station = user32.OpenWindowStationW("winsta0", False, 0x037F)
+                if not station:
+                    return False
+                if not user32.SetProcessWindowStation(station):
+                    user32.CloseWindowStation(station)
+                    return False
+                # Windows retains this process-level handle for as long as the
+                # process remains attached to the interactive window station.
+                _INTERACTIVE_STATION = station
+            if not _INTERACTIVE_DESKTOP:
+                _INTERACTIVE_DESKTOP = user32.OpenDesktopW("default", 0, False, 0x01FF)
+                if not _INTERACTIVE_DESKTOP:
+                    return False
+            desktop = _INTERACTIVE_DESKTOP
+        # Each capture thread must attach itself, but reuses the single cached
+        # handle instead of leaking a new desktop handle on every screenshot.
+        return bool(user32.SetThreadDesktop(desktop))
     except Exception as e:
         logger.debug("Échec lors de l'attachement à winsta0\\default : %s", e)
     return False
@@ -55,19 +129,25 @@ def capturer_ecran_live(
     Returns:
         Dict contenant 'base64', 'largeur', 'hauteur', 'timestamp', 'zone'.
     """
+    if zone not in ("ecran", "fenetre_active"):
+        raise ValueError("zone doit être 'ecran' ou 'fenetre_active'")
+
     attacher_bureau_interactif()
 
     boite_rognage = None
     if zone == "fenetre_active":
         hwnd = user32.GetForegroundWindow()
-        if hwnd:
-            rect = wintypes.RECT()
-            if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-                # (left, top, right, bottom)
-                w = rect.right - rect.left
-                h = rect.bottom - rect.top
-                if w > 20 and h > 20:
-                    boite_rognage = (rect.left, rect.top, rect.right, rect.bottom)
+        if not hwnd:
+            raise RuntimeError("Aucune fenêtre au premier plan n'a été détectée")
+        rect = wintypes.RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            raise RuntimeError("Impossible de lire les dimensions de la fenêtre active")
+        # (left, top, right, bottom)
+        w = rect.right - rect.left
+        h = rect.bottom - rect.top
+        if w <= 20 or h <= 20:
+            raise RuntimeError("La fenêtre active n'a pas de dimensions capturables")
+        boite_rognage = (rect.left, rect.top, rect.right, rect.bottom)
 
     img = ImageGrab.grab(bbox=boite_rognage)
     largeur_orig, hauteur_orig = img.size
@@ -98,11 +178,15 @@ def analyser_ecran_live(
     try:
         capture = capturer_ecran_live(zone=zone)
     except Exception as e:
-        return f"Impossible de capturer l'écran en direct : {e}"
+        logger.warning("Échec de la capture écran locale : %s", e)
+        return f"Échec de la capture écran locale; aucune image n'a été analysée ({type(e).__name__})."
 
     b64_image = capture["base64"]
 
-    # Tentative avec Groq Qwen3.8-27b Multimodal
+    remote_analysis_enabled = os.environ.get("GREATOS_ALLOW_REMOTE_VISION", "true").lower() in {
+        "1", "true", "yes", "on",
+    }
+    local_model = os.environ.get("JARVIS_VISION_LOCAL_MODEL", "").strip()
     groq_key = os.environ.get("GROQ_API_KEY")
     if not groq_key:
         i = 1
@@ -115,12 +199,12 @@ def analyser_ecran_live(
                 break
             i += 1
 
-    if groq_key:
+    if remote_analysis_enabled and groq_key and importlib.util.find_spec("groq") is not None:
         try:
             from groq import Groq
             client = Groq(api_key=groq_key, timeout=10.0)
             invite_systeme = (
-                "Tu es Jarvis, l'IA personnelle de Carl-William. Tu regardes en direct son écran d'ordinateur. "
+                "Tu es Jarvis, l'assistant personnel de l'utilisateur. Tu analyses la capture d'écran autorisée. "
                 "Réponds avec franchise, concision, style direct et flegme britannique. "
                 "Ne commence JAMAIS par 'Sur cette image' ou 'On peut voir'. Va droit au fait."
             )
@@ -148,6 +232,33 @@ def analyser_ecran_live(
             if contenu and contenu.strip():
                 return contenu.strip()
         except Exception as e:
-            logger.warning("Échec de l'analyse vision Groq : %s", e)
+            logger.warning("Échec de l'analyse vision Groq (%s)", type(e).__name__)
+    elif remote_analysis_enabled:
+        logger.info("Analyse Groq vision indisponible : clé ou bibliothèque absente; tentative locale")
 
-    return f"Capture d'écran effectuée ({capture['resolution_source']}), mais aucun moteur de vision multimodal n'a pu interpréter les pixels pour le moment."
+    if local_model and importlib.util.find_spec("ollama") is not None:
+        try:
+            import ollama
+            local_response = ollama.chat(
+                model=local_model,
+                messages=[{
+                    "role": "user",
+                    "content": question or "Décris ce qui est visible à l'écran.",
+                    "images": [base64.b64decode(b64_image)],
+                }],
+                options={"temperature": 0.2},
+            )
+            if isinstance(local_response, dict):
+                local_content = local_response.get("message", {}).get("content", "")
+            else:
+                local_content = getattr(getattr(local_response, "message", None), "content", "")
+            if local_content and str(local_content).strip():
+                return str(local_content).strip()
+        except Exception as e:
+            logger.warning("Échec du repli vision Ollama (%s)", type(e).__name__)
+
+    return (
+        f"Capture écran locale réussie ({capture['resolution_source']}); "
+        "l'interprétation cloud est indisponible et aucun modèle visuel local "
+        "configuré n'a pu fournir de réponse."
+    )

@@ -7,13 +7,14 @@ du projet à la demande, sans surcharger son prompt de base.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 RACINE_PROJET = Path(__file__).resolve().parent.parent
 
 # Cartographie officielle des modules GreatOS (source de vérité CDC)
-CREATEUR_GREATOS = "Carl-William DJEGUEMA (Étudiant en Génie Logiciel à l'IAI-Togo)"
+CREATEUR_GREATOS = os.environ.get("GREATOS_CREATOR", "Équipe GreatOS")
 
 ARCHITECTURE_GREATOS = {
     "greatos": {

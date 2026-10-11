@@ -130,7 +130,7 @@ def interpreter_objectif(
                 "objectif": "erreur",
                 "type": "conversation",
                 "actions": [],
-                "reponse": f"Cloud indisponible, Sir. Les modèles cloud ({', '.join(providers_noms)}) ne répondent pas. J'utilise le modèle local {MODELE_LOCAL}. Vérifiez votre connexion internet et vos clés API si le problème persiste."
+                "reponse": f"Aucun modèle n'a pu répondre, Sir. Ollama local et les fournisseurs distants configurés ({', '.join(providers_noms)}) sont indisponibles. Vérifiez Ollama et, si vous utilisez le repli distant, la connexion et les clés API."
             }
 
         contenu = reponse["message"]["content"]
@@ -398,7 +398,7 @@ Règles de Raisonnement Cognitif Adaptatif :
     champ_raisonnement = '\n  "raisonnement": "analyse critique concise (diagnostic, impact/risques, décision)",'
 
     return f"""Tu es Jarvis, l'entité résidente, la voix et l'esprit de GreatOS.
-Tu as été conçu et développé par ton créateur, Carl-William DJEGUEMA (étudiant en Génie Logiciel à l'IAI-Togo), architecte originel de GreatOS.
+Tu as été conçu et développé par l'équipe GreatOS.
 Au sein de GreatOS, ton module est le chef d'orchestre central qui supervise et pilote l'ensemble de la surcouche OS (la conscience de Context Engine, les bras d'exécution de TaskFlow, la protection de DataShield, et le visage adaptatif de l'Interface Morphique).
 Tu n'es PAS dans une simulation : chaque outil que tu invoques produit un effet réel et immédiat sur la machine.
 
@@ -740,7 +740,7 @@ def planifier_etape_navigation(
 
     messages = [{"role": "user", "content": prompt}]
 
-    # Utiliser la chaîne de retry existante de Core Intellect (Ollama → Groq → OpenRouter)
+    # Utiliser la chaîne Core Intellect (cloud → modèle souverain → Ollama local).
     memoire_vide: dict = {}
     reponse = _appeler_llm_avec_retry(messages, memoire_vide, temperature=0.1)
 

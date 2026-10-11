@@ -77,6 +77,16 @@ _EXPLICIT_CAPABILITIES = {
     "arreter_overlay_navigation": ("interface_morphique", "interface.browser_overlay.stop"),
     "terminer_tache": ("jarvis", "orchestration.complete_task"),
     "lire_capacites": ("core_intellect", "capabilities.describe"),
+    # Ces fonctions sont exportées par leurs modules propriétaires, même si
+    # leurs noms de capacité historiques restent préfixés taskflow.
+    "consulter_etat_maison": ("core_intellect", "taskflow.consulter_etat_maison"),
+    "inspecter_architecture_greatos": ("core_intellect", "taskflow.inspecter_architecture_greatos"),
+    "consulter_historique_projet": ("core_intellect", "taskflow.consulter_historique_projet"),
+    "arbitrer_priorite_taches": ("core_intellect", "taskflow.arbitrer_priorite_taches"),
+    "capturer_contexte_quadridimensionnel": (
+        "context_engine", "taskflow.capturer_contexte_quadridimensionnel",
+    ),
+    "charger_etat_gamification": ("progress_tracker", "taskflow.charger_etat_gamification"),
 }
 
 

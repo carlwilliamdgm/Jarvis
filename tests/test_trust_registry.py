@@ -7,11 +7,13 @@ l'extraction de domaines, et l'isolation multi-utilisateurs.
 
 import json
 import os
-import shutil
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from datashield.crypto import CryptoEngine
+from context_engine.encrypted_user_store import ENCRYPTED_JSON_KEY, load_encrypted_json
 
 from context_engine.trust_registry import (
     extraire_domaine_capacite,
@@ -36,15 +38,26 @@ class TestTrustRegistry(unittest.TestCase):
         
         # Utiliser un dossier temporaire pour les tests
         import context_engine.trust_registry as trust_registry_module
-        self.temp_dir = Path(tempfile.mkdtemp())
+        temp_root = Path(__file__).resolve().parents[1] / ".pytest_temp"
+        temp_root.mkdir(exist_ok=True)
+        self._temporary_storage = tempfile.TemporaryDirectory(dir=temp_root)
+        self.addCleanup(self._temporary_storage.cleanup)
+        self.temp_dir = Path(self._temporary_storage.name)
         trust_registry_module.PROFILES_DIR = self.temp_dir
+        engine = CryptoEngine.__new__(CryptoEngine)
+        engine._passphrase = b"isolated-trust-registry-test-key"
+        engine._lock = threading.Lock()
+        self.crypto_patch = patch("context_engine.encrypted_user_store.crypto_engine", engine)
+        self.kdf_patch = patch("datashield.crypto.PBKDF2_ITERATIONS", 1)
+        self.crypto_patch.start()
+        self.kdf_patch.start()
     
     def tearDown(self):
         """Nettoie le dossier temporaire après chaque test."""
         import context_engine.trust_registry as trust_registry_module
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
         trust_registry_module.PROFILES_DIR = self.original_dir
+        self.kdf_patch.stop()
+        self.crypto_patch.stop()
 
     def test_extraire_domaine_capacite_fichiers(self):
         """Teste l'extraction de domaine pour les capacités fichiers."""
@@ -287,12 +300,14 @@ class TestTrustRegistry(unittest.TestCase):
         chemin = trust_registry_module._chemin_trust_matrix("rachel")
         with open(chemin, "r", encoding="utf-8") as f:
             data = json.load(f)
-        
-        self.assertIn("fichiers_lire", data["domaines"])
-        self.assertEqual(data["domaines"]["fichiers_lire"]["actions_totales"], 3)
+        self.assertEqual(set(data), {ENCRYPTED_JSON_KEY})
+        self.assertNotIn("fichiers_lire", json.dumps(data))
+        matrix = load_encrypted_json(chemin, dict)
+        self.assertIn("fichiers_lire", matrix["domaines"])
+        self.assertEqual(matrix["domaines"]["fichiers_lire"]["actions_totales"], 3)
     
-    def test_fichier_corrompu_recree(self):
-        """Teste qu'un fichier corrompu entraîne la recréation de la matrice."""
+    def test_fichier_corrompu_refuse(self):
+        """Teste qu'un fichier corrompu ne réinitialise pas la matrice."""
         import context_engine.trust_registry as trust_registry_module
         
         # Créer un fichier corrompu
@@ -301,9 +316,10 @@ class TestTrustRegistry(unittest.TestCase):
         with open(chemin, "w", encoding="utf-8") as f:
             f.write("{invalid json content")
         
-        # Charger devrait recréer la matrice
-        niveau = obtenir_niveau_autonomie("fichiers_lire", "sam")
-        self.assertEqual(niveau, NIVEAU_OBSERVATION)
+        # Une corruption ne doit ni perdre ni remplacer silencieusement la confiance.
+        with self.assertRaisesRegex(RuntimeError, "illisibles"):
+            obtenir_niveau_autonomie("fichiers_lire", "sam")
+        self.assertEqual(chemin.read_text(encoding="utf-8"), "{invalid json content")
     
     def test_domaines_multiples_par_utilisateur(self):
         """Teste qu'un utilisateur peut avoir plusieurs domaines suivis."""

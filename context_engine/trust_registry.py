@@ -8,12 +8,12 @@ Le système utilise un mécanisme à cliquet (ratchet) : promotion après N succ
 rétrogradation immédiate après un échec.
 """
 
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from context_engine.encrypted_user_store import load_encrypted_json, save_encrypted_json
 from context_engine.paths import JARVIS_DIR
 from context_engine.user_profile import resoudre_utilisateur_actif
 
@@ -106,22 +106,15 @@ def _charger_trust_matrix(user_id: str) -> dict:
     Returns:
         Le dictionnaire de la matrice de confiance.
     """
-    chemin = _chemin_trust_matrix(user_id)
-    
-    # Créer le dossier parent s'il n'existe pas
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Charger la matrice si elle existe
-    if chemin.exists():
-        try:
-            with open(chemin, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            # En cas d'erreur, recréer la matrice
-            pass
-    
-    # Créer une nouvelle matrice vide
-    return {"domaines": {}}
+    matrix = load_encrypted_json(
+        _chemin_trust_matrix(user_id),
+        lambda: {"domaines": {}},
+    )
+    if not isinstance(matrix, dict) or not isinstance(matrix.get("domaines"), dict):
+        raise RuntimeError("Matrice de confiance invalide; lecture refusée.")
+    if "historique_resultats" in matrix and not isinstance(matrix["historique_resultats"], list):
+        raise RuntimeError("Historique de confiance invalide; lecture refusée.")
+    return matrix
 
 
 def _sauvegarder_trust_matrix(matrix: dict, user_id: str) -> None:
@@ -132,14 +125,7 @@ def _sauvegarder_trust_matrix(matrix: dict, user_id: str) -> None:
         matrix: Le dictionnaire de la matrice à sauvegarder.
         user_id: L'identifiant utilisateur normalisé.
     """
-    chemin = _chemin_trust_matrix(user_id)
-    
-    # Créer le dossier parent s'il n'existe pas
-    chemin.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Sauvegarder atomiquement
-    with open(chemin, "w", encoding="utf-8") as f:
-        json.dump(matrix, f, ensure_ascii=False, indent=2)
+    save_encrypted_json(_chemin_trust_matrix(user_id), matrix)
 
 
 def obtenir_niveau_autonomie(domaine: str, user_id: str | None = None) -> int:

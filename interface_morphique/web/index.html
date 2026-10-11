@@ -794,7 +794,7 @@
   <header class="app-header">
       <div class="brand">
         <div class="title">JARVIS</div>
-        <div class="subtitle">by Carl-William</div>
+        <div class="subtitle">J.A.R.V.I.S</div>
       </div>
       <nav class="app-nav" aria-label="Navigation principale">
         <button class="nav-button" data-view="dashboard" type="button" aria-current="page">Vue d’ensemble</button>
@@ -828,6 +828,9 @@
       <article class="dash-card metric-card"><div class="card-label">Service Jarvis</div><div class="metric-value" id="dashService">—</div><div class="metric-note" id="dashServiceNote">Vérification…</div></article>
       <article class="dash-card metric-card"><div class="card-label">Processeur</div><div class="metric-value" id="dashCpu">—</div><div class="metric-note" id="dashCpuNote">En attente des données</div><div class="meter" role="meter" aria-label="Utilisation processeur" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-fill" id="dashCpuMeter"></div></div></article>
       <article class="dash-card metric-card"><div class="card-label">Mémoire vive</div><div class="metric-value" id="dashRam">—</div><div class="metric-note" id="dashRamNote">En attente des données</div><div class="meter" role="meter" aria-label="Utilisation mémoire vive" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="meter-fill" id="dashRamMeter"></div></div></article>
+      <article class="dash-card metric-card"><div class="card-label">Micro Windows</div><div class="metric-value" id="dashVoice">—</div><div class="metric-note" id="dashVoiceNote">En attente des données</div></article>
+      <article class="dash-card metric-card"><div class="card-label">Vision écran</div><div class="metric-value" id="dashVision">—</div><div class="metric-note" id="dashVisionNote">En attente des données</div></article>
+      <article class="dash-card metric-card"><div class="card-label">Chiffrement des données</div><div class="metric-value" id="dashEncryption">—</div><div class="metric-note" id="dashEncryptionNote">En attente des données</div></article>
       <article class="dash-card metric-card"><div class="card-label">Sessions navigateur</div><div class="metric-value" id="dashSessionsCount">—</div><div class="metric-note" id="dashSessionsNote">Chargement…</div></article>
       <article class="dash-card wide-card"><div class="card-heading"><h2>Navigation en cours</h2><button class="text-button" id="refreshDashboard" type="button">Actualiser</button></div><div class="session-list" id="dashSessions"><div class="empty-state">Chargement des sessions…</div></div></article>
       <article class="dash-card wide-card"><div class="card-heading"><h2>Accès rapide</h2></div><p class="empty-state">Reprenez une tâche avec Jarvis ou consultez les sessions de navigation actives.</p><div class="quick-actions"><button class="primary-action" id="quickChatButton" type="button">Parler à Jarvis</button><button class="btn btn-secondary" id="quickInstancesButton" type="button">Gérer les instances</button></div></article>
@@ -901,6 +904,12 @@
     const dashboardServiceNote = document.getElementById("dashServiceNote");
     const dashboardCpu = document.getElementById("dashCpu");
     const dashboardRam = document.getElementById("dashRam");
+    const dashboardVoice = document.getElementById("dashVoice");
+    const dashboardVoiceNote = document.getElementById("dashVoiceNote");
+    const dashboardVision = document.getElementById("dashVision");
+    const dashboardVisionNote = document.getElementById("dashVisionNote");
+    const dashboardEncryption = document.getElementById("dashEncryption");
+    const dashboardEncryptionNote = document.getElementById("dashEncryptionNote");
     const dashboardCpuNote = document.getElementById("dashCpuNote");
     const dashboardRamNote = document.getElementById("dashRamNote");
     const dashboardCpuMeter = document.getElementById("dashCpuMeter");
@@ -1184,6 +1193,44 @@
         updateResourceMetric(data.ram, dashboardRam, dashboardRamMeter);
         dashboardCpuNote.textContent = typeof data.cpu === "number" && Number.isFinite(data.cpu) ? "Utilisation actuelle" : "Donnée non fournie";
         dashboardRamNote.textContent = typeof data.ram === "number" && Number.isFinite(data.ram) ? "Utilisation actuelle" : "Donnée non fournie";
+        const voice = data.voice || {};
+        const audio = voice.audio || {};
+        const defaultInput = audio.default_input || {};
+        dashboardVoice.textContent = voice.audio_input_ready ? "Prêt" : "Indisponible";
+        dashboardVoice.className = `metric-value ${voice.audio_input_ready ? "good" : "warn"}`;
+        dashboardVoiceNote.textContent = voice.audio_input_ready
+          ? `Défaut Windows : ${defaultInput.name || "micro détecté"}`
+          : ({
+              disabled_by_configuration: "Écoute désactivée par configuration",
+              no_host_default_input: "Aucun micro par défaut Windows",
+              listener_not_running: "Écouteur vocal arrêté",
+              switching_to_default_input: "Bascule vers le micro Windows en cours",
+              input_stream_not_open: "Flux du micro indisponible",
+            }[voice.reason] || "État du micro non disponible");
+        const vision = data.vision || {};
+        dashboardVision.textContent = vision.interpretation_ready
+          ? "Configurée"
+          : vision.screen_capture_supported ? "Capture seule" : "Indisponible";
+        dashboardVision.className = `metric-value ${vision.interpretation_ready ? "good" : "warn"}`;
+        dashboardVisionNote.textContent = vision.interpretation_ready
+          ? vision.interpretation_provider === "groq"
+            ? "Groq prioritaire; Ollama local en repli si configuré"
+            : "Ollama local configuré comme moteur de vision"
+          : vision.screen_capture_supported
+            ? vision.remote_analysis_enabled
+              ? "Capture prête; vérifier la configuration Groq et le modèle Ollama de repli"
+              : "Capture locale prête; analyse distante désactivée et aucun repli local configuré"
+            : "Capture écran indisponible";
+        const security = data.security || {};
+        const encryption = security.encryption || {};
+        const memoryEncrypted = security.memory_backend === "encrypted" && encryption.enabled;
+        dashboardEncryption.textContent = memoryEncrypted ? "Actif" : "Inactif";
+        dashboardEncryption.className = `metric-value ${memoryEncrypted ? "good" : "warn"}`;
+        dashboardEncryptionNote.textContent = memoryEncrypted
+          ? `${encryption.algorithm || "Chiffrement"} configuré pour la mémoire`
+          : security.memory_backend !== "encrypted"
+            ? "Backend mémoire en clair sélectionné"
+            : "AES-256-GCM ou clé DataShield indisponible";
         dashboardUpdated.textContent = `Données actualisées à ${new Date().toLocaleTimeString()}`;
       } catch (error) {
         statusDot.classList.toggle("auth-required", error.message === "auth");
@@ -1194,9 +1241,18 @@
         dashboardServiceNote.textContent = error.message === "auth" ? "Authentification requise par le serveur" : "Impossible de joindre Jarvis";
         dashboardCpu.textContent = "—";
         dashboardRam.textContent = "—";
+        dashboardVoice.textContent = "—";
+        dashboardVoice.className = "metric-value warn";
+        dashboardVision.textContent = "—";
+        dashboardVision.className = "metric-value warn";
+        dashboardEncryption.textContent = "—";
+        dashboardEncryption.className = "metric-value warn";
         const unavailableNote = error.message === "auth" ? "Authentification requise" : "Indisponible";
         dashboardCpuNote.textContent = unavailableNote;
         dashboardRamNote.textContent = unavailableNote;
+        dashboardVoiceNote.textContent = unavailableNote;
+        dashboardVisionNote.textContent = unavailableNote;
+        dashboardEncryptionNote.textContent = unavailableNote;
         dashboardCpuMeter.style.width = "0";
         dashboardRamMeter.style.width = "0";
         dashboardCpuMeter.parentElement.setAttribute("aria-valuenow", "0");
