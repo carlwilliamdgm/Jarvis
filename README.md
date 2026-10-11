@@ -2,7 +2,7 @@
 
 **GreatOS** est un écosystème d’intelligence artificielle et un système d’exploitation cognitif personnel qui se superpose à votre OS (Windows, Linux, macOS) pour transformer votre machine en partenaire intelligent proactif.
 
-Créé et développé par **Carl-William DJEGUEMA** (L1 Génie Logiciel, IAI-Togo — Horizon PFE Juin 2028), le projet unifie **8 modules fondamentaux souverains** selon les exigences du Cahier des Charges 2025–2033.
+Créé et développé par **Carl-William DJEGUEMA** (Etudiant en Génie Logiciel à l'Institut Africain d'Informatique  (IAI-Togo) — Horizon PFE Juin 2028), le projet unifie **8 modules fondamentaux souverains** selon les exigences du Cahier des Charges 2025–2033.
 
 ---
 
