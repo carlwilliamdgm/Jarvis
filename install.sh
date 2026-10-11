@@ -12,13 +12,17 @@ echo "=========================================================="
 echo "Emplacement : $PROJECT_ROOT"
 echo "Utilisateur : $(whoami)"
 
-# 1. Vérification de Python 3.10+
+# 1. Vérification de Python 3.12
 if ! command -v python3 &> /dev/null; then
     echo "[ERREUR] python3 n'a pas été détecté sur ce système."
     exit 1
 fi
 
 PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+if [ "$PY_VERSION" != "3.12" ]; then
+    echo "[ERREUR] GreatOS nécessite Python 3.12 (version détectée : $PY_VERSION)."
+    exit 1
+fi
 echo "[OK] Python $PY_VERSION détecté."
 
 # 2. Création de l'environnement virtuel .venv
@@ -31,6 +35,13 @@ if [ ! -f "$VENV_PYTHON" ]; then
     echo "[OK] Environnement virtuel créé."
 else
     echo "[OK] Environnement virtuel existant détecté."
+fi
+
+VENV_VERSION=$("$VENV_PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+if [ "$VENV_VERSION" != "3.12" ]; then
+    echo "[ERREUR] L'environnement .venv n'utilise pas Python 3.12 (version détectée : $VENV_VERSION)."
+    echo "Supprimez .venv puis relancez install.sh."
+    exit 1
 fi
 
 # 3. Installation des dépendances

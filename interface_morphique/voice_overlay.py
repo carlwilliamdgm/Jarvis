@@ -95,7 +95,7 @@ class VoiceOverlay:
         self._root = tk.Tk()
         self._root.overrideredirect(True)
         self._root.attributes("-topmost", True)
-        self._root.attributes("-alpha", 0.94)
+        self._root.attributes("-alpha", 0.18)
         self._root.geometry(f"{self.WIDTH}x{self.HEIGHT}")
 
         x, y = self._get_position_coords()
@@ -132,9 +132,9 @@ class VoiceOverlay:
         self._canvas.pack(fill=tk.BOTH, expand=True)
         self._canvas.bind("<Button>", lambda e: "break")
 
-        # Masquer initialement (IDLE)
-        self._root.withdraw()
-        self._is_visible = False
+        # Le HUD reste présent en veille, très estompé, comme repère visuel.
+        self._is_visible = True
+        self._render_current_state()
 
     def _draw_frame_and_header(self, accent_color: str, title: str, badge: str):
         """Dessine le cadre HUD et l'en-tête."""
@@ -288,6 +288,14 @@ class VoiceOverlay:
         c.create_text(76, 42, text="Incident détecté", fill=self.TEXT_COLOR, anchor="w", font=("Segoe UI", 10, "bold"))
         c.create_text(76, 58, text="Reprise automatique...", fill=self.SUBTEXT_COLOR, anchor="w", font=("Segoe UI", 8))
 
+    def _render_idle(self):
+        """Affichage discret qui garde le HUD visible en veille."""
+        c = self._canvas
+        c.create_rectangle(1, 1, self.WIDTH - 2, self.HEIGHT - 2, outline="#34364a", width=1)
+        c.create_text(18, 43, text="◈", fill="#62657d", font=("Segoe UI", 18, "bold"))
+        c.create_text(42, 36, text="J.A.R.V.I.S.", fill="#85889b", anchor="w", font=("Segoe UI", 9, "bold"))
+        c.create_text(42, 54, text="En veille", fill="#62657d", anchor="w", font=("Segoe UI", 8))
+
     def _render_current_state(self):
         """Dessine l'état courant avec ses animations dynamiques."""
         if not self._canvas:
@@ -295,7 +303,9 @@ class VoiceOverlay:
 
         self._canvas.delete("all")
 
-        if self._current_state == VoiceState.WAKING_UP:
+        if self._current_state == VoiceState.IDLE:
+            self._render_idle()
+        elif self._current_state == VoiceState.WAKING_UP:
             self._render_waking_up()
         elif self._current_state == VoiceState.LISTENING:
             self._render_listening()
@@ -323,21 +333,18 @@ class VoiceOverlay:
             self._current_transcript = new_transcript
 
         # 2. Gestion de la visibilité selon l'état
-        if self._current_state == VoiceState.IDLE:
-            if self._is_visible:
-                self._root.withdraw()
-                self._is_visible = False
-        else:
-            if not self._is_visible:
-                self._root.deiconify()
-                self._root.lift()
-                self._root.attributes("-topmost", True)
-                self._is_visible = True
-            # 3. Rendu dynamique de l'animation
-            try:
-                self._render_current_state()
-            except Exception:
-                logger.exception("Erreur rendu animation overlay")
+        if not self._is_visible:
+            self._root.deiconify()
+            self._root.lift()
+            self._root.attributes("-topmost", True)
+            self._is_visible = True
+        self._root.attributes("-alpha", 0.18 if self._current_state == VoiceState.IDLE else 0.94)
+
+        # 3. Rendu dynamique de l'animation
+        try:
+            self._render_current_state()
+        except Exception:
+            logger.exception("Erreur rendu animation overlay")
 
         self._root.after(33, self._tick)
 

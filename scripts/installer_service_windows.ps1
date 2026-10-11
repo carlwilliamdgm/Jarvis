@@ -13,6 +13,19 @@ $hiddenScript = Join-Path $projectRoot "jarvis_hidden.ps1"
 $taskName    = "JarvisAgent"
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
+function Test-GreatOSReady {
+    try {
+        $response = Invoke-WebRequest `
+            -Uri "http://127.0.0.1:8000/jarvis/status" `
+            -UseBasicParsing `
+            -TimeoutSec 1 `
+            -ErrorAction Stop
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host "   Installation Portable du Service Résident GreatOS     " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
@@ -127,8 +140,21 @@ if (Test-Path $updateScript) {
 if ($DemarrerImmediatement) {
     Write-Host "[INFO] Démarrage de GreatOS en arrière-plan..." -ForegroundColor Cyan
     Start-ScheduledTask -TaskName $taskName
-    Start-Sleep -Seconds 5
-    & $pythonExe (Join-Path $projectRoot "greatos_service.py") status
+    $apiReady = $false
+    $startupClock = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($startupClock.Elapsed -lt [TimeSpan]::FromSeconds(30)) {
+        if (Test-GreatOSReady) {
+            $apiReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+
+    if (-not $apiReady) {
+        $startupLog = Join-Path $projectRoot "logs\uvicorn.err.log"
+        throw "GreatOS API did not become ready within 30 seconds. Check $startupLog"
+    }
+    Write-Host "[OK] GreatOS API répond sur http://127.0.0.1:8000/jarvis/status." -ForegroundColor Green
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan

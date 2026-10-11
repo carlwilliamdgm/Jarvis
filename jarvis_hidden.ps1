@@ -1,8 +1,17 @@
 # Script wrapper pour lancer GreatOS en arrière-plan sans fenêtre visible
 # Lancé via la tâche planifiée JarvisAgent (logon + quotidien 09h30)
 
+param(
+    [string]$PythonExe,
+    [string]$HostAddress = "127.0.0.1"
+)
+
 $projectRoot = $PSScriptRoot
-$pythonExe   = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$pythonExe = if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+    Join-Path $projectRoot ".venv\Scripts\python.exe"
+} else {
+    $PythonExe
+}
 $logFile     = Join-Path $projectRoot "logs\uvicorn.log"
 $errFile     = Join-Path $projectRoot "logs\uvicorn.err.log"
 $logDir      = Split-Path $logFile -Parent
@@ -21,15 +30,25 @@ foreach ($file in @($logFile, $errFile)) {
     }
 }
 
-# Vérifier si GreatOS tourne déjà sur le port 8000 (évite les doublons)
-$portOccupe = $false
-try {
-    $conn = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue
-    if ($conn) { $portOccupe = $true }
-} catch {}
+function Test-GreatOSReady {
+    try {
+        $response = Invoke-WebRequest `
+            -Uri "http://127.0.0.1:8000/jarvis/status" `
+            -UseBasicParsing `
+            -TimeoutSec 1 `
+            -ErrorAction Stop
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
 
-if ($portOccupe) {
-    Add-Content -Path $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] GreatOS deja actif sur le port 8000 — demarrage ignore."
+if (-not (Test-Path $pythonExe -PathType Leaf)) {
+    throw "Interpréteur Python introuvable : $pythonExe"
+}
+
+if (Test-GreatOSReady) {
+    Add-Content -Path $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] GreatOS déjà prêt sur le port 8000 — démarrage ignoré."
     exit 0
 }
 
@@ -43,8 +62,12 @@ if (Test-Path $envFile) {
     }
 }
 
+# La tâche JarvisAgent lance l'expérience vocale continue demandée. Ce mode
+# explicite prévaut sur GREATOS_DISABLE_VOICE éventuellement défini dans .env.
+$env:GREATOS_DISABLE_VOICE = "0"
+
 # Lancer uvicorn en héritant de l'environnement courant (inclut les vars .env)
-$arguments = @("-m", "uvicorn", "interface_morphique.server:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "info")
+$arguments = @("-m", "uvicorn", "interface_morphique.server:app", "--host", $HostAddress, "--port", "8000", "--log-level", "info")
 
 $proc = Start-Process -FilePath $pythonExe `
     -ArgumentList $arguments `
@@ -53,3 +76,19 @@ $proc = Start-Process -FilePath $pythonExe `
     -RedirectStandardOutput $logFile `
     -RedirectStandardError $errFile `
     -PassThru
+
+$startupClock = [System.Diagnostics.Stopwatch]::StartNew()
+while ($startupClock.Elapsed -lt [TimeSpan]::FromSeconds(90)) {
+    if (Test-GreatOSReady) {
+        Add-Content -Path $logFile -Value "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] GreatOS prêt (PID $($proc.Id))."
+        exit 0
+    }
+
+    $proc.Refresh()
+    if ($proc.HasExited) {
+        throw "Le serveur GreatOS s'est arrêté pendant le démarrage (code $($proc.ExitCode)). Consultez $errFile."
+    }
+    Start-Sleep -Milliseconds 500
+}
+
+throw "Le serveur GreatOS n'a pas répondu sur http://127.0.0.1:8000/jarvis/status après 90 secondes. Consultez $logFile et $errFile."

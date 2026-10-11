@@ -101,6 +101,9 @@ try {
         }
 
         powershell.exe -ExecutionPolicy Bypass -File $privateInstall -GitHubPAT $GitHubPAT
+        if ($LASTEXITCODE -ne 0) {
+            throw "Le script d'installation GreatOS a échoué (code de sortie $LASTEXITCODE). Consultez son journal pour le détail."
+        }
     } finally {
         Pop-Location
     }

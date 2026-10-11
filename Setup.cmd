@@ -38,16 +38,24 @@ if exist "%~dp0bootstrap\install.ps1" (
         )
         powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0bootstrap\install.ps1" -GitHubPAT "!USER_PAT!"
     )
+    if errorlevel 1 goto :erreur_install
     goto :fin
 )
 
 :: 2. Si on est en installation publique minimale (install_public.ps1)
 if exist "%~dp0install_public.ps1" (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_public.ps1"
+    if errorlevel 1 goto :erreur_install
     goto :fin
 )
 
 echo [ERREUR] Aucun script d'installation trouve dans ce dossier.
+pause
+exit /b 1
+
+:erreur_install
+echo.
+echo [ERREUR] L'installation a echoue. Consultez les messages ci-dessus et le journal d'installation.
 pause
 exit /b 1
 

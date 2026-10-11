@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import os
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional
 import urllib.request
 
@@ -470,12 +471,12 @@ class JarvisGCProvider(BaseLLMProvider):
         self.host = host or os.environ.get("JARVIS_MODEL_HOST") or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434"
         self.default_timeout = float(os.environ.get("JARVIS_GC_TIMEOUT", timeout))
 
-    def is_available(self) -> bool:
+    def is_available(self, timeout: float = 1.5) -> bool:
         if ollama is None:
             return False
         try:
             req = urllib.request.Request(f"{self.host}/api/tags", method="GET")
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 if resp.status == 200:
                     return True
         except Exception:
@@ -491,17 +492,24 @@ class JarvisGCProvider(BaseLLMProvider):
         if ollama is None:
             raise RuntimeError("Module ollama non disponible pour Jarvis-GC.")
 
+        cfg = config or LLMConfig(temperature=0.2)
+        timeout_val = cfg.timeout or self.default_timeout
+        deadline = time.monotonic() + timeout_val
+
         # Fail-fast : vérification du service avant toute tentative d'inférence.
-        # Évite de bloquer 6s sur un timeout réseau si Ollama est éteint.
-        if not self.is_available():
+        # La vérification partage le budget de délai de l'appel complet.
+        if not self.is_available(timeout=max(0.01, min(1.5, timeout_val))):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Délai d'inférence Jarvis-GC dépassé (> {timeout_val}s). "
+                    "Le service Ollama n'a pas répondu à temps."
+                )
             raise RuntimeError(
                 f"Service Ollama inaccessible sur {self.host}. "
                 "Démarrez Ollama ('ollama serve') puis créez le modèle "
                 "('ollama create jarvis-gc -f models/jarvis_gc/Modelfile')."
             )
 
-        cfg = config or LLMConfig(temperature=0.2)
-        timeout_val = cfg.timeout or self.default_timeout
         # Sur CPU 8-threads (4 cœurs physiques), utiliser 4 threads physiques
         # garantit que Windows conserve 4 threads libres (zéro freeze système).
         options = {
@@ -527,7 +535,7 @@ class JarvisGCProvider(BaseLLMProvider):
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
             future = executor.submit(_do_chat)
-            response = future.result(timeout=timeout_val)
+            response = future.result(timeout=max(0, deadline - time.monotonic()))
             executor.shutdown(wait=True)
 
             if isinstance(response, dict):

@@ -9,6 +9,7 @@ Valide que :
 """
 
 import time
+import threading
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -170,22 +171,30 @@ class TestProactiveDaemon(unittest.TestCase):
         }
         
         cycle_count = [0]
-        
+        alerte_rearmee = threading.Event()
+
         def mock_etat_systeme():
             cycle_count[0] += 1
             if cycle_count[0] <= 2:
                 return etat_avec_anomalie
             else:
                 return etat_normal
-        
+
+        emettre_evenement_original = self.event_bus.emit
+
+        def emettre_evenement_et_attendre_resolution(event_type, data):
+            emettre_evenement_original(event_type, data)
+            if event_type == "alerte_proactive_resolue":
+                alerte_rearmee.set()
+
         with patch('jarvis.proactive_daemon.obtenir_etat_systeme_complet', side_effect=mock_etat_systeme):
             with patch('jarvis.proactive_daemon.detecter_anomalies') as mock_detect:
                 mock_detect.side_effect = lambda etat: [anomalie_cpu] if etat["cpu"]["utilisation"] > 90 else []
-                
-                daemon.start()
-                time.sleep(0.5)  # Attendre plusieurs cycles
-                daemon.arreter()
-                daemon.join(timeout=1.0)
+                with patch.object(self.event_bus, "emit", side_effect=emettre_evenement_et_attendre_resolution):
+                    daemon.start()
+                    self.assertTrue(alerte_rearmee.wait(timeout=2.0))
+                    daemon.arreter()
+                    daemon.join(timeout=1.0)
         
         # Vérifier qu'une alerte a été émise lors de l'anomalie
         alertes_cpu = [e for e in self.event_bus.events if e["type"] == "alerte_proactive" and e["data"]["type"] == "cpu"]

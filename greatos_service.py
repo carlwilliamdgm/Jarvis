@@ -41,28 +41,29 @@ def trouver_processus_sur_port(port: int = PORT_SERVICE) -> int | None:
     return None
 
 
-def tester_reponse_http(port: int = PORT_SERVICE) -> bool:
-    """Vérifie si GreatOS répond sur l'endpoint de statut."""
-    try:
-        from datashield.env_loader import charger_environnement
-        charger_environnement()
-    except Exception:
-        pass
-
-    api_key = os.environ.get("JARVIS_API_KEY", "")
-    headers = {"User-Agent": "GreatOS-Service-Probe"}
-    if api_key:
-        headers["X-API-Key"] = api_key
-
+def tester_reponse_http(port: int = PORT_SERVICE, timeout: float = 1.0) -> bool:
+    """Vérifie que l'API GreatOS répond réellement sur son endpoint de statut."""
     try:
         url = f"http://127.0.0.1:{port}/jarvis/status"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            return resp.status in (200, 401)
-    except urllib.error.HTTPError as e:
-        # Un code 401 ou 403 signifie que le serveur FastAPI est actif et sécurisé
-        return e.code in (200, 401, 403)
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return resp.status == 200
     except Exception:
+        return False
+
+
+def _est_processus_jarvis(pid: int) -> bool:
+    """Évite de traiter un PID réutilisé ou un autre service comme GreatOS."""
+    import psutil
+
+    try:
+        processus = psutil.Process(pid)
+        ligne_commande = processus.cmdline()
+        dossier = Path(processus.cwd()).resolve()
+        return (
+            "interface_morphique.server:app" in ligne_commande
+            and dossier == RACINE.resolve()
+        )
+    except (psutil.Error, OSError):
         return False
 
 
@@ -70,7 +71,7 @@ def obtenir_pid_actif() -> int | None:
     """Retourne le PID du processus GreatOS s'il tourne actuellement."""
     # 1. Vérifier si un processus écoute sur le port 8000 et répond
     pid_port = trouver_processus_sur_port(PORT_SERVICE)
-    if pid_port:
+    if pid_port and _est_processus_jarvis(pid_port):
         _initialiser_dossiers()
         PID_FILE.write_text(str(pid_port))
         return pid_port
@@ -79,14 +80,25 @@ def obtenir_pid_actif() -> int | None:
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text().strip())
-            import psutil
-            if psutil.pid_exists(pid):
-                proc = psutil.Process(pid)
-                if "python" in proc.name().lower():
-                    return pid
+            if _est_processus_jarvis(pid):
+                return pid
         except Exception:
             pass
+        PID_FILE.unlink(missing_ok=True)
     return None
+
+
+def _attendre_service_pret(timeout: float, processus: subprocess.Popen | None = None) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        if tester_reponse_http(timeout=min(1.0, remaining)):
+            return True
+        if processus is not None and processus.poll() is not None:
+            return False
+        time.sleep(min(0.5, max(0, deadline - time.monotonic())))
 
 
 def demarrer_service(silencieux: bool = True) -> bool:
@@ -94,11 +106,21 @@ def demarrer_service(silencieux: bool = True) -> bool:
     _initialiser_dossiers()
     pid = obtenir_pid_actif()
     if pid:
-        print(f"[i] GreatOS est déjà actif et opérationnel (PID: {pid}).")
-        print(f"     Interface Web : http://127.0.0.1:{PORT_SERVICE}/web/")
-        return True
+        if tester_reponse_http():
+            print(f"[i] GreatOS est déjà actif et opérationnel (PID: {pid}).")
+            print(f"     Interface Web : http://127.0.0.1:{PORT_SERVICE}/web/")
+            return True
+        print(f"[ATTENTE] GreatOS existe (PID: {pid}), mais son API ne répond pas encore.")
+        if _attendre_service_pret(timeout=15):
+            return True
+        print(f"[ERREUR] GreatOS n'est pas prêt. Consultez {RUNTIME_DIR / 'service.log'}.")
+        return False
 
     interp = str(VENV_PYTHON)
+    if not VENV_PYTHON.is_file():
+        print(f"[ERREUR] Python de l'environnement GreatOS introuvable : {VENV_PYTHON}")
+        return False
+
     # CREATE_NO_WINDOW (0x08000000) + DETACHED_PROCESS (0x00000008)
     flags = (0x08000000 | 0x00000008) if sys.platform == "win32" and silencieux else 0
 
@@ -111,46 +133,43 @@ def demarrer_service(silencieux: bool = True) -> bool:
         "--log-level", "warning",
     ]
 
-    # Environnement du service : charger .env et désactiver la voix auto
+    # Le service lancé par l'utilisateur doit activer l'écoute vocale dès son
+    # démarrage. L'API démarre également le HUD et le moteur voice_input officiel.
     env = os.environ.copy()
-    env["GREATOS_DISABLE_VOICE"] = "1"   # La voix est activée à la demande via l'UI
+    env["GREATOS_DISABLE_VOICE"] = "0"
 
     log_path = RUNTIME_DIR / "service.log"
     try:
-        log_file = open(log_path, "a", encoding="utf-8")
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(RACINE),
-            creationflags=flags,
-            env=env,
-            stdout=log_file,
-            stderr=log_file,
-        )
+        with open(log_path, "a", encoding="utf-8") as log_file:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(RACINE),
+                creationflags=flags,
+                env=env,
+                stdout=log_file,
+                stderr=log_file,
+            )
         PID_FILE.write_text(str(proc.pid))
-        
-        # Attendre que le serveur démarre (Vosk prend ~6-8s au chargement)
-        demarre = False
-        for _ in range(30):
-            time.sleep(0.5)
-            if tester_reponse_http(PORT_SERVICE):
-                demarre = True
-                break
 
-        if demarre:
+        if _attendre_service_pret(timeout=30, processus=proc):
             print(f"[OK] GreatOS démarré avec succès en tâche de fond (PID: {proc.pid}).")
             print(f"     Interface Web : http://127.0.0.1:{PORT_SERVICE}/web/")
             return True
+
+        if proc.poll() is not None:
+            PID_FILE.unlink(missing_ok=True)
+            print(
+                f"[ERREUR] Le serveur s'est arrêté avant de répondre "
+                f"(code {proc.returncode}). Consultez {log_path}."
+            )
         else:
-            # Vérifier si le processus est toujours en vie
-            import psutil
-            if psutil.pid_exists(proc.pid):
-                print(f"[OK] GreatOS est en cours d'initialisation (PID: {proc.pid}).")
-                print(f"     Interface Web : http://127.0.0.1:{PORT_SERVICE}/web/")
-                return True
-            print(f"[AVERTISSEMENT] Le serveur n'a pas répondu dans le délai imparti.")
-            return False
+            print(
+                f"[ERREUR] Le serveur n'a pas répondu dans les 30 secondes. "
+                f"Consultez {log_path}."
+            )
+        return False
     except Exception as e:
-        print(f"[ERREUR] Échec du démarrage de GreatOS : {e}")
+        print(f"[ERREUR] Échec du démarrage de GreatOS : {e}. Consultez {log_path}.")
         return False
 
 
@@ -184,8 +203,8 @@ def arreter_service() -> bool:
             return False
 
 
-def statut_service() -> None:
-    """Affiche l'état courant de GreatOS."""
+def statut_service() -> bool:
+    """Affiche l'état courant de GreatOS et indique si l'API est prête."""
     pid = obtenir_pid_actif()
     repond = tester_reponse_http(PORT_SERVICE)
     if repond:
@@ -196,20 +215,27 @@ def statut_service() -> None:
         print(f"[ATTENTE] Processus GreatOS actif (PID: {pid}), port en initialisation...")
     else:
         print("[INACTIF] GreatOS est arrêté.")
+    return repond
 
 
-if __name__ == "__main__":
+def main() -> int:
     action = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
 
     if action == "start":
-        demarrer_service(silencieux=True)
+        return 0 if demarrer_service(silencieux=True) else 1
     elif action == "stop":
-        arreter_service()
+        return 0 if arreter_service() else 1
     elif action == "restart":
-        arreter_service()
+        if not arreter_service():
+            return 1
         time.sleep(1)
-        demarrer_service(silencieux=True)
+        return 0 if demarrer_service(silencieux=True) else 1
     elif action == "status":
-        statut_service()
+        return 0 if statut_service() else 1
     else:
         print("Usage: python greatos_service.py [start|stop|restart|status]")
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

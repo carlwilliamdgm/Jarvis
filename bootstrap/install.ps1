@@ -254,21 +254,40 @@ if (Test-Path $JarvisDir) {
 # Step 3: Install Python dependencies
 Write-Log "=== Step 3: Install Python Dependencies ==="
 $requirementsPath = Join-Path $JarvisDir "requirements.txt"
+$venvDirectory = Join-Path $JarvisDir ".venv"
+$venvPython = Join-Path $venvDirectory "Scripts\python.exe"
 if (Test-Path $requirementsPath) {
     try {
         Push-Location $JarvisDir
-        & $pythonPath -m pip install -r requirements.txt
-        if ($LASTEXITCODE -eq 0) {
-            Write-Log "Dependencies installed successfully"
-        } else {
-            Write-Log "pip install failed with exit code $LASTEXITCODE" "ERROR"
-            throw "Failed to install dependencies"
+        if (-not (Test-Path $venvPython)) {
+            Write-Log "Creating isolated Python environment at $venvDirectory"
+            & $pythonPath -m venv $venvDirectory
+            if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) {
+                throw "Failed to create Python virtual environment at $venvDirectory"
+            }
         }
-        Pop-Location
+
+        $pythonPath = $venvPython
+        $venvVersion = & $pythonPath -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+        if ($LASTEXITCODE -ne 0 -or $venvVersion.Trim() -ne "3.12") {
+            throw "The project virtual environment must use Python 3.12."
+        }
+
+        & $pythonPath -m pip install --upgrade pip
+        if ($LASTEXITCODE -ne 0) {
+            throw "pip upgrade failed with exit code $LASTEXITCODE"
+        }
+
+        & $pythonPath -m pip install -r requirements.txt
+        if ($LASTEXITCODE -ne 0) {
+            throw "pip install failed with exit code $LASTEXITCODE"
+        }
+        Write-Log "Dependencies installed successfully in .venv"
     } catch {
         Write-Log "Failed to install dependencies: $_" "ERROR"
-        Pop-Location
         throw
+    } finally {
+        Pop-Location
     }
 } else {
     Write-Log "requirements.txt not found at $requirementsPath" "ERROR"
@@ -513,8 +532,8 @@ if ($legacyService) {
 
 $taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $taskAction = New-ScheduledTaskAction `
-    -Execute $pythonPath `
-    -Argument "-m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000" `
+    -Execute "powershell.exe" `
+    -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$JarvisDir\jarvis_hidden.ps1`" -PythonExe `"$pythonPath`" -HostAddress `"0.0.0.0`"" `
     -WorkingDirectory $JarvisDir
 $taskTrigger = New-ScheduledTaskTrigger -AtLogOn -User $taskUser
 $taskPrincipal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType Interactive -RunLevel Limited
@@ -536,7 +555,34 @@ Register-ScheduledTask `
 Start-ScheduledTask -TaskName $agentTaskName
 Write-Log "Scheduled task $agentTaskName registered and started for $taskUser"
 
-# Step 7: Store PAT for future updates
+$apiReady = $false
+$apiProbeError = "aucune réponse HTTP valide"
+$apiStartupClock = [System.Diagnostics.Stopwatch]::StartNew()
+while ($apiStartupClock.Elapsed -lt [TimeSpan]::FromSeconds(30)) {
+    try {
+        $response = Invoke-WebRequest `
+            -Uri "http://127.0.0.1:8000/jarvis/status" `
+            -UseBasicParsing `
+            -TimeoutSec 1 `
+            -ErrorAction Stop
+        if ($response.StatusCode -eq 200) {
+            $apiReady = $true
+            break
+        }
+    } catch {
+        $apiProbeError = $_.Exception.Message
+    }
+    Start-Sleep -Milliseconds 500
+}
+
+if (-not $apiReady) {
+    $startupLogs = Join-Path $JarvisDir "logs\uvicorn.err.log"
+    Write-Log "GreatOS API did not become ready: $apiProbeError. Check $startupLogs" "ERROR"
+    throw "GreatOS API did not become ready within 30 seconds: $apiProbeError. Check $startupLogs"
+}
+Write-Log "GreatOS API readiness confirmed on http://127.0.0.1:8000/jarvis/status"
+
+# Step 7: Store PAT for Future Updates
 # No cmdkey / Credential Manager: the PAT lives only in the Machine-level
 # GIT_PAT_JARVIS env var, read by update.ps1 via GIT_ASKPASS (never in
 # .git/config, never in a remote URL, never in logs).
@@ -621,4 +667,3 @@ foreach ($key in $status.Keys) {
     Write-Host ("  {0,-4} {1}" -f $mark, $key)
 }
 Write-Host "═══════════════════════════════════════════════════════════"
-

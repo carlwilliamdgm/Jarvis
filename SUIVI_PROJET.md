@@ -8,6 +8,177 @@
 
 ## Journal récent
 
+### 2026-10-11T17:15:15.691196+00:00 — Codex — completed
+
+Alignement de la sélection du microphone sur le défaut de l'OS hôte
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis/voice_input.py ignore désormais les overrides JARVIS_AUDIO_INPUT_DEVICE et JARVIS_MICROPHONE_DEVICE et utilise le défaut PortAudio/OS; test_voice_input actualisé pour ce contrat
+
+**Vérification**
+- Inspection du flux de sélection jusqu'à AudioCaptureEngine; git diff --check propre hors avertissements CRLF préexistants; tests non exécutés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Si un sélecteur explicite de micro est ajouté à l'interface, le présenter comme préférence utilisateur volontaire et le synchroniser avec les réglages de l'OS; à défaut, garder l'entrée sur le périphérique système
+
+### 2026-10-11T17:11:55.648536+00:00 — Codex — completed
+
+Établissement de l'état d'intégration J.A.R.V.I.S. à partir du codebase
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- Aucun changement produit; vérification des points de démarrage du serveur, du HUD, de voice_state, du cycle vocal et des confirmations
+
+**Vérification**
+- Lecture des dernières entrées GreatOS; rg ciblé des points d'intégration; git diff --check (aucune erreur, avertissements CRLF seulement)
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Pour déclarer la boucle entièrement validée, exécuter un parcours d'acceptation sur la machine : wake word, écoute 25s, réponse TTS, confirmation vocale, HUD et une action vision/Windows; sinon conserver le statut intégré mais pas validé bout en bout
+
+### 2026-10-11T17:09:14.555152+00:00 — Codex — completed
+
+Correction du retour d'échec de la tâche JarvisAgent et activation de l'écoute vocale continue
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis_hidden.ps1 force GREATOS_DISABLE_VOICE=0 après chargement de .env et attend jusqu'à 90 secondes l'API, pour les démarrages à froid audio/HUD
+
+**Vérification**
+- Analyse syntaxique PowerShell OK; JarvisAgent LastTaskResult=0 et état Ready; GET /jarvis/status HTTP 200; 5 périphériques d'entrée micro détectés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Dire Jarvis devant le microphone pour confirmer le réveil, puis valider le HUD, la conversation, une confirmation vocale hors ligne et les commandes vision/Windows
+
+### 2026-10-11T17:05:26.495482+00:00 — Codex — review
+
+Correction du réglage vocal de la tâche planifiée et contrôle du démarrage GreatOS
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- jarvis_hidden.ps1 force GREATOS_DISABLE_VOICE=0 après chargement de .env; GreatOS relancé via JarvisAgent
+
+**Vérification**
+- API HTTP 200; processus API et HUD observés; JarvisAgent a terminé avec LastTaskResult=1; le micro réel n'a pas été testé
+
+**Blocages**
+- Le résultat 1 de la tâche planifiée et l'absence de confirmation runtime de l'écoute empêchent de certifier le démarrage vocal complet.
+
+**À suivre**
+- Résoudre pourquoi JarvisAgent retourne 1 alors que l'API répond, puis confirmer le wake word, la fenêtre de 25 secondes et une confirmation Vosk hors ligne sur le poste Windows
+
+### 2026-10-11T16:58:39.597088+00:00 — Codex — completed
+
+Redémarrage de GreatOS via la tâche planifiée JarvisAgent et vérification du service
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- Aucun changement produit pendant le redémarrage; ancienne instance GreatOS et son HUD arrêtés puis tâche JarvisAgent relancée
+
+**Vérification**
+- JarvisAgent revenu à Ready avec LastTaskResult=0; GET /jarvis/status répond HTTP 200; une instance serveur GreatOS et un processus HUD observés
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider le réveil vocal et l'affichage HUD sur le bureau Windows avec le microphone réel
+
+### 2026-10-11T16:47:12.979084+00:00 — Codex — completed
+
+Intégration unifiée du lancement vocal GreatOS, du HUD et des confirmations vocales
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- lancer_jarvis.bat démarre le service complet et ouvre l'interface; greatos_service.py active l'écoute vocale; jarvis/voice_input.py utilise VoiceConfirmationHandler avec fallback Vosk local; interface_morphique/voice_overlay.py affiche un HUD estompé en veille
+
+**Vérification**
+- Analyse AST des trois fichiers Python modifiés réussie; git diff --check sans erreur; aucune suite de tests exécutée
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider sur la machine Windows avec microphone et modèles présents : démarrage HUD, mot-clé wake, conversation 25s, confirmation vocale hors ligne, vision d'écran et actions volume/fenêtres
+
+### 2026-10-11T16:14:14.604439+00:00 — Copilot — completed
+
+Fiabilisation du démarrage Windows et vérification finale
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- bootstrap/install.ps1 crée et utilise .venv Python 3.12; tâche planifiée lancée par jarvis_hidden.ps1 avec contrôle HTTP réel; service, installateurs et délais LLM durcis
+
+**Vérification**
+- pytest complet: 521 passed, 1 skipped, 9 deselected; analyse PowerShell valide sur les scripts modifiés; bash -n install.sh; git diff --check
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Valider le parcours install/connexion/API/conversation sur une VM Windows vierge; tester séparément les fonctions audio et bureau avec matériel et session compatibles
+
+### 2026-10-11T15:44:03.548506+00:00 — Copilot — completed
+
+Évaluation de la portabilité fonctionnelle de GreatOS vers une autre machine
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- Aucune modification produit; analyse de 52 fichiers de tests et points d'entrée Windows/Linux/API, configurations IA et dépendances matérielles
+
+**Vérification**
+- Suite pytest complète : 515 passed, 2 failed, 2 skipped, 9 deselected; échecs dans test_jarvis_gc_provider (limite 150ms mesurée à 1.5s) et test_proactive_daemon (alerte CPU conservée); inspection statique des imports Windows, installateurs, serveur et client LLM
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Tester sur une VM Windows vierge la voie installée et mesurer API, conversation avec provider configuré, voix et actions système; avant de promouvoir Linux, isoler ou neutraliser proprement les imports Win32 et valider les actions OS
+
+### 2026-10-11T14:26:37.508266+00:00 — Copilot — completed
+
+Correction des contrôles d'installation et de la propagation des échecs sur Windows/Linux
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- install.ps1 (Python 3.12 et vérification explicite des codes de sortie), install.sh (contrôle Python 3.12 et venv), Setup.cmd/install_public.ps1 (échecs imbriqués non masqués), README.md et docs/guides/INSTALLATION_MACHINE_VIERGE.md (parcours documenté corrigé)
+
+**Vérification**
+- tests/test_portability.py : 4 passed; analyse syntaxique PowerShell des deux scripts : OK; bash -n install.sh : OK; git diff --check lancé
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Reproduire l'installation sur machine vierge avec ces changements; si un échec demeure, récupérer bootstrap/bootstrap_install.log ou le message PowerShell complet pour corriger la cause spécifique
+
 ### 2026-10-11T13:55:10.705322+00:00 — Copilot — completed
 
 Évaluation du périmètre Docker pour une exécution reproductible de Jarvis sur plusieurs machines
@@ -26,174 +197,3 @@
 
 **À suivre**
 - Si validé, définir le périmètre de l'image API, ses volumes/configuration, et un docker-compose.yml avec healthcheck sans inclure .env ni données locales
-
-### 2026-10-10T05:09:37.899823+00:00 — Buffy — completed
-
-Audit complet : 517/518 tests verts, 1 echec lie a un test dependant de l'heure et des donnees reelles (pattern_analyzer), absence CI/linter, auth fail-open si JARVIS_API_KEY absente
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- aucune modification de code, rapport d'audit seul
-
-**Vérification**
-- pytest -q (1 failed, 517 passed, 1 skipped), py_compile des nouveaux fichiers, revue git/secrets/env
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Isoler le test pattern_anomaly (memoire factice), ajouter CI GitHub Actions + ruff, corriger le fail-open d'authentification du serveur morphique
-
-### 2026-10-09T14:27:19.887878+00:00 — Antigravity — completed
-
-Resolution du declenchement parasite : filtre wake-word local Vosk (<50ms) et seuil VAD rehausse a 650
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/wake_word_local.py (nouveau pre-filtre Vosk local), scripts/jarvis_live_daemon.py (integration du pre-filtre avant tout appel Groq, rehaussement seuil VAD de 300 a 650)
-
-**Vérification**
-- pytest 34/34 passed + import daemon OK
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Relancer lancer_jarvis.bat et tester : la TV ne declenchera plus rien, seul Jarvis activera l ecoute
-
-### 2026-10-09T13:49:18.926081+00:00 — Antigravity — completed
-
-Confirmation vocale native dans le demon temps reel : plus aucun input() clavier
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- datashield/confirmations.py (VoiceConfirmationHandler + use_voice_confirmation context manager), scripts/jarvis_live_daemon.py (boucle enveloppee dans use_voice_confirmation)
-
-**Vérification**
-- 34/34 tests au vert + import daemon OK
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester vocalement : dire une action sensible et repondre 'oui' ou 'non' a voix haute. Ensuite Lot 1 du chantier : exemptions natives dans la Trust Matrix
-
-### 2026-10-09T13:31:21.881566+00:00 — Antigravity — completed
-
-Cadrage formel du chantier dedie Autonomie et Gouvernance (Harmonisation DataShield, DEFCON et Trust Matrix)
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Creation de CHANTIER_AUTONOMIE_GOUVERNANCE.md a la racine
-
-**Vérification**
-- Revue de code de trust_registry.py, policy.py, safety.py et trace d execution sur Carl/trust_matrix.json
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Executer le Lot 1 : exemption native des domaines READ/multimedia/vision dans trust_registry.py et promotion dans le profil de Carl
-
-### 2026-10-09T13:00:25.357420+00:00 — Antigravity — completed
-
-Suppression de la confirmation manuelle pour les actions multimedia et support des alias de volume (decrease, increase)
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- taskflow/tools.py (passage de controler_multimedia_tool a RiskLevel.READ sans confirmation terminal), context_engine/desktop_awareness.py (support des alias decrease/increase/baisse/monte et 5 crans de volume)
-
-**Vérification**
-- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester 'diminue le volume' et 'augmente le volume' sans confirmation.
-
-### 2026-10-09T11:54:07.293414+00:00 — Antigravity — completed
-
-Architecture hybride et fallback local souverain instantane (Groq Whisper <2s -> Vosk local, Edge-TTS <2.5s -> Piper local)
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- jarvis/voice_transcription.py (Groq avec max_retries=0 et timeout 2.0s sans retry bloquant), jarvis/voice_output_edge.py (timeout 2.5s et bascule automatique sur Piper local), jarvis/voice_input.py (fallback transparent sur Vosk direct), jarvis/voice_output.py (integration de la boucle hybride)
-
-**Vérification**
-- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester l interaction vocale complete avec simulation de deconnexion reseau.
-
-### 2026-10-09T11:49:04.582607+00:00 — Antigravity — completed
-
-Restauration du fallback audio strict d origine (Piper local + Vosk local + sounddevice) conformement a la demande utilisateur
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- Restauration complete de jarvis/voice_output.py, jarvis/voice_input.py, jarvis/audio_capture.py et tests/test_voice_input.py a l etat Git initial. Retrait des variables JARVIS_USE_EDGE_TTS et JARVIS_USE_GROQ_WHISPER de .env.
-
-**Vérification**
-- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Laisser l utilisateur tester la stack locale de production restauree.
-
-### 2026-10-09T11:32:18.730638+00:00 — Antigravity — completed
-
-Ajout du controle reel de Windows par Jarvis (Les Mains) : volume, medias, lancement d applications, minimisation de bureau et verrouillage
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- taskflow/windows_actions.py (controle volume user32, medias, lancement VS Code/terminal/explorateur, minimisation fenetres, verrouillage Windows), scripts/jarvis_live_daemon.py (routage vocal direct ultra-rapide des commandes systeme avec confirmation vocale)
-
-**Vérification**
-- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester les commandes Windows en direct dans la session de l utilisateur via lancer_jarvis.bat.
-
-### 2026-10-09T11:05:16.275400+00:00 — Antigravity — completed
-
-Ajout de la Vision d ecran en direct (Les Yeux de Jarvis) via Qwen 3.8 27B Vision sur Groq
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- core_intellect/screen_vision.py (capture ecran multi-moniteurs mss + PIL ImageGrab fallback et analyse Qwen 3.8 27B Vision sur Groq), scripts/jarvis_live_daemon.py (routage vocal automatique des intentions visuelles 'regarde mon ecran', 'cette erreur')
-
-**Vérification**
-- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester l analyse visuelle live via lancer_jarvis.bat en demandant 'Jarvis, regarde mon ecran'.

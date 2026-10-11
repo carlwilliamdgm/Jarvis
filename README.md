@@ -33,12 +33,13 @@ GreatOS dispose d'un système d'amorçage dynamique **100% portable** (aucun che
 ```powershell
 .\install.ps1
 ```
-*Le script configure automatiquement l'environnement virtuel `.venv`, installe les dépendances, génère un `.env` sécurisé si manquant, configure le modèle souverain Jarvis-GC et installe la tâche planifiée `JarvisAgent` pour un lancement automatique au démarrage de session.*
+*Le script nécessite Python 3.12, configure l'environnement virtuel `.venv`, installe les dépendances, initialise DataShield et configure la tâche planifiée `JarvisAgent`. Il ne configure pas Ollama ni le modèle Jarvis-GC.*
 
 ### Sous Linux / macOS :
 ```bash
 ./install.sh
 ```
+*Le script nécessite également Python 3.12, installe les dépendances dans `.venv` et initialise DataShield. Le lancement du serveur reste manuel.*
 
 ---
 

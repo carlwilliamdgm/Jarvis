@@ -486,9 +486,51 @@ def _soumettre_au_pipeline(text: str) -> bool:
             historique, memoire = _pipeline_context
         import jarvis
         _set_voice_state(VoiceState.THINKING)
-        result = jarvis.executer_interaction_utilisateur(
-            text, historique, memoire, ignorer_si_occupe=True, origine_vocale=True
-        )
+        from datashield.confirmations import use_voice_confirmation
+        from jarvis.audio_capture import get_audio_capture_engine
+
+        def parler_confirmation(question: str) -> None:
+            # Marquer l'action avant la question; voice_output gère les états
+            # SPEAKING puis LISTENING et conserve Edge-TTS -> Piper local.
+            _set_voice_state(VoiceState.ACTION)
+            from jarvis.voice_output import parler_a_voix_haute
+            parler_a_voix_haute(question)
+
+        def transcrire_confirmation(pcm: bytes) -> str | None:
+            # Groq est rapide lorsqu'il est disponible; Vosk traite la réponse
+            # localement si le réseau ou le fournisseur est indisponible.
+            try:
+                from jarvis.voice_transcription import transcrire_audio_groq
+                transcript = transcrire_audio_groq(pcm)
+                if transcript:
+                    return transcript
+            except Exception:
+                LOGGER.debug("Transcription en ligne indisponible pour la confirmation vocale")
+
+            try:
+                recognizer = _new_recognizer()
+                fragments: list[str] = []
+                # Garder les blocs alignés sur les échantillons PCM 16 bits.
+                block_size = 4096
+                for offset in range(0, len(pcm) - (len(pcm) % 2), block_size):
+                    block = pcm[offset:offset + block_size]
+                    if recognizer.AcceptWaveform(block):
+                        phrase = json.loads(recognizer.Result()).get("text", "").strip()
+                        if phrase:
+                            fragments.append(phrase)
+                final = json.loads(recognizer.FinalResult()).get("text", "").strip()
+                if final:
+                    fragments.append(final)
+                return " ".join(fragments) or None
+            except Exception:
+                LOGGER.exception("Échec de la transcription Vosk de la confirmation")
+                return None
+
+        engine = get_audio_capture_engine(get_input_device())
+        with use_voice_confirmation(engine, parler_confirmation, transcrire_confirmation):
+            result = jarvis.executer_interaction_utilisateur(
+                text, historique, memoire, ignorer_si_occupe=True, origine_vocale=True
+            )
         if result is None:
             LOGGER.info("Entrée vocale ignorée : pipeline déjà occupé")
             _set_voice_state(VoiceState.LISTENING)
@@ -527,13 +569,11 @@ def _new_wake_word_model() -> Any:
 
 
 def get_input_device() -> int | None:
-    """Retourne l'identifiant du périphérique d'entrée audio (ou None pour le défaut système)."""
-    configured = os.environ.get("JARVIS_AUDIO_INPUT_DEVICE") or os.environ.get("JARVIS_MICROPHONE_DEVICE")
-    if configured is not None:
-        try:
-            return int(configured)
-        except ValueError:
-            LOGGER.warning("Périphérique microphone invalide (%s) ; utilisation du défaut système", configured)
+    """Retourne le micro par défaut choisi par l'OS hôte via PortAudio.
+
+    Aucun périphérique GreatOS configurable ne doit supplanter le choix de
+    l'utilisateur dans Windows. ``None`` laisse PortAudio choisir son défaut.
+    """
     try:
         import sounddevice as sd
         default_dev = sd.default.device
