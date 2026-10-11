@@ -14,15 +14,15 @@ from collections import defaultdict
 from context_engine.memory import charger_memoire, normaliser_memoire, sauvegarder_memoire
 
 
-# Traits de personnalité de base Jarvis
+# Traits de personnalité de base Jarvis (calibrés style J.A.R.V.I.S. / Iron Man)
 PERSONNALITE_BASE = {
-    "sarcasme": 0.3,        # Niveau de sarcasme (0-1)
-    "formalite": 0.4,       # Niveau de formalité (0-1)
-    "proactivite": 0.7,     # Niveau de proactivité (0-1)
-    "humour": 0.4,          # Niveau d'humour (0-1)
-    "empathie": 0.6,        # Niveau d'empathie (0-1)
-    "concision": 0.5,       # Niveau de concision (0-1)
-    "creativite": 0.5,      # Niveau de créativité (0-1)
+    "sarcasme": 0.35,       # Sarcasme subtil et distingué
+    "formalite": 0.65,      # Poli, sobre, style majordome britannique
+    "proactivite": 0.75,    # Anticipe et propose la suite logique
+    "humour": 0.35,         # Pince-sans-rire
+    "empathie": 0.5,        # Calme et rassurant
+    "concision": 0.85,      # Réponses très courtes et percutantes (1-2 phrases)
+    "creativite": 0.5,      # Efficace
 }
 
 

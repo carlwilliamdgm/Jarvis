@@ -1341,7 +1341,7 @@ def controler_multimedia_tool(action: str) -> str:
     decision = evaluate_capability(CapabilityRequest(
         capability="desktop.multimedia_control",
         arguments={"action": action},
-        risk=RiskLevel.WRITE,
+        risk=RiskLevel.READ,
         resource="audio_bus",
     ))
     if decision.decision == SecurityDecision.DENY:

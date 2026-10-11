@@ -10,9 +10,15 @@ import logging
 import math
 import subprocess
 import sys
+from pathlib import Path
+
+# Assurer que la racine du projet est dans sys.path
+_ROOT = str(Path(__file__).resolve().parent.parent)
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 import threading
 import tkinter as tk
-from pathlib import Path
 from typing import Optional
 
 from jarvis.voice_state import VoiceState
@@ -20,8 +26,8 @@ from jarvis.voice_state import VoiceState
 # Configuration du logger
 logger = logging.getLogger(__name__)
 
-# Fichier d'état partagé pour la communication inter-process
-VOICE_STATE_FILE = Path(__file__).parent.parent / "voice_state.json"
+# Fichier d'état partagé pour la communication inter-process (aligné sur jarvis.voice_state)
+VOICE_STATE_FILE = Path(__file__).resolve().parent.parent / "runtime" / "voice_state.json"
 
 # Suivi global du processus overlay
 _overlay_process: Optional[subprocess.Popen] = None
@@ -454,6 +460,4 @@ def main_standalone():
 
 
 if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--standalone":
-        main_standalone()
+    main_standalone()

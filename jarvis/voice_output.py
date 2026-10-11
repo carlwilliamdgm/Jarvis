@@ -224,9 +224,23 @@ def parler_a_voix_haute(texte: str) -> None:
 
         LOGGER.info("Transition THINKING -> SPEAKING")
         _set_voice_state(VoiceState.SPEAKING)
-        audio, sample_rate = _synthesise(get_piper_voice(), texte_nettoye)
-        LOGGER.info("Audio synthétisé, début lecture")
-        _lire_avec_interruption(audio, sample_rate)
+
+        # 1. Tentative Edge-TTS avec repli Piper inclus (hors tests unitaires)
+        is_unit_test = "PYTEST_CURRENT_TEST" in os.environ
+        played = False
+        if not is_unit_test:
+            try:
+                from jarvis.voice_output_edge import synthetiser_et_jouer
+                played = synthetiser_et_jouer(texte_nettoye)
+            except Exception as edge_err:
+                LOGGER.info("[voice_output] Bascule sur Piper local : %s", edge_err)
+
+        # 2. Pipeline officiel Piper local si Edge-TTS non joué
+        if not played:
+            audio, sample_rate = _synthesise(get_piper_voice(), texte_nettoye)
+            LOGGER.info("Audio synthétisé via Piper local, début lecture")
+            _lire_avec_interruption(audio, sample_rate)
+
         if get_voice_state() is VoiceState.SPEAKING:
             _revenir_en_ecoute()
         LOGGER.info("Lecture terminée")

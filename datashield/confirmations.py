@@ -3,17 +3,33 @@
 Tools remain synchronous.  A streaming request can therefore wait for a user
 decision while its SSE connection stays open; the HTTP confirmation endpoint
 resolves that wait from another request.
+
+Three confirmation surfaces are supported:
+- ``StreamingConfirmationHandler``  : HTTP SSE / API streaming contexts.
+- ``VoiceConfirmationHandler``      : Live vocal daemon — asks aloud and listens.
+- Console fallback (``_console.input``)  : plain CLI sessions.
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from threading import Event, RLock
-from typing import Callable, Iterator
+from typing import Callable, Iterator, Protocol
 from uuid import uuid4
+
+LOGGER = logging.getLogger(__name__)
+
+
+# ── Protocole commun ─────────────────────────────────────────────────────────
+
+class ConfirmationHandler(Protocol):
+    """Anything that can ask the user and return True/False."""
+    def confirm(self, description: str) -> bool: ...
 
 
 @dataclass
@@ -106,7 +122,7 @@ class StreamingConfirmationHandler:
         )
 
 
-_confirmation_handler: ContextVar[StreamingConfirmationHandler | None] = ContextVar(
+_confirmation_handler: ContextVar[ConfirmationHandler | None] = ContextVar(
     "jarvis_confirmation_handler",
     default=None,
 )
@@ -114,7 +130,7 @@ confirmation_manager = ConfirmationManager()
 
 
 @contextmanager
-def use_confirmation_handler(handler: StreamingConfirmationHandler) -> Iterator[None]:
+def use_confirmation_handler(handler: ConfirmationHandler) -> Iterator[None]:
     token = _confirmation_handler.set(handler)
     try:
         yield
@@ -123,6 +139,109 @@ def use_confirmation_handler(handler: StreamingConfirmationHandler) -> Iterator[
 
 
 def request_streaming_confirmation(description: str) -> bool | None:
-    """Return a decision for a streaming context, or ``None`` for console use."""
+    """Return a decision from the active handler, or ``None`` for console fallback."""
     handler = _confirmation_handler.get()
     return handler.confirm(description) if handler is not None else None
+
+
+# ── Confirmation Vocale ───────────────────────────────────────────────────────
+
+_MOTS_OUI = {"oui", "yes", "ouais", "yep", "vas-y", "vas y", "ok", "okay",
+             "affirmatif", "bien sûr", "bien sur", "absolument", "parfait",
+             "execute", "exécute", "go", "proceed", "confirme", "confirmed"}
+_MOTS_NON = {"non", "no", "nope", "annule", "annuler", "cancel", "stop",
+             "abandon", "refuse", "refuser", "negative", "négatif"}
+_TIMEOUT_REPONSE_VOCALE = 8.0   # secondes d'écoute maximum
+
+
+class VoiceConfirmationHandler:
+    """Gestionnaire de confirmation vocale pour le démon temps réel.
+
+    Lorsqu'une action requiert une validation, Jarvis pose la question
+    à voix haute et attend votre réponse vocale pendant 8 secondes.
+    Aucun clavier n'est requis.
+
+    Args:
+        engine: Instance de l'AudioCaptureEngine déjà ouvert.
+        synthetiser: Callable identique à ``synthetiser_et_jouer()``.
+        transcrire: Callable identique à ``transcrire_audio_groq()``.
+        seuil_energie: Amplitude minimale pour détecter une voix (défaut 300).
+    """
+
+    def __init__(
+        self,
+        engine,
+        synthetiser: Callable[[str], None],
+        transcrire: Callable[[bytes], str | None],
+        seuil_energie: int = 300,
+    ) -> None:
+        self._engine = engine
+        self._synthetiser = synthetiser
+        self._transcrire = transcrire
+        self._seuil = seuil_energie
+
+    def confirm(self, description: str) -> bool:
+        """Demande une confirmation vocale et retourne True si l'utilisateur dit oui."""
+        import numpy as np
+
+        # Demander à voix haute
+        question = f"Sir, je dois {description}. Dois-je procéder ?"
+        LOGGER.info("[VoiceConfirm] 🎙️ %s", question)
+        self._synthetiser(question)
+
+        # Vider le buffer audio résiduel (écho de notre propre voix)
+        time.sleep(0.3)
+        self._engine.drainer_et_ignorer_garde(200)
+
+        # Écouter la réponse
+        LOGGER.info("[VoiceConfirm] En attente de votre réponse vocale...")
+        debut = time.monotonic()
+        morceaux: list[bytes] = []
+        silence_consecutif = 0
+        SILENCE_MAX = 6  # ~360 ms de silence pour clore la prise de parole
+
+        while time.monotonic() - debut < _TIMEOUT_REPONSE_VOCALE:
+            trame = self._engine.lire_depuis_queue("wake", timeout=0.06)
+            if trame is None or not hasattr(trame, "samples"):
+                continue
+            amp = int(np.max(np.abs(trame.samples)))
+            if amp > self._seuil:
+                morceaux.append(bytes(trame.samples))
+                silence_consecutif = 0
+            elif morceaux:
+                # On a capturé du son — compter le silence
+                silence_consecutif += 1
+                morceaux.append(bytes(trame.samples))
+                if silence_consecutif >= SILENCE_MAX:
+                    break
+
+        if not morceaux:
+            LOGGER.info("[VoiceConfirm] Pas de réponse vocale — action annulée par défaut.")
+            self._synthetiser("Pas de réponse, j'annule par précaution, Sir.")
+            return False
+
+        pcm = b"".join(morceaux)
+        texte = self._transcrire(pcm) or ""
+        texte_norm = texte.lower().strip(" .,!?")
+        LOGGER.info("[VoiceConfirm] Réponse entendue : %r", texte)
+
+        # Analyse de la réponse
+        mots = set(texte_norm.split())
+        if mots & _MOTS_OUI or any(m in texte_norm for m in _MOTS_OUI):
+            LOGGER.info("[VoiceConfirm] ✅ Confirmé vocalement.")
+            return True
+
+        LOGGER.info("[VoiceConfirm] ❌ Refusé vocalement.")
+        return False
+
+
+@contextmanager
+def use_voice_confirmation(
+    engine,
+    synthetiser: Callable[[str], None],
+    transcrire: Callable[[bytes], str | None],
+) -> Iterator[None]:
+    """Context manager à activer dans le démon vocal pour brancher la confirmation vocale."""
+    handler = VoiceConfirmationHandler(engine, synthetiser, transcrire)
+    with use_confirmation_handler(handler):
+        yield

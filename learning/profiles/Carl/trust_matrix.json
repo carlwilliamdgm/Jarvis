@@ -23,23 +23,23 @@
     },
     "executer_commande": {
       "niveau": 0,
-      "score": 0.25,
-      "succes_consecutifs": 0,
-      "actions_totales": 4,
+      "score": 0.4,
+      "succes_consecutifs": 1,
+      "actions_totales": 5,
       "echecs": 3
     },
     "rechercher_et_analyser": {
       "niveau": 0,
       "score": 1.0,
-      "succes_consecutifs": 2,
-      "actions_totales": 2,
+      "succes_consecutifs": 3,
+      "actions_totales": 3,
       "echecs": 0
     },
     "lire_preferences": {
       "niveau": 0,
       "score": 1.0,
-      "succes_consecutifs": 1,
-      "actions_totales": 1,
+      "succes_consecutifs": 2,
+      "actions_totales": 2,
       "echecs": 0
     },
     "rapport_systeme": {
@@ -52,8 +52,8 @@
     "audit_stockage": {
       "niveau": 0,
       "score": 1.0,
-      "succes_consecutifs": 1,
-      "actions_totales": 1,
+      "succes_consecutifs": 2,
+      "actions_totales": 2,
       "echecs": 0
     },
     "top_fichiers_lourds": {
@@ -66,72 +66,93 @@
     "goals_list": {
       "niveau": 2,
       "score": 1.0,
-      "succes_consecutifs": 0,
-      "actions_totales": 10,
+      "succes_consecutifs": 1,
+      "actions_totales": 11,
       "echecs": 0
     },
     "system_execute_command": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 10,
-      "echecs": 10
+      "actions_totales": 11,
+      "echecs": 11
     },
     "lister_dossier": {
-      "niveau": 1,
+      "niveau": 2,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 9,
+      "succes_consecutifs": 0,
+      "actions_totales": 10,
       "echecs": 0
     },
     "vider_temp": {
-      "niveau": 1,
+      "niveau": 2,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 9,
+      "succes_consecutifs": 0,
+      "actions_totales": 10,
       "echecs": 0
     },
     "lire_notes": {
-      "niveau": 1,
+      "niveau": 2,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 9,
+      "succes_consecutifs": 0,
+      "actions_totales": 10,
       "echecs": 0
     },
     "supprimer": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 27,
-      "echecs": 27
+      "actions_totales": 30,
+      "echecs": 30
     },
     "stark_test_same": {
-      "niveau": 1,
+      "niveau": 2,
       "score": 1.0,
-      "succes_consecutifs": 4,
-      "actions_totales": 9,
+      "succes_consecutifs": 0,
+      "actions_totales": 10,
       "echecs": 0
     },
     "stark_error_tool": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 27,
-      "echecs": 27
+      "actions_totales": 30,
+      "echecs": 30
     },
     "stark_type_error": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 9,
-      "echecs": 9
+      "actions_totales": 10,
+      "echecs": 10
     },
     "conversation_error_tool": {
       "niveau": 0,
       "score": 0.0,
       "succes_consecutifs": 0,
-      "actions_totales": 9,
-      "echecs": 9
+      "actions_totales": 10,
+      "echecs": 10
+    },
+    "inspecter_architecture_greatos": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
+    },
+    "consulter_etat_maison": {
+      "niveau": 1,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 6,
+      "echecs": 0
+    },
+    "controler_multimedia": {
+      "niveau": 0,
+      "score": 1.0,
+      "succes_consecutifs": 1,
+      "actions_totales": 1,
+      "echecs": 0
     }
   },
   "historique_resultats": [
@@ -998,6 +1019,162 @@
       "domaine": "conversation_error_tool",
       "capacite": "conversation_error_tool",
       "succes": false
+    },
+    {
+      "date": "2026-10-08T16:24:04.190040+00:00",
+      "domaine": "inspecter_architecture_greatos",
+      "capacite": "inspecter_architecture_greatos",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:27:05.117458+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:27:47.324248+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:28:38.955488+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:29:31.511947+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:30:19.735604+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T16:31:48.284167+00:00",
+      "domaine": "executer_commande",
+      "capacite": "executer_commande",
+      "succes": true
+    },
+    {
+      "date": "2026-10-08T18:46:19.799461+00:00",
+      "domaine": "rechercher_et_analyser",
+      "capacite": "rechercher_et_analyser",
+      "succes": true
+    },
+    {
+      "date": "2026-10-09T10:18:49.172867+00:00",
+      "domaine": "lire_preferences",
+      "capacite": "lire_preferences",
+      "succes": true
+    },
+    {
+      "date": "2026-10-09T11:57:21.453514+00:00",
+      "domaine": "controler_multimedia",
+      "capacite": "controler_multimedia",
+      "succes": true
+    },
+    {
+      "date": "2026-10-09T17:17:30.532532+00:00",
+      "domaine": "consulter_etat_maison",
+      "capacite": "consulter_etat_maison",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:28.257068+00:00",
+      "domaine": "goals_list",
+      "capacite": "goals.list",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:28.429152+00:00",
+      "domaine": "system_execute_command",
+      "capacite": "system.execute_command",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:36.477982+00:00",
+      "domaine": "lister_dossier",
+      "capacite": "lister_dossier",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:36.666413+00:00",
+      "domaine": "vider_temp",
+      "capacite": "vider_temp",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:36.858449+00:00",
+      "domaine": "lire_notes",
+      "capacite": "lire_notes",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:37.028423+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:37.350848+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:37.631978+00:00",
+      "domaine": "supprimer",
+      "capacite": "supprimer",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:37.952752+00:00",
+      "domaine": "stark_test_same",
+      "capacite": "stark_test_same",
+      "succes": true
+    },
+    {
+      "date": "2026-10-10T05:03:38.211535+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:38.539358+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:38.816398+00:00",
+      "domaine": "stark_error_tool",
+      "capacite": "stark_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:39.217220+00:00",
+      "domaine": "stark_type_error",
+      "capacite": "stark_type_error",
+      "succes": false
+    },
+    {
+      "date": "2026-10-10T05:03:39.831595+00:00",
+      "domaine": "conversation_error_tool",
+      "capacite": "conversation_error_tool",
+      "succes": false
+    },
+    {
+      "date": "2026-10-11T13:52:08.445106+00:00",
+      "domaine": "audit_stockage",
+      "capacite": "audit_stockage",
+      "succes": true
     }
   ]
 }

@@ -252,15 +252,27 @@ def envoyer_signal_multimedia_global(action: str) -> str:
         "mute": VK_VOLUME_MUTE,
         "volume_up": VK_VOLUME_UP,
         "volume_down": VK_VOLUME_DOWN,
+        # Alias fréquents envoyés par les LLMs
+        "up": VK_VOLUME_UP,
+        "increase": VK_VOLUME_UP,
+        "monte": VK_VOLUME_UP,
+        "plus": VK_VOLUME_UP,
+        "down": VK_VOLUME_DOWN,
+        "decrease": VK_VOLUME_DOWN,
+        "baisse": VK_VOLUME_DOWN,
+        "moins": VK_VOLUME_DOWN,
     }
     code = mapping.get(action.lower().strip())
     if not code:
-        return f"Action inconnue : {action}. Actions valides : {', '.join(sorted(mapping.keys()))}"
+        return f"Action inconnue : {action}. Actions valides : volume_up, volume_down, mute, play, pause, next, prev"
 
     try:
-        user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY, 0)
-        user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
-        return f"Signal multimédia universel '{action}' transmis au système avec succès."
+        # Si c'est un contrôle de volume, envoyer 5 crans successifs pour que ce soit nettement audible
+        repetitions = 5 if code in (VK_VOLUME_UP, VK_VOLUME_DOWN) else 1
+        for _ in range(repetitions):
+            user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY, 0)
+            user32.keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
+        return f"Signal multimédia universel '{action}' transmis avec succès."
     except Exception as e:
         return f"Erreur lors de la transmission du signal multimédia : {e}"
 

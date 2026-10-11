@@ -8,192 +8,192 @@
 
 ## Journal récent
 
-### 2026-10-08T16:09:51.515080+00:00 — Antigravity Config Automations — completed
+### 2026-10-11T13:55:10.705322+00:00 — Copilot — completed
 
-Configuration de la fréquence de mise à jour automatique à 2 fois par jour (toutes les 12h)
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- bootstrap/install.ps1, scripts/installer_service_windows.ps1, scripts/desinstaller_service_windows.ps1, docs/guides/INSTALLATION_MACHINE_VIERGE.md
-
-**Vérification**
-- pytest tests/test_portability.py tests/test_eight_modules_cdc.py: 12 passed
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Prêt pour déploiement multi-machines
-
-### 2026-10-08T15:48:56.936543+00:00 — Antigravity Documentaliste — completed
-
-Mise a jour exhaustive de toute la documentation du projet selon le CDC et la portabilite dynamique
+Évaluation du périmètre Docker pour une exécution reproductible de Jarvis sur plusieurs machines
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- README.md, ARCHITECTURE.md, docs/architecture/ARCHITECTURE.md, docs/architecture/GreatOS_Module_Map.md, docs/guides/INSTALLATION_MACHINE_VIERGE.md, docs/guides/PREMIER_LANCEMENT.md, ETAT_DES_LIEUX.md
+- Aucune modification produit; recommandation de containeriser d'abord l'API web headless et de garder audio, contrôle du bureau et intégrations Windows sur l'hôte
 
 **Vérification**
-- pytest tests/test_eight_modules_cdc.py tests/test_portability.py tests/test_api_state_consistency.py: 23 passed
+- Lecture de README, requirements.txt, interface_morphique/server.py et scripts d'entrée; vérification de l'état Git existant
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Continuer le suivi de developpement conformement aux jalons de la Phase 1
+- Si validé, définir le périmètre de l'image API, ses volumes/configuration, et un docker-compose.yml avec healthcheck sans inclure .env ni données locales
 
-### 2026-10-08T15:31:51.210165+00:00 — Antigravity - Portabilité et Déploiement Dynamique Universel — completed
+### 2026-10-10T05:09:37.899823+00:00 — Buffy — completed
 
-Rendre GreatOS 100% portable et déployable sur n importe quel ordinateur et chemin : 1) Audit complet confirmant l absence de tout chemin absolu utilisateur en dur dans le code source. 2) Création de install.ps1 (Windows) et install.sh (Linux/macOS) pour une installation 'one-click' portable (.venv, dépendances, génération .env cryptographique, service). 3) Création de scripts/installer_service_windows.ps1 et scripts/desinstaller_service_windows.ps1 résolvant dynamiquement le compte utilisateur (\Carl) et le chemin (\). 4) Conditionnement de requirements.txt (pywin32 sous win32 uniquement). 5) Création de tests/test_portability.py validant la portabilité.
+Audit complet : 517/518 tests verts, 1 echec lie a un test dependant de l'heure et des donnees reelles (pattern_analyzer), absence CI/linter, auth fail-open si JARVIS_API_KEY absente
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- install.ps1 (créé), install.sh (créé), requirements.txt (cross-platform), scripts/installer_service_windows.ps1 (créé), scripts/desinstaller_service_windows.ps1 (créé), tests/test_portability.py (créé)
+- aucune modification de code, rapport d'audit seul
 
 **Vérification**
-- pytest tests/test_portability.py : 4/4 passed (100%).
+- pytest -q (1 failed, 517 passed, 1 skipped), py_compile des nouveaux fichiers, revue git/secrets/env
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Isoler le test pattern_anomaly (memoire factice), ajouter CI GitHub Actions + ruff, corriger le fail-open d'authentification du serveur morphique
 
-### 2026-10-08T15:27:26.196645+00:00 — Antigravity - Implémentation Complète des 8 Piliers CDC — completed
+### 2026-10-09T14:27:19.887878+00:00 — Antigravity — completed
 
-Implémentation complète et rigoureuse des 8 Modules fondamentaux du Cahier des Charges GreatOS (Section 4) : 1) Jarvis (4.1) : routage d intention et dialogue réactif sans surcharge. 2) Core Intellect (4.2) : moteur décisionnel multi-critères (urgence, importance, effort) et arbitrage de conflits. 3) Context Engine (4.3) : conscience contextuelle quadridimensionnelle (temporelle, cognitive, opérationnelle, spatiale). 4) TaskFlow (4.4) : catalogue de workflows préconfigurés (session_dev, nettoyage_systeme, etc.). 5) Progress Tracker (4.5) : moteur de gamification (XP, streaks, niveaux de maîtrise). 6) DataShield (4.6) : politique DEFCON 1 à 5 et blocage d injections. 7) SyncSphere (4.7) : snapshots souverains chiffrés AES-256. 8) Interface Morphique (4.8) : 8 layouts contextuels synchronisés avec la dimension cognitive Deep Work. Synchronisation documentation et 100% de tests au vert.
+Resolution du declenchement parasite : filtre wake-word local Vosk (<50ms) et seuil VAD rehausse a 650
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- context_engine/four_dimensions.py (créé), core_intellect/multi_criteria_decision.py (créé), taskflow/preconfigured_workflows.py (créé), progress_tracker/gamification.py (créé), interface_morphique/context_switcher.py (liaison charge cognitive), taskflow/tools.py (enregistrement 7 capacités), docs/guides/EXECUTION_OUTILS.md (documentation capacités), tests/test_eight_modules_cdc.py (créé)
+- jarvis/wake_word_local.py (nouveau pre-filtre Vosk local), scripts/jarvis_live_daemon.py (integration du pre-filtre avant tout appel Groq, rehaussement seuil VAD de 300 a 650)
 
 **Vérification**
-- pytest tests/test_eight_modules_cdc.py : 8/8 passed (100%). pytest tests/test_api_state_consistency.py tests/test_greatos_modules.py : 36/36 passed.
+- pytest 34/34 passed + import daemon OK
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Relancer lancer_jarvis.bat et tester : la TV ne declenchera plus rien, seul Jarvis activera l ecoute
 
-### 2026-10-06T15:24:42.285558+00:00 — Antigravity - Séparation Rôles CDC Jarvis vs Core Intellect — completed
+### 2026-10-09T13:49:18.926081+00:00 — Antigravity — completed
 
-Alignement architectural strict sur le CDC GreatOS (Section 4) : 1) Formalisation contractuelle des frontières : Jarvis (Module 4.1) est l interface conversationnelle, le visage et la voix qui dialogue avec l utilisateur ; Core Intellect (Module 4.2) est le cerveau décisionnel silencieux qui réfléchit, évalue et planifie. 2) Mise à jour des modules racines core_intellect/__init__.py et jarvis/__init__.py pour sceller cette distinction.
+Confirmation vocale native dans le demon temps reel : plus aucun input() clavier
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- core_intellect/__init__.py, jarvis/__init__.py
+- datashield/confirmations.py (VoiceConfirmationHandler + use_voice_confirmation context manager), scripts/jarvis_live_daemon.py (boucle enveloppee dans use_voice_confirmation)
 
 **Vérification**
-- pytest tests/test_system_introspection.py tests/test_core_intellect_defense_and_router.py : 24 passed (100%).
+- 34/34 tests au vert + import daemon OK
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Tester vocalement : dire une action sensible et repondre 'oui' ou 'non' a voix haute. Ensuite Lot 1 du chantier : exemptions natives dans la Trust Matrix
 
-### 2026-10-06T14:57:30.903375+00:00 — Antigravity - Filiation du Créateur et Rôle Orchestrateur de Jarvis — completed
+### 2026-10-09T13:31:21.881566+00:00 — Antigravity — completed
 
-Ancrage de l identité fondatrice dans GreatOS : 1) Filiation généalogique établie : Carl-William DJEGUEMA (IAI-Togo, Génie Logiciel) inscrit comme créateur et architecte originel de GreatOS dans le prompt système et la cartographie d architecture. 2) Formalisation du rôle de Jarvis : chef d orchestre central de la surcouche GreatOS (pilotant Context Engine, TaskFlow, DataShield et Interface Morphique). 3) Distinction nette entre identité de conception pérenne et adaptation dynamique à l utilisateur de session.
+Cadrage formel du chantier dedie Autonomie et Gouvernance (Harmonisation DataShield, DEFCON et Trust Matrix)
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- core_intellect/intellect.py (identité de Jarvis et filiation du Créateur), core_intellect/system_introspection.py (CREATEUR_GREATOS et rôle orchestrateur de Core Intellect)
+- Creation de CHANTIER_AUTONOMIE_GOUVERNANCE.md a la racine
 
 **Vérification**
-- pytest tests/test_system_introspection.py : 4 passed (100%).
+- Revue de code de trust_registry.py, policy.py, safety.py et trace d execution sur Carl/trust_matrix.json
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Executer le Lot 1 : exemption native des domaines READ/multimedia/vision dans trust_registry.py et promotion dans le profil de Carl
 
-### 2026-10-06T14:54:58.087496+00:00 — Antigravity - Introspection Déterministe et Générique — completed
+### 2026-10-09T13:00:25.357420+00:00 — Antigravity — completed
 
-Implémentation d une introspection système dynamique, déterministe et 100% générique : 1) Création de core_intellect/system_introspection.py avec 3 outils typés (consulter_etat_maison, inspecter_architecture_greatos, consulter_historique_projet). 2) Intégration dans TaskFlow et Core Intellect sans surcharger le prompt (boussole compacte <1ms via hooks Win32). 3) Nettoyage strict et suppression de toute référence utilisateur codée en dur dans le code source pour un comportement universel et agnostique. 4) Routage déterministe des intentions d introspection dans intent_router.py.
+Suppression de la confirmation manuelle pour les actions multimedia et support des alias de volume (decrease, increase)
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- core_intellect/system_introspection.py (créé), core_intellect/intellect.py (nettoyage références en dur, prompt générique et boussole réactive), core_intellect/intent_router.py (mots-clés introspection), taskflow/tools.py (enregistrement 3 outils), tests/test_system_introspection.py (4 tests)
+- taskflow/tools.py (passage de controler_multimedia_tool a RiskLevel.READ sans confirmation terminal), context_engine/desktop_awareness.py (support des alias decrease/increase/baisse/monte et 5 crans de volume)
 
 **Vérification**
-- pytest tests/test_system_introspection.py : 4 passed (100%).
+- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Tester 'diminue le volume' et 'augmente le volume' sans confirmation.
 
-### 2026-10-06T14:33:46.884100+00:00 — Antigravity - Correction Thème et Switch Morphique Web — completed
+### 2026-10-09T11:54:07.293414+00:00 — Antigravity — completed
 
-Correction complète du commutateur de thème (dark/light) et de l affichage de l interface web : 1) Résolution du conflit CSS destructeur où les layouts morphiques (ex: layout-focus activé par défaut) écrasaient les variables de fond en noir sur le thème clair. Découplage strict des surcharges via body:not(.light).layout-* et body.light.layout-*. 2) Correction du titre et du header en mode clair (--title-color adaptatif, header blanc au lieu de noir forcé). 3) Modernisation du bouton icon-button et suppression de l éjection intempestive vers le dashboard lors des changements de layout morphique.
+Architecture hybride et fallback local souverain instantane (Groq Whisper <2s -> Vosk local, Edge-TTS <2.5s -> Piper local)
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- interface_morphique/web/index.html (styles CSS clairs/sombres, variables de layouts, bouton de thème, suppression showView automatique)
+- jarvis/voice_transcription.py (Groq avec max_retries=0 et timeout 2.0s sans retry bloquant), jarvis/voice_output_edge.py (timeout 2.5s et bascule automatique sur Piper local), jarvis/voice_input.py (fallback transparent sur Vosk direct), jarvis/voice_output.py (integration de la boucle hybride)
 
 **Vérification**
-- Fetch HTTP 200 sur /web/, pytest tests/test_morphic_api.py et tests/test_trusted_devices_auth.py verts.
+- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Tester l interaction vocale complete avec simulation de deconnexion reseau.
 
-### 2026-10-06T14:24:09.781557+00:00 — Antigravity - Politique de Confiance Réseau (Localhost & Tailscale) — completed
+### 2026-10-09T11:49:04.582607+00:00 — Antigravity — completed
 
-Implémentation de la politique d accès transparent pour appareils de confiance : 1) Les requêtes issues de localhost (127.0.0.1, ::1, testclient) et du réseau privé Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) sont authentifiées automatiquement sans exiger de jeton Bearer manuel. 2) Les requêtes provenant d autres réseaux externes non approuvés exigent obligatoirement le Bearer Token JARVIS_API_KEY (401 sinon). 3) 5 tests unitaires dédiés créés dans tests/test_trusted_devices_auth.py et validés.
+Restauration du fallback audio strict d origine (Piper local + Vosk local + sounddevice) conformement a la demande utilisateur
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- interface_morphique/server.py (ajout est_adresse_de_confiance et mise à jour verify_api_key), tests/test_trusted_devices_auth.py (nouveau fichier de tests)
+- Restauration complete de jarvis/voice_output.py, jarvis/voice_input.py, jarvis/audio_capture.py et tests/test_voice_input.py a l etat Git initial. Retrait des variables JARVIS_USE_EDGE_TTS et JARVIS_USE_GROQ_WHISPER de .env.
 
 **Vérification**
-- pytest tests/test_trusted_devices_auth.py : 5 passed (100%). Appel réel HTTP localhost retour 200 sans token.
+- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Validation git commit.
+- Laisser l utilisateur tester la stack locale de production restauree.
 
-### 2026-10-06T14:19:57.457074+00:00 — Antigravity - Production Readiness & Service Background — completed
+### 2026-10-09T11:32:18.730638+00:00 — Antigravity — completed
 
-Finalisation du pack production pour GreatOS : 1) Chiffrement AES-256-GCM DataShield activé avec clés cryptographiques réelles générées via scripts/setup_production.py et persistées dans .env protégé. 2) Intégration et validation du lancement silencieux via la tâche planifiée Windows JarvisAgent (jarvis_hidden.ps1 corrigé pour uvicorn avec array args et gestion de doublon de port). 3) Démarrage audio conditionnel à la présence d un micro pour éviter les crashs de service. 4) Suite de tests validée avec headers auth Bearer.
+Ajout du controle reel de Windows par Jarvis (Les Mains) : volume, medias, lancement d applications, minimisation de bureau et verrouillage
 
 **Décisions**
 - Aucun élément signalé.
 
 **Changements**
-- .gitignore (.env ignoré), datashield/env_loader.py (créé), datashield/crypto.py (chargement auto .env), scripts/setup_production.py (créé), jarvis_hidden.ps1 (corrigé array args et port lock), greatos_service.py (créé gestionnaire probe), interface_morphique/server.py (audio conditionnel et try/except overlay), tests/test_morphic_api.py (headers auth)
+- taskflow/windows_actions.py (controle volume user32, medias, lancement VS Code/terminal/explorateur, minimisation fenetres, verrouillage Windows), scripts/jarvis_live_daemon.py (routage vocal direct ultra-rapide des commandes systeme avec confirmation vocale)
 
 **Vérification**
-- pytest complet : 496 passed, 2 skipped, 9 deselected, 0 failed. Service Windows actif via ScheduledTask JarvisAgent et répondant sur port 8000.
+- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
 
 **Blocages**
 - Aucun élément signalé.
 
 **À suivre**
-- Développement de la Phase 2 : Knowledge Graph personnel et apprentissage de patterns de travail par observation.
+- Tester les commandes Windows en direct dans la session de l utilisateur via lancer_jarvis.bat.
+
+### 2026-10-09T11:05:16.275400+00:00 — Antigravity — completed
+
+Ajout de la Vision d ecran en direct (Les Yeux de Jarvis) via Qwen 3.8 27B Vision sur Groq
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- core_intellect/screen_vision.py (capture ecran multi-moniteurs mss + PIL ImageGrab fallback et analyse Qwen 3.8 27B Vision sur Groq), scripts/jarvis_live_daemon.py (routage vocal automatique des intentions visuelles 'regarde mon ecran', 'cette erreur')
+
+**Vérification**
+- pytest tests/test_audio_capture.py tests/test_voice_input.py tests/test_voice_improvements.py tests/test_voice_output.py : 34/34 passed
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Tester l analyse visuelle live via lancer_jarvis.bat en demandant 'Jarvis, regarde mon ecran'.

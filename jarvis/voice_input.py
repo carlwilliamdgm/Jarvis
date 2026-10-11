@@ -363,6 +363,10 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
         discontinuity_count = 0
         max_discontinuities = 3  # Tolérer jusqu'à 3 discontinuités avant abandon
         
+        collected_pcm: list[bytes] = []
+        if initial_pcm:
+            collected_pcm.append(initial_pcm)
+
         while time.monotonic() - started_at < TRANSCRIPTION_TIMEOUT_SECONDS:
             if pending:
                 raw = pending.pop(0)
@@ -386,6 +390,9 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 # buffer vide évite de faire finaliser prématurément Vosk.
                 if not raw:
                     continue
+
+            if raw:
+                collected_pcm.append(raw)
             if speech:
                 had_speech = True
                 last_speech_at = time.monotonic()
@@ -422,6 +429,21 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 LOGGER.info("Timeout fenêtre 30s atteint dans transcrire_flux — sortie forcée")
                 break
 
+        # 1. Tentative ultra-rapide Groq Whisper si configuré et hors tests unitaires
+        is_unit_test = "PYTEST_CURRENT_TEST" in os.environ
+        use_groq = (os.getenv("JARVIS_USE_GROQ_WHISPER", "true").lower() in ("1", "true", "yes")) and not is_unit_test
+        if use_groq and collected_pcm and had_speech:
+            try:
+                from jarvis.voice_transcription import transcrire_audio_groq
+                full_pcm = b"".join(collected_pcm)
+                groq_result = transcrire_audio_groq(full_pcm)
+                if groq_result:
+                    _set_voice_transcript(groq_result)
+                    return groq_result
+            except Exception as exc:
+                LOGGER.debug("[transcrire_flux] Bascule sur Vosk local après échec Groq: %s", exc)
+
+        # 2. Repli local officiel : résultat Vosk déjà calculé en direct
         final_text = json.loads(recognizer.FinalResult()).get("text", "").strip()
         if final_text:
             fragments.append(final_text)

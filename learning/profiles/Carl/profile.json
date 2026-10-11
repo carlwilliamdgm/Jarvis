@@ -9,7 +9,7 @@
     "niveau_technique": 0.5
   },
   "rythme_activite": {
-    "derniere_session": "2026-10-01 16:18:17",
+    "derniere_session": "2026-10-10 02:00:04",
     "nombre_interactions": 108,
     "creneaux_heures": []
   },
@@ -112,5 +112,106 @@
     "j_aime_le_20261001_161817": "j'aime le bleu",
     "je_préfère_le_20261001_161817": "je préfère le silence",
     "je_suis_ton_20261001_161817": "je suis ton maître"
+  },
+  "apprentissages_consolides": {
+    "consolide_le": "2026-10-10T02:00:03.889697+00:00",
+    "periode_jours": 7,
+    "domaines_observes": {
+      "audit_stockage": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "consulter_etat_maison": {
+        "succes": 6,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "controler_multimedia": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "conversation_error_tool": {
+        "succes": 0,
+        "echecs": 9,
+        "score": 0.0
+      },
+      "executer_commande": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "goals_list": {
+        "succes": 10,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "inspecter_architecture_greatos": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "lire_notes": {
+        "succes": 9,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "lire_preferences": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "lister_dossier": {
+        "succes": 9,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "rapport_systeme": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "rechercher_et_analyser": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "stark_error_tool": {
+        "succes": 0,
+        "echecs": 27,
+        "score": 0.0
+      },
+      "stark_test_same": {
+        "succes": 9,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "stark_type_error": {
+        "succes": 0,
+        "echecs": 9,
+        "score": 0.0
+      },
+      "supprimer": {
+        "succes": 0,
+        "echecs": 27,
+        "score": 0.0
+      },
+      "system_execute_command": {
+        "succes": 0,
+        "echecs": 10,
+        "score": 0.0
+      },
+      "top_fichiers_lourds": {
+        "succes": 1,
+        "echecs": 0,
+        "score": 1.0
+      },
+      "vider_temp": {
+        "succes": 9,
+        "echecs": 0,
+        "score": 1.0
+      }
+    }
   }
 }
