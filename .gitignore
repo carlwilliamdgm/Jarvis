@@ -62,3 +62,6 @@ Documents/
 # Secrets & Clés d'environnement
 .env
 .env.*
+
+# Dossiers d'exemples locaux de référence
+(exemple)jarvis-assistant-vocal/

@@ -46,12 +46,31 @@ GreatOS dispose d'un système d'amorçage dynamique **100% portable** (aucun che
 ## 🚀 Utilisation & Surfaces
 
 ### Points d'entrée :
-- **Lancement en un clic** : `.\jarvis.cmd` (lance le serveur ou le CLI via le venv).
+- **Lanceur de Bureau Global** : `python launch_greatos.py` ou double-clic sur le raccourci Bureau `GreatOS.lnk` (démarre le serveur FastAPI en arrière-plan, initialise le System Tray et ouvre le HUD interactif).
+- **Client Desktop Moderne (Electron / React)** : Accessible sur `http://127.0.0.1:8000/desktop/` ou en mode natif via `npm run desktop:dev` dans `desktop/` (ou `interface_morphique/desktop/`). Intègre le suivi d'objectifs Progress Tracker avec graphiques Chart.js, l'authentification Windows Hello (WebAuthn PRF), le TOTP distant DataShield et l'onboarding.
+- **HUD Arc Stark Reactor (Overlay Temps Réel)** : Accessible sur `http://127.0.0.1:8000/hud` (connecté au flux d'événements SSE `/flux`), s'affiche en bas à droite de l'écran avec animations de pulsation réactives.
 - **Interface Web Locale** : Rendez-vous sur `http://127.0.0.1:8000/web/`
 - **CLI Interactif / Terminal** : `python greatos.py`
-- **Client Graphique Bureau** : `python interface_morphique/app.py`
-- **Statut du Système** : `python greatos.py status`
-- **Créer un Snapshot** : `python greatos.py snapshot`
+- **Statut & Diagnostic Système** : `python greatos.py status`
+- **Créer un Snapshot Souverain** : `python greatos.py snapshot`
+- **Lancement Rapide** : `.\jarvis.cmd`
+
+### 💻 Client Desktop Electron & React :
+L'application de bureau GreatOS est développée en React 19 + TypeScript + Vite + TailwindCSS et packagée avec Electron :
+```powershell
+# Développement : serveur + vite + electron
+cd interface_morphique\desktop
+npm run desktop:dev
+
+# Compilation des assets Vite
+npm run build
+
+# Tests unitaires et d'intégration de l'app desktop (10 tests)
+npm test
+
+# Création du package installable NSIS Windows
+npm run desktop:build
+```
 
 ### Limite des snapshots
 
@@ -63,21 +82,33 @@ ne conserve pas la réserve de sécurité configurée par GreatOS.
 
 ---
 
-## Vue d'ensemble détaillée
-  - Activation par double-clap via clap detection
-  - Modèles vocaux locaux (français et anglais)
-  
-- **Synthèse vocale (TTS)** :
-  - Réponses vocales via Piper
-  - Modèles voix français et anglais
-  - Contrôle de la vitesse et du ton
+## 🎙️ Pipeline Vocal Souverain & Robuste
 
-- **Overlay visuel vocal** :
-  - HUD flottant en bas-droite de l'écran
-  - États visuels distincts : ÉCOUTE (cyan), RÉFLEXION (orange), PAROLE (cyan), ERREUR (rouge)
-  - Communication via fichier `voice_state.json` partagé
-  - Non-intrusif : passe les clics à travers, ne vole pas le focus
-  - Démarrage automatique avec JarvisAgent
+GreatOS dispose d'un pipeline d'écoute et de synthèse entièrement local et ultra-fiabilisé :
+- **Wake Word & Détection** :
+  - Détection locale continue Vosk sur le mot-clé « Hey Jarvis » (seuil adaptatif).
+  - Activation alternative par double-clap instantané (`jarvis/audio_capture.py`).
+- **Resampling Matériel Automatique** :
+  - Détection dynamique de l'échantillonnage natif de la carte son (ex: Synaptics 48 kHz).
+  - Rééchantillonnage temps réel haute fidélité `48 kHz → 16 kHz` avec `samplerate.Resampler` (sinc).
+- **Protection Anti-Hallucinations Whisper** :
+  - Module `jarvis/hallucinations.py` intégrant plus de 38 signatures et motifs d'hallucinations Whisper (sous-titres, bruits résiduels, boucles de remerciements).
+  - Élimination automatique des résidus phonétiques du wake-word (« Hey Jarvis », « Jarvis »).
+  - Seuil d'énergie VAD dynamique (minimum 2 trames de voix active requises).
+- **Synthèse Vocale (TTS)** :
+  - Synthèse locale haute performance via Piper TTS (voix française et anglaise).
+- **Overlay Visuel & HUD Réacteur Arc** :
+  - États visuels interactifs : ÉCOUTE (cyan vibrant), RÉFLEXION (pulsation orange), PAROLE (cyan dynamique), ERREUR (rouge).
+  - Diffusion des transitions d'état via SSE `/flux` et `interface_morphique/hud_controller.py`.
+
+---
+
+## 🔄 Maintenance & Mises à Jour Automatiques
+
+- **Cycle glissant de 12 heures** :
+  - Une recherche de mise à jour s'exécute automatiquement **toutes les 12 heures après la dernière exécution** (au lieu d'horaires fixes), assurant que le système ne rate jamais une mise à jour même après une mise en veille.
+  - Planification gérée en interne par la boucle daemon `_taskflow_scheduler_loop` de `server.py` et par la tâche planifiée Windows `JarvisAutoUpdate`.
+  - Script dédié de configuration autonome : `scripts/configurer_mise_a_jour_12h.ps1`.
 
 ### Modèle souverain Jarvis-GC
 

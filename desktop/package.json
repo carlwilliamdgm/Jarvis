@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "greatos-desktop",
   "version": "0.1.0",
   "private": true,
@@ -8,13 +8,15 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "server": "cd .. && .venv\\Scripts\\python.exe -m interface_morphique.server",
+    "server": "cd ..\\.. && .venv\\Scripts\\python.exe -m interface_morphique.server",
+    "test": "node --test",
     "desktop:open": "electron .",
     "build": "tsc --noEmit && vite build",
     "desktop:dev": "concurrently -k \"npm:server\" \"vite\" \"wait-on tcp:8000 tcp:5173 && electron .\"",
     "desktop:build": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
+    "chart.js": "^4.5.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -49,3 +51,4 @@
     }
   }
 }
+

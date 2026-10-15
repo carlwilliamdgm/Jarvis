@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-15T14:31:43.922438+00:00 — Desktop & Docs Specialist — completed
+
+Mise a jour complete de l application Electron (desktop/ et interface_morphique/desktop), integration du bouton HUD Arc et des indicateurs vocaux/MAJ 12h, et mise a niveau de la documentation (README.md, INSTALLATION_MACHINE_VIERGE.md)
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- desktop/ (synchronisation complete src, electron, tests), interface_morphique/desktop/src/App.tsx, README.md, docs/guides/INSTALLATION_MACHINE_VIERGE.md, .gitignore
+
+**Vérification**
+- npm test 10/10 OK sur les 2 dossiers desktop, npm run build Vite OK, pytest 52/52 OK
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- Pret pour git commit
+
 ### 2026-10-15T13:53:30.492196+00:00 — Antigravity — completed
 
 Correction intervalle mise a jour : 2h (7200s) remplace par 12h (43200s) dans tous les fichiers concernes
@@ -178,22 +197,3 @@ Session war room GreatOS : correction CI (114 tests OK), Trust Matrix, cancel_al
 
 **À suivre**
 - 1. Mettre a jour tester_reponse_http dans greatos_service.py avec les routes actuelles. 2. Tester wake word et TTS. 3. Finaliser Lots 2 et 3 experience Jarvis.
-
-### 2026-10-15T05:32:03.029593+00:00 — War Room Coordinator — completed
-
-Verification d integration complete Lots 2 et 3 Experience Jarvis : audio device hot-plugging, anti-echo Edge/Piper, Win32 contracts et alignement test_desktop_awareness
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- tests/test_desktop_awareness.py, context_engine/trust_registry.py
-
-**Vérification**
-- 34/34 tests Lots 2-3 passed, tests de non-regression 100% verts, inspection periph sounddevice MME valide
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- Tester l interaction vocale reelle avec le micro Synaptics (index 1) et le HUD sur le bureau interactif

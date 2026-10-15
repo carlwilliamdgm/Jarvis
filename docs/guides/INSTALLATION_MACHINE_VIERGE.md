@@ -172,12 +172,13 @@ $env:JARVIS_GC_THREADS="8"  # Nombre de threads (défaut: 4)
 ## Mise à jour de l'installation
 
 ### Mise à jour automatique (tâche planifiée `JarvisAutoUpdate`)
-Lors de l'installation via `install.ps1` ou `bootstrap/install.ps1`, une tâche planifiée Windows **`JarvisAutoUpdate`** est automatiquement configurée pour vérifier et appliquer les mises à jour **2 fois par jour** (toutes les 12 heures, à 04:00 et 16:00) de manière silencieuse et résiliente :
+Lors de l'installation via `install.ps1` ou `bootstrap/install.ps1`, une tâche planifiée Windows **`JarvisAutoUpdate`** est automatiquement configurée pour vérifier et appliquer les mises à jour **toutes les 12 heures glissantes à partir de la dernière exécution** de manière silencieuse et résiliente :
 - Récupération des dernières modifications sur la branche `main` via `git pull` sécurisé
 - Validation et mise à niveau des dépendances `requirements.txt`
 - Exécution de tests de fumée (smoke tests) avant redémarrage
 - Redémarrage automatique du service `JarvisAgent` si des modifications ont été appliquées
 - Rollback automatique en cas d'échec des tests
+- Reconfiguration autonome possible via `scripts/configurer_mise_a_jour_12h.ps1`
 
 ### Mise à jour manuelle à la demande :
 Le script `bootstrap/update.ps1` peut également être exécuté manuellement à tout moment :
