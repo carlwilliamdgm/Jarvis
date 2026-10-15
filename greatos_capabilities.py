@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Callable
 
-from greatos_contracts import CapabilityResult, CapabilityStatus
+from greatos_contracts import CapabilityExecution, CapabilityResult, CapabilityStatus
 
 
 @dataclass(frozen=True)
@@ -43,6 +43,7 @@ _EXPLICIT_CAPABILITIES = {
     "controler_multimedia": ("taskflow", "desktop.multimedia_control"),
     "manipuler_fenetre": ("taskflow", "desktop.window_control"),
     "regarder_ecran": ("taskflow", "desktop.vision_inspect"),
+    "faire_briefing_quotidien": ("taskflow", "system.daily_briefing"),
     # Context Engine : mémoire, observations et contexte de continuité.
 
 
@@ -89,6 +90,17 @@ _EXPLICIT_CAPABILITIES = {
     "charger_etat_gamification": ("progress_tracker", "taskflow.charger_etat_gamification"),
 }
 
+_KNOWN_READ_ONLY_TOOLS = {
+    "lire_fichier", "lister_dossier", "rechercher_web", "analyser_page_web",
+    "lister_objectifs", "stats_objectifs", "lister_snapshots_systeme",
+    "obtenir_niveau_defcon", "statut_chiffrement", "lire_notes", "lire_contexte",
+    "lire_preferences", "lire_journal_agents", "lire_traces_capacites",
+    "consulter_etat_maison", "inspecter_architecture_greatos",
+    "consulter_historique_projet", "arbitrer_priorite_taches",
+    "capturer_contexte_quadridimensionnel", "charger_etat_gamification",
+    "faire_briefing_quotidien",
+}
+
 
 def owner_for(legacy_tool: str) -> tuple[str, str]:
     """Retourne le module souverain et le nom canonique d'une façade historique."""
@@ -114,7 +126,7 @@ def resolve_capability(registry: dict[str, Callable], name: str) -> CapabilityDe
     return None
 
 
-def execute_capability(
+def _execute_capability(
     registry: dict[str, Callable], name: str, arguments: dict | None = None,
 ) -> CapabilityResult:
     """Exécute une capacité résolue et retourne toujours un résultat structuré.
@@ -139,6 +151,21 @@ def execute_capability(
             error_category="erreur_technique_outil",
         )
 
+    try:
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        from datashield.profile_gate import profile_execution_gate
+        if WINDOWS_SESSION_LOCKED.is_set() and not profile_execution_gate.current_action_admitted:
+            return CapabilityResult(
+                capability=descriptor.name,
+                status=CapabilityStatus.FAILED,
+                message="Capacité refusée : le profil GreatOS est verrouillé.",
+                error_category="profil_verrouille",
+            )
+    except ImportError:
+        # Keep the dispatcher usable by isolated module tools without loading
+        # the HTTP server; production calls resolve the shared session gate.
+        pass
+
     started = perf_counter()
     try:
         try:
@@ -150,6 +177,62 @@ def execute_capability(
             if "unexpected keyword argument" not in str(exc):
                 raise
             raw_result = registry[descriptor.legacy_tool](*(arguments or {}).values())
+        if isinstance(raw_result, CapabilityExecution):
+            return CapabilityResult(
+                capability=descriptor.name,
+                status=raw_result.status,
+                message=raw_result.message,
+                data={
+                    "owner": descriptor.owner,
+                    "legacy_tool": descriptor.legacy_tool,
+                    "duration_ms": round((perf_counter() - started) * 1000, 2),
+                    **raw_result.data,
+                },
+                error_category=raw_result.error_category,
+                compensator=raw_result.compensator,
+                effect_status=raw_result.effect_status,
+            )
+
+        if (
+            descriptor.legacy_tool == "executer_workflow_preconfigure"
+            and isinstance(raw_result, dict)
+            and isinstance(raw_result.get("succes"), bool)
+        ):
+            succeeded = raw_result["succes"]
+            details = raw_result.get("etapes", [])
+            failed_steps = [
+                str(item.get("etape", "étape"))
+                for item in details if isinstance(item, dict) and item.get("statut") != "ok"
+            ] if isinstance(details, list) else []
+            message = str(raw_result.get("workflow", descriptor.legacy_tool))
+            if failed_steps:
+                message += " · échec : " + ", ".join(failed_steps)
+            effects = raw_result.get("effets_non_annules", [])
+            rollback = raw_result.get("rollback", {})
+            if not succeeded and isinstance(rollback, dict):
+                message += f" · rollback {rollback.get('statut', 'inconnu')}"
+            if effects:
+                effect_names = [
+                    str(item.get("etape", "effet"))
+                    for item in effects if isinstance(item, dict)
+                ] if isinstance(effects, list) else []
+                if effect_names:
+                    message += " · effets non annulés : " + ", ".join(effect_names)
+            return CapabilityResult(
+                capability=descriptor.name,
+                status=CapabilityStatus.SUCCESS if succeeded else CapabilityStatus.FAILED,
+                message=message,
+                data={
+                    "owner": descriptor.owner,
+                    "legacy_tool": descriptor.legacy_tool,
+                    "duration_ms": round((perf_counter() - started) * 1000, 2),
+                    "workflow_rollback": rollback,
+                    "uncompensated_effects": effects if isinstance(effects, list) else [],
+                },
+                error_category=None if succeeded else "workflow_failed",
+                effect_status="none" if succeeded or not effects else "partial",
+            )
+
         message = str(raw_result)
         error_category = getattr(raw_result, "categorie_erreur", None)
         if getattr(raw_result, "erreur", False):
@@ -173,6 +256,7 @@ def execute_capability(
                 "duration_ms": round((perf_counter() - started) * 1000, 2),
             },
             error_category=error_category,
+            effect_status="none" if descriptor.legacy_tool in _KNOWN_READ_ONLY_TOOLS else "unknown",
         )
     except TypeError as exc:
         message = f"ERREUR TECHNIQUE arguments {descriptor.legacy_tool} : {exc}"
@@ -189,6 +273,34 @@ def execute_capability(
         },
         error_category="erreur_technique_outil",
     )
+
+
+def execute_capability(
+    registry: dict[str, Callable], name: str, arguments: dict | None = None,
+) -> CapabilityResult:
+    """Atomically admit a capability and retain its lease through completion."""
+    descriptor = resolve_capability(registry, name)
+    if descriptor is None or (arguments is not None and not isinstance(arguments, dict)):
+        return _execute_capability(registry, name, arguments)
+
+    from datashield.profile_gate import profile_execution_gate
+    with profile_execution_gate.action_step() as action_admitted:
+        if not action_admitted:
+            return CapabilityResult(
+                capability=descriptor.name,
+                status=CapabilityStatus.FAILED,
+                message="Capacité refusée : le profil GreatOS est verrouillé.",
+                error_category="profil_verrouille",
+            )
+        with profile_execution_gate.admit() as admitted:
+            if not admitted:
+                return CapabilityResult(
+                    capability=descriptor.name,
+                    status=CapabilityStatus.FAILED,
+                    message="Capacité refusée : le profil GreatOS est verrouillé.",
+                    error_category="profil_verrouille",
+                )
+            return _execute_capability(registry, name, arguments)
 
 
 class LegacyToolRegistry(dict):

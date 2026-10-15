@@ -30,6 +30,42 @@ NIVEAU_PROPOSITION = 1  # Proposition motivée avec explication
 NIVEAU_ACTION_NOTIFICATION = 2  # Exécution directe avec notification
 NIVEAU_AUTONOMIE_SILENCIEUSE = 3  # Exécution sans déranger
 
+# Domaines nativement sûrs (Safe Domains - Chantier Autonomie & Gouvernance Lot 1)
+# Débutent nativement au Niveau 2 (Action directe / Zéro confirmation)
+SAFE_DOMAINS = frozenset({
+    "multimedia",
+    "audio",
+    "vision",
+    "ecran",
+    "fenetres",
+})
+
+SAFE_CAPABILITY_PREFIXES = (
+    "controler_multimedia",
+    "regler_volume",
+    "couper_son",
+    "analyser_ecran",
+    "prendre_capture",
+    "capturer_ecran",
+    "rapport_systeme",
+    "tendances_systeme",
+    "top_fichiers_lourds",
+    "lire_notes",
+    "lire_preferences",
+    "lire_contexte",
+    "lire_journal_agents",
+    "lire_traces_capacites",
+    "obtenir_niveau_defcon",
+    "statut_chiffrement",
+    "window_manager",
+    "minimiser_tout",
+    "restaurer_fenetre",
+    "deplacer_fenetre",
+    "rechercher_web",
+    "analyser_page_web",
+)
+
+
 
 def extraire_domaine_capacite(capacite: str) -> str:
     """
@@ -78,20 +114,36 @@ def _chemin_trust_matrix(user_id: str) -> Path:
     return PROFILES_DIR / user_id / "trust_matrix.json"
 
 
-def _domaine_par_defaut() -> dict:
+def _est_domaine_sur(domaine: str, capacite: str = "") -> bool:
+    """Vérifie si un domaine ou un nom d'outil fait partie des domaines nativement sûrs."""
+    if domaine in SAFE_DOMAINS:
+        return True
+    if capacite and any(capacite.startswith(prefix) for prefix in SAFE_CAPABILITY_PREFIXES):
+        return True
+    return False
+
+
+
+def _domaine_par_defaut(domaine: str = "", capacite: str = "") -> dict:
     """
-    Génère un domaine par défaut avec niveau 0.
-    
+    Génère un domaine par défaut.
+
+    Les Safe Domains débutent au niveau 2 (Action directe).
+    Les autres débutent au niveau 0 (Observation).
+
     Returns:
         Un dictionnaire de domaine initialisé avec des valeurs par défaut.
     """
+    est_sur = _est_domaine_sur(domaine, capacite)
+    niveau_initial = NIVEAU_ACTION_NOTIFICATION if est_sur else NIVEAU_OBSERVATION
     return {
-        "niveau": NIVEAU_OBSERVATION,
-        "score": 0.0,
-        "succes_consecutifs": 0,
+        "niveau": niveau_initial,
+        "score": 1.0 if est_sur else 0.0,
+        "succes_consecutifs": SEUIL_PROMOTION if est_sur else 0,
         "actions_totales": 0,
         "echecs": 0,
     }
+
 
 
 def _charger_trust_matrix(user_id: str) -> dict:
@@ -132,7 +184,8 @@ def obtenir_niveau_autonomie(domaine: str, user_id: str | None = None) -> int:
     """
     Obtient le niveau d'autonomie actuel pour un domaine donné.
     
-    Si le domaine n'existe pas, retourne le niveau 0 (observation).
+    Si le domaine n'existe pas, retourne le niveau 2 pour les Safe Domains,
+    ou le niveau 0 (observation) pour les autres.
     
     Args:
         domaine: Le domaine d'action (ex: "fichiers_lecture").
@@ -147,6 +200,9 @@ def obtenir_niveau_autonomie(domaine: str, user_id: str | None = None) -> int:
     if domaine in matrix["domaines"]:
         return matrix["domaines"][domaine]["niveau"]
     
+    if _est_domaine_sur(domaine):
+        return NIVEAU_ACTION_NOTIFICATION
+
     return NIVEAU_OBSERVATION
 
 
@@ -157,6 +213,9 @@ def doit_confirmer_action(capacite: str, user_id: str | None = None) -> bool:
     Retourne True si le niveau est 0 ou 1 (observation ou proposition),
     False si le niveau est 2 ou 3 (action directe ou autonomie silencieuse).
     
+    Les Safe Domains et capacités nativement inoffensives (multimédia, vision,
+    lecture) sont exemptées de confirmation (zéro friction).
+
     Args:
         capacite: Le nom de la capacité (ex: "fichiers.lire").
         user_id: Identifiant utilisateur optionnel. Si None, résolu dynamiquement.
@@ -165,9 +224,13 @@ def doit_confirmer_action(capacite: str, user_id: str | None = None) -> bool:
         True si confirmation requise, False sinon.
     """
     domaine = extraire_domaine_capacite(capacite)
+    if _est_domaine_sur(domaine, capacite):
+        return False
+
     niveau = obtenir_niveau_autonomie(domaine, user_id)
     
     return niveau <= NIVEAU_PROPOSITION
+
 
 
 def enregistrer_resultat_action(

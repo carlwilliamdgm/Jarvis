@@ -8,14 +8,17 @@ import greatos_service
 
 class GreatOSServiceTests(unittest.TestCase):
     @patch("greatos_service.urllib.request.urlopen")
-    def test_health_probe_accepts_only_successful_status(self, mock_urlopen):
+    def test_health_probe_requires_current_api_contract(self, mock_urlopen):
+        """tester_reponse_http() retourne True si /jarvis/status repond 200, False sinon."""
         response = MagicMock()
-        response.status = 200
         response.__enter__.return_value = response
         mock_urlopen.return_value = response
 
+        # Cas nominal : HTTP 200 -> pret
+        response.status = 200
         self.assertTrue(greatos_service.tester_reponse_http())
 
+        # Cas erreur : HTTP 503 -> pas pret
         response.status = 503
         self.assertFalse(greatos_service.tester_reponse_http())
 

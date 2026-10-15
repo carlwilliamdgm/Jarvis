@@ -8,6 +8,10 @@ from jarvis.voice_state import VoiceState, _set_voice_state
 
 class InteractionPipelineTests(unittest.TestCase):
     def setUp(self):
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        WINDOWS_SESSION_LOCKED.clear()
+        from datashield.profile_gate import profile_execution_gate
+        profile_execution_gate.set_locked(False)
         self.original_executer_agent = jarvis.executer_agent
         self.original_journal = jarvis.OUTILS["enregistrer_echange"]
         self.calls = []
@@ -23,6 +27,10 @@ class InteractionPipelineTests(unittest.TestCase):
         jarvis.OUTILS["enregistrer_echange"] = fake_journal
 
     def tearDown(self):
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        WINDOWS_SESSION_LOCKED.clear()
+        from datashield.profile_gate import profile_execution_gate
+        profile_execution_gate.set_locked(False)
         jarvis.executer_agent = self.original_executer_agent
         jarvis.OUTILS["enregistrer_echange"] = self.original_journal
 
@@ -68,7 +76,7 @@ class InteractionPipelineTests(unittest.TestCase):
     def test_voice_interaction_keeps_lock_until_tts_returns(self):
         voice_started = []
         _set_voice_state(VoiceState.THINKING)
-        def fake_voice_output(_text):
+        def fake_voice_output(_text, session_generation=None):
             voice_started.append(jarvis.INTERACTION_LOCK.locked())
 
         with patch("jarvis.voice_output.parler_a_voix_haute", side_effect=fake_voice_output):

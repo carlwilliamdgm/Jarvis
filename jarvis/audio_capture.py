@@ -16,6 +16,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import logging
+import os
 import queue
 import threading
 import time
@@ -29,6 +30,15 @@ try:
 except ImportError:
     _samplerate_lib = None  # type: ignore[assignment]
     _HAS_SAMPLERATE = False
+
+try:
+    from scipy.signal import resample_poly as _scipy_resample_poly
+    from math import gcd as _math_gcd
+    _HAS_SCIPY = True
+except ImportError:
+    _scipy_resample_poly = None  # type: ignore[assignment]
+    _math_gcd = None  # type: ignore[assignment]
+    _HAS_SCIPY = False
 
 try:
     import sounddevice as sd
@@ -226,8 +236,44 @@ class AdaptiveVAD:
         
         return self.is_speech_active
 
+    def calibrate_noise_floor(self, energies: list[float] | np.ndarray) -> tuple[float, float]:
+        """Auto-calibration du bruit ambiant par mesure de la médiane sur ~1 seconde.
+
+        Calcule la médiane du bruit de fond (robuste aux transitoires et bruits brefs).
+        Fixe des seuils fiables qui évitent que le VAD ne sature ou ne reste bloqué en parole.
+        Renvoie (noise_floor, seuil_effectif).
+        """
+        if len(energies) == 0:
+            return self.noise_floor, float(self.min_threshold)
+
+        arr = np.array(energies, dtype=np.float32)
+        med = float(np.median(arr))
+
+        if med <= 0.0:
+            self.noise_floor = 50.0
+            self.min_threshold = 150
+        else:
+            self.noise_floor = max(30.0, med)
+            # Seuil minimal calé au-dessus de la médiane pour éviter toute saturation permanente
+            self.min_threshold = max(150, int(med * 2.0))
+
+        self.is_speech_active = False
+        self.consecutive_speech = 0
+        self.consecutive_silence = 0
+        self.energy_window.clear()
+        self.saturation_count = 0
+        self.saturation_window.clear()
+        self.zcr_window.clear()
+        effective_threshold = max(self.noise_floor * self.min_ratio, float(self.min_threshold))
+        LOGGER.info(
+            "[AdaptiveVAD] Auto-calibré: médiane bruit=%.1f, min_seuil=%d, seuil_effectif=%.1f",
+            self.noise_floor, self.min_threshold, effective_threshold,
+        )
+        return self.noise_floor, effective_threshold
+
     def reset_floor(self, default_val: float = 50.0) -> None:
         self.noise_floor = default_val
+        self.min_threshold = max(150, int(default_val * 2.0)) if default_val > 50.0 else 150
         self.is_speech_active = False
         self.consecutive_speech = 0
         self.consecutive_silence = 0
@@ -433,6 +479,11 @@ class AudioCaptureEngine:
         # Buffer d'accumulation pour trames de taille exacte
         self._accumulation_buffer = np.array([], dtype=np.int16)
 
+        # Auto-calibration du bruit ambiant au lancement
+        self._noise_calibrated = False
+        self._noise_cal_energies: list[float] = []
+        self._noise_cal_target_frames = 12  # ~1.0 seconde (12 * 80ms = 960ms)
+
         # Thread de capture
         self._capture_thread: Optional[threading.Thread] = None
         self._next_default_check = 0.0
@@ -450,8 +501,28 @@ class AudioCaptureEngine:
                 if self.device_index is None:
                     raise RuntimeError("Windows ne signale aucun micro par défaut")
             dev = sd.query_devices(device=self.device_index, kind="input")
-            self.native_rate     = int(dev.get("default_samplerate", 44100.0))
-            self.native_channels = max(1, int(dev.get("max_input_channels", 1)))
+            sr = int(dev.get("default_samplerate", 44100.0))
+            channels = max(1, int(dev.get("max_input_channels", 1)))
+
+            # Capture au taux natif matériel de la carte son (généralement 48 000 Hz sur PC portable Windows avec Synaptics).
+            # Vérifier si 48000 Hz est supporté pour éviter le mixage dégradant de l'hôte.
+            env_sr = os.environ.get("JARVIS_AUDIO_SAMPLE_RATE")
+            candidates = [int(env_sr)] if env_sr else [48000, sr, 44100, TARGET_SAMPLE_RATE]
+            for candidate in candidates:
+                try:
+                    sd.check_input_settings(
+                        device=self.device_index,
+                        samplerate=candidate,
+                        channels=channels,
+                        dtype="int16",
+                    )
+                    sr = candidate
+                    break
+                except Exception:
+                    continue
+
+            self.native_rate     = sr
+            self.native_channels = channels
             LOGGER.info(
                 "[AudioCaptureEngine] %s (%dch @ %dHz)",
                 dev.get("name", "?"), self.native_channels, self.native_rate,
@@ -467,14 +538,22 @@ class AudioCaptureEngine:
             self._resampler = None
             return
         if _HAS_SAMPLERATE:
-            self._resampler = _samplerate_lib.Resampler("sinc_best", channels=1)
+            # sinc_fastest offre un filtrage sinc temps réel sans latence avec état persistant
+            self._resampler = _samplerate_lib.Resampler("sinc_fastest", channels=1)
             LOGGER.info(
-                "[AudioCaptureEngine] samplerate.Resampler (ratio %.5f = %d/%d)",
+                "[AudioCaptureEngine] samplerate.Resampler sinc_fastest (ratio %.5f = %d/%d)",
+                self._resample_ratio, TARGET_SAMPLE_RATE, self.native_rate,
+            )
+        elif _HAS_SCIPY:
+            self._resampler = None
+            LOGGER.info(
+                "[AudioCaptureEngine] scipy.signal.resample_poly actif (ratio %.5f = %d/%d)",
                 self._resample_ratio, TARGET_SAMPLE_RATE, self.native_rate,
             )
         else:
+            self._resampler = None
             LOGGER.warning(
-                "[AudioCaptureEngine] samplerate absent -- fallback np.interp "
+                "[AudioCaptureEngine] samplerate et scipy absents -- fallback np.interp "
                 "(artefacts inter-bloc possibles)"
             )
 
@@ -483,13 +562,20 @@ class AudioCaptureEngine:
     # ------------------------------------------------------------------
 
     def _resample(self, mono: np.ndarray) -> np.ndarray:
-        """Reechantillonne vers 16 kHz avec etat persistant si disponible."""
+        """Reechantillonne vers 16 kHz avec etat persistant (samplerate) ou polyphase (scipy)."""
         if self.native_rate == TARGET_SAMPLE_RATE:
             return mono.astype(np.int16)
         if self._resampler is not None:
             mono_f = mono.astype(np.float32) / 32768.0
             out_f  = self._resampler.process(mono_f, ratio=self._resample_ratio)
             return np.clip(out_f * 32768.0, -32768, 32767).astype(np.int16)
+        if _HAS_SCIPY and _scipy_resample_poly is not None and _math_gcd is not None:
+            g = _math_gcd(TARGET_SAMPLE_RATE, self.native_rate)
+            up = TARGET_SAMPLE_RATE // g
+            down = self.native_rate // g
+            mono_f = mono.astype(np.float32)
+            out_f = _scipy_resample_poly(mono_f, up, down)
+            return np.clip(out_f, -32768, 32767).astype(np.int16)
         # Fallback lineaire (sans etat entre blocs)
         n_out = int(len(mono) * self._resample_ratio)
         if n_out == 0:

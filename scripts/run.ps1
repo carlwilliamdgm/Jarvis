@@ -8,7 +8,7 @@ switch ($Command) {
     "test" { & $Python -m pytest tests\ --tb=short -q }
     "test-core" { & $Python -m pytest tests\test_greatos_modules.py tests\test_tools.py tests\test_planning_and_api.py --tb=short -q }
     "health" { & $Python scripts\healthcheck.py }
-    "start" { & $Python -m uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000 }
+    "start" { & $Python -m interface_morphique.server }
     "status" { & $Python greatos.py status }
     "snapshot" { & $Python greatos.py snapshot }
     "lint" { & $Python -m py_compile greatos.py greatos_contracts.py greatos_capabilities.py }

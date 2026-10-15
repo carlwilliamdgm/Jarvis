@@ -47,6 +47,91 @@ function Set-MachineEnvironmentVariableChecked {
     Write-Log "Confirmed Machine-level environment variable $Name"
 }
 
+function Assert-OperatorTlsKeyAcl {
+    param([Parameter(Mandatory=$true)][string]$KeyPath)
+
+    # The scheduled task runs as the installing Windows user. Refuse keys that
+    # can be read or replaced by another principal; do not rewrite operator ACLs.
+    $installingUserSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $trustedSids = @($installingUserSid, "S-1-5-18", "S-1-5-32-544")
+    # TrustedInstaller may own OS ancestor directories, but is not allowed
+    # to read the operator's private key through an explicit file ACE.
+    $trustedOwnerSids = @($trustedSids + "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464")
+
+    # On directories, these rights permit creating/replacing the key or
+    # changing the ACL that protects it. Apply this check to every ancestor,
+    # because write access to any ancestor can enable path replacement.
+    $mutableDirectoryRights = [System.Security.AccessControl.FileSystemRights]::WriteData -bor
+        [System.Security.AccessControl.FileSystemRights]::AppendData -bor
+        [System.Security.AccessControl.FileSystemRights]::CreateFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::CreateDirectories -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes -bor
+        [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+
+    try {
+        $fullPath = [System.IO.Path]::GetFullPath($KeyPath)
+        $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+        if ($item.PSIsContainer) {
+            throw "Le chemin configuré pour la clé TLS est un dossier."
+        }
+
+        $pathsToCheck = @($fullPath)
+        $parentPath = [System.IO.Path]::GetDirectoryName($fullPath)
+        while (-not [string]::IsNullOrWhiteSpace($parentPath)) {
+            $pathsToCheck += $parentPath
+            $nextParent = [System.IO.Path]::GetDirectoryName($parentPath)
+            if ([string]::IsNullOrWhiteSpace($nextParent) -or $nextParent -eq $parentPath) { break }
+            $parentPath = $nextParent
+        }
+
+        foreach ($path in $pathsToCheck) {
+            $entry = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "La clé TLS ou un dossier parent est un point de réanalyse/lien : $path"
+            }
+
+            $acl = Get-Acl -LiteralPath $path -ErrorAction Stop
+            $ownerSid = ([System.Security.Principal.NTAccount]$acl.Owner).Translate(
+                [System.Security.Principal.SecurityIdentifier]
+            ).Value
+            if ($ownerSid -notin $trustedOwnerSids) {
+                throw "Propriétaire non approuvé pour le fichier ou dossier TLS : $path ($ownerSid)"
+            }
+
+            $rules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+            if ($path -eq $fullPath) {
+                $unsafeRules = @(
+                    $rules | Where-Object {
+                        $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and
+                        $_.IdentityReference.Value -notin $trustedSids
+                    }
+                )
+            } else {
+                $unsafeRules = @(
+                    $rules | Where-Object {
+                        $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and
+                        $_.IdentityReference.Value -notin $trustedSids -and
+                        (([int]$_.FileSystemRights -band [int]$mutableDirectoryRights) -ne 0)
+                    }
+                )
+            }
+            if ($unsafeRules.Count -gt 0) {
+                $principals = ($unsafeRules | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique) -join ", "
+                if ($path -eq $fullPath) {
+                    throw "La clé TLS est accessible à des identités hors compte opérateur/SYSTEM/Administrateurs ($principals)."
+                }
+                throw "Un dossier de la chaîne TLS est modifiable par des identités hors compte opérateur/SYSTEM/Administrateurs ($path : $principals)."
+            }
+        }
+    } catch {
+        throw "Installation réseau refusée : impossible de vérifier intégrité, propriétaire et ACL de la clé TLS ou de ses dossiers parents. Détail: $_"
+    }
+}
+
 function Test-Command {
     param([string]$Command)
     try {
@@ -376,22 +461,16 @@ try {
     Write-Log "openWakeWord verification: $_" "WARN"
 }
 
-# Step 3d: DataShield AES-256 Crypto Key Generation
-Write-Log "=== Step 3d: DataShield AES-256 Key ==="
-$existingCrypto = [System.Environment]::GetEnvironmentVariable("JARVIS_CRYPTO_KEY", "Machine")
-if (-not [string]::IsNullOrWhiteSpace($existingCrypto)) {
-    Write-Log "Clé DataShield/crypto déjà présente au niveau Machine"
+# Step 3d: retain any legacy key only in the installer process until the
+# production setup can wrap it and reveal the one-time recovery copy.
+Write-Log "=== Step 3d: Prepare DataShield AES-256 Key Migration ==="
+$legacyCrypto = [System.Environment]::GetEnvironmentVariable("JARVIS_CRYPTO_KEY", "Machine")
+if (-not [string]::IsNullOrWhiteSpace($legacyCrypto)) {
+    $env:JARVIS_CRYPTO_KEY = $legacyCrypto
+    Write-Log "Une ancienne clé DataShield sera migrée pendant l'initialisation sécurisée"
 } else {
-    try {
-        $bytes = New-Object byte[] 32
-        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $cryptoKey = [Convert]::ToBase64String($bytes)
-        Set-MachineEnvironmentVariableChecked -Name "JARVIS_CRYPTO_KEY" -Value $cryptoKey
-        $env:JARVIS_CRYPTO_KEY = $cryptoKey
-        Write-Log "Clé cryptographique DataShield (AES-256-GCM) générée et enregistrée avec succès"
-    } catch {
-        Write-Log "Impossible de générer JARVIS_CRYPTO_KEY: $_" "WARN"
-    }
+    Remove-Item Env:\JARVIS_CRYPTO_KEY -ErrorAction SilentlyContinue
+    Write-Log "Aucune ancienne clé Machine; le setup de production générera et protégera la clé"
 }
 
 # Step 4: Configure API keys (skips prompts if keys already exist Machine-level)
@@ -452,6 +531,26 @@ if (-not [string]::IsNullOrWhiteSpace($existingOpenRouter)) {
 
 # Step 5: Detect/install Ollama
 Write-Log "=== Step 5: Ollama Detection/Installation ==="
+$setupScript = Join-Path $JarvisDir "scripts\setup_production.py"
+if (-not (Test-Path $venvPython) -or -not (Test-Path $setupScript)) {
+    throw "Production security setup is unavailable; GreatOS cannot start without DataShield provisioning."
+}
+Write-Host ""
+Write-Host "GreatOS security setup will print any new recovery credentials exactly once." -ForegroundColor Yellow
+Write-Host "Copy them into your password manager; they are not written to the installer log." -ForegroundColor Yellow
+Push-Location $JarvisDir
+try {
+    & $venvPython $setupScript
+    if ($LASTEXITCODE -ne 0) { throw "GreatOS production security setup failed with exit code $LASTEXITCODE" }
+    if (-not [string]::IsNullOrWhiteSpace($legacyCrypto)) {
+        [System.Environment]::SetEnvironmentVariable("JARVIS_CRYPTO_KEY", $null, "Machine")
+        Write-Log "Ancienne clé Machine migrée et vérifiée dans DPAPI CurrentUser puis supprimée"
+    }
+} finally {
+    Pop-Location
+    Remove-Item Env:\JARVIS_CRYPTO_KEY -ErrorAction SilentlyContinue
+}
+
 $ollamaInstalled = Test-Command "ollama"
 
 if (-not $ollamaInstalled) {
@@ -516,6 +615,48 @@ if ($ollamaInstalled) {
 # Step 6: Register the interactive scheduled task
 Write-Log "=== Step 6: Register JarvisAgent Scheduled Task ==="
 
+# This installer exposes the API on all interfaces for remote devices. Refuse
+# to create that listener until the operator-provisioned TLS pair is present.
+$tlsCert = $env:GREATOS_TLS_CERT_FILE
+$tlsKey = $env:GREATOS_TLS_KEY_FILE
+$tlsServerName = $env:GREATOS_TLS_SERVER_NAME
+$greatosEnvFile = Join-Path $JarvisDir ".env"
+if (Test-Path $greatosEnvFile) {
+    foreach ($line in Get-Content $greatosEnvFile) {
+        if ($line -match '^\s*GREATOS_TLS_CERT_FILE\s*=\s*(.+)$') { $tlsCert = $Matches[1].Trim().Trim('"') }
+        if ($line -match '^\s*GREATOS_TLS_KEY_FILE\s*=\s*(.+)$') { $tlsKey = $Matches[1].Trim().Trim('"') }
+        if ($line -match '^\s*GREATOS_TLS_SERVER_NAME\s*=\s*(.+)$') { $tlsServerName = $Matches[1].Trim().Trim('"') }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($tlsCert) -or [string]::IsNullOrWhiteSpace($tlsKey)) {
+    throw "Installation réseau refusée : provisionnez GREATOS_TLS_CERT_FILE et GREATOS_TLS_KEY_FILE dans .env avant l'installation."
+}
+if (-not (Test-Path -LiteralPath $tlsCert -PathType Leaf) -or -not (Test-Path -LiteralPath $tlsKey -PathType Leaf)) {
+    throw "Le certificat TLS opérateur ou sa clé privée est introuvable."
+}
+Assert-OperatorTlsKeyAcl -KeyPath $tlsKey
+if ([string]::IsNullOrWhiteSpace($tlsServerName)) {
+    throw "Installation réseau refusée : renseignez GREATOS_TLS_SERVER_NAME avec le nom DNS ou l'adresse IP distante couvert(e) par le SAN du certificat."
+}
+Set-MachineEnvironmentVariableChecked -Name "GREATOS_TLS_CERT_FILE" -Value $tlsCert
+Set-MachineEnvironmentVariableChecked -Name "GREATOS_TLS_KEY_FILE" -Value $tlsKey
+Set-MachineEnvironmentVariableChecked -Name "GREATOS_TLS_SERVER_NAME" -Value $tlsServerName
+Set-MachineEnvironmentVariableChecked -Name "GREATOS_API_SCHEME" -Value "https"
+$env:GREATOS_TLS_CERT_FILE = $tlsCert
+$env:GREATOS_TLS_KEY_FILE = $tlsKey
+$env:GREATOS_TLS_SERVER_NAME = $tlsServerName
+$env:GREATOS_API_SCHEME = "https"
+
+Push-Location $JarvisDir
+try {
+    & $pythonPath -c "import os; from interface_morphique.server import validate_operator_tls_files; validate_operator_tls_files(os.environ['GREATOS_TLS_CERT_FILE'], os.environ['GREATOS_TLS_KEY_FILE'], os.environ['GREATOS_TLS_SERVER_NAME'])"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Le certificat TLS ne satisfait pas le contrat localhost + SAN distant."
+    }
+} finally {
+    Pop-Location
+}
+
 # The update script also needs the installation directory when a custom
 # destination was selected.
 Set-MachineEnvironmentVariableChecked -Name "JARVIS_INSTALL_DIR" -Value $JarvisDir
@@ -564,13 +705,30 @@ $apiProbeError = "aucune réponse HTTP valide"
 $apiStartupClock = [System.Diagnostics.Stopwatch]::StartNew()
 while ($apiStartupClock.Elapsed -lt [TimeSpan]::FromSeconds(30)) {
     try {
+        $apiScheme = "http"
+        $tlsCert = $env:GREATOS_TLS_CERT_FILE
+        $tlsKey = $env:GREATOS_TLS_KEY_FILE
+        if (Test-Path (Join-Path $JarvisDir ".env")) {
+            foreach ($line in Get-Content (Join-Path $JarvisDir ".env")) {
+                if ($line -match '^\s*GREATOS_TLS_CERT_FILE\s*=\s*(.+)$') { $tlsCert = $Matches[1].Trim().Trim('"') }
+                if ($line -match '^\s*GREATOS_TLS_KEY_FILE\s*=\s*(.+)$') { $tlsKey = $Matches[1].Trim().Trim('"') }
+            }
+        }
+        if ($tlsCert -and $tlsKey) { $apiScheme = "https" }
         $response = Invoke-WebRequest `
-            -Uri "http://127.0.0.1:8000/jarvis/status" `
+            -Uri "$($apiScheme)://localhost:8000/openapi.json" `
             -UseBasicParsing `
             -TimeoutSec 1 `
             -ErrorAction Stop
         if ($response.StatusCode -eq 200) {
-            $apiReady = $true
+            $paths = ($response.Content | ConvertFrom-Json).paths
+            $apiReady = ($null -ne $paths) `
+                -and ($null -ne $paths.PSObject.Properties['/jarvis/onboarding']) `
+                -and ($null -ne $paths.PSObject.Properties['/jarvis/security/hello/enrollment/key-confirm']) `
+                -and ($null -ne $paths.PSObject.Properties['/jarvis/security/unlock/hello/verify']) `
+                -and ($null -ne $paths.PSObject.Properties['/jarvis/security/unlock/dpapi'])
+        }
+        if ($apiReady) {
             break
         }
     } catch {
@@ -584,7 +742,7 @@ if (-not $apiReady) {
     Write-Log "GreatOS API did not become ready: $apiProbeError. Check $startupLogs" "ERROR"
     throw "GreatOS API did not become ready within 30 seconds: $apiProbeError. Check $startupLogs"
 }
-Write-Log "GreatOS API readiness confirmed on http://127.0.0.1:8000/jarvis/status"
+Write-Log "GreatOS API current contract confirmed on $($apiScheme)://localhost:8000/openapi.json"
 
 # Step 7: Store PAT for Future Updates
 # No cmdkey / Credential Manager: the PAT lives only in the Machine-level
@@ -600,7 +758,7 @@ Write-Log "=== Step 7b: Create Desktop Shortcut ==="
 try {
     $desktopPath = [System.Environment]::GetFolderPath("Desktop")
     $shortcutPath = Join-Path $desktopPath "GreatOS Jarvis.url"
-    "[InternetShortcut]`r`nURL=http://localhost:8000`r`nIconIndex=0" | Out-File -FilePath $shortcutPath -Encoding ASCII -Force
+    "[InternetShortcut]`r`nURL=https://localhost:8000/desktop/`r`nIconIndex=0" | Out-File -FilePath $shortcutPath -Encoding ASCII -Force
     Write-Log "Raccourci 'GreatOS Jarvis' créé sur le Bureau de l'utilisateur"
 } catch {
     Write-Log "Impossible de créer le raccourci Bureau: $_" "WARN"
@@ -618,9 +776,9 @@ try {
         -Argument "-ExecutionPolicy Bypass -WindowStyle Hidden -File `"$updateScriptPath`"" `
         -WorkingDirectory $JarvisDir
     
-    # Trigger: Daily starting at 04:00, repeated every 12 hours (twice a day: 04:00 & 16:00)
-    $updateTrigger = New-ScheduledTaskTrigger -Daily -At 4am
-    $updateTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 4am -RepetitionInterval (New-TimeSpan -Hours 12) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+    # Trigger: Repeated every 12 hours indefinitely starting from now
+    $updateTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 12)
+    $updateTrigger.Repetition.Duration = ""
     
     $updateSettings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
@@ -636,9 +794,9 @@ try {
         -Trigger $updateTrigger `
         -Principal $updatePrincipal `
         -Settings $updateSettings `
-        -Description "Mise a jour automatique de GreatOS / Jarvis deux fois par jour (toutes les 12 heures)." `
+        -Description "Recherche et application des mises a jour de GreatOS toutes les 12 heures." `
         -Force | Out-Null
-    Write-Log "Scheduled task $updateTaskName registered (frequency: twice a day / every 12h)"
+    Write-Log "Scheduled task $updateTaskName registered (frequency: every 12h)"
 } catch {
     Write-Log "Impossible d'enregistrer la tache de mise a jour automatique $updateTaskName : $_" "WARN"
 }
@@ -647,12 +805,21 @@ try {
 Write-Log "=== Installation Summary ==="
 
 $agentTaskRegistered = ((Get-ScheduledTask -TaskName $agentTaskName -ErrorAction SilentlyContinue) -ne $null)
+$dataShieldKeyStorePath = $null
+try {
+    Push-Location $JarvisDir
+    $dataShieldKeyStorePath = (& $pythonPath -c "from datashield.windows_key_store import key_store_path; print(key_store_path())").Trim()
+} catch {
+    $dataShieldKeyStorePath = $null
+} finally {
+    Pop-Location
+}
 
 $status = [ordered]@{
     "Python 3.12"       = $pythonInstalled
     "Chromium (Playwright)" = $playwrightInstalled
     "Modèles Vocaux Offline" = (Test-Path (Join-Path $JarvisDir "models\piper\fr_FR-siwis-low.onnx"))
-    "Clé DataShield (AES-256)" = (-not [string]::IsNullOrWhiteSpace([System.Environment]::GetEnvironmentVariable("JARVIS_CRYPTO_KEY", "Machine")))
+    "Clé DataShield (AES-256, DPAPI)" = (-not [string]::IsNullOrWhiteSpace($dataShieldKeyStorePath) -and (Test-Path $dataShieldKeyStorePath))
     "Raccourci Bureau"  = (Test-Path (Join-Path ([System.Environment]::GetFolderPath("Desktop")) "GreatOS Jarvis.url"))
     "Jarvis Repository" = (Test-Path $JarvisDir)
     "Dependencies"      = $true

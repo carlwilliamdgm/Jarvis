@@ -10,7 +10,6 @@ Tous les autres exécutent, stockent, protègent ou traduisent.
 """
 
 import json
-import ollama
 import os
 import platform
 from datetime import datetime
@@ -566,6 +565,7 @@ def planifier_objectif(
     objectif: str,
     memoire: dict,
     on_event: Callable[[str, dict], None] | None = None,
+    execution_allowed: Callable[[], bool] | None = None,
 ):
     """Génère un plan d'exécution structuré avec capacités canoniques, préconditions et dépendances.
 
@@ -614,6 +614,10 @@ Règles strictes :
         {"role": "user", "content": f"Objectif à planifier : {objectif}"},
     ]
 
+    # Callers bound to a Windows profile can invalidate queued work at the
+    # last safe point before profile context is dispatched to a provider.
+    if execution_allowed is not None and not execution_allowed():
+        raise PermissionError("La session GreatOS a été verrouillée avant l’appel du modèle.")
     reponse = _appeler_llm_avec_retry(messages, memoire, temperature=0.2, on_event=on_event)
     if not reponse or not reponse.get("message", {}).get("content"):
         return ExecutionPlan(goal=objectif, steps=[], context={"status": "no_llm_response"})

@@ -21,6 +21,7 @@ class EventBus:
         self._lock = threading.Lock()
         self._local = threading.local()
         self._proactive_alerts = {}
+        self._profile_locked = False
 
     def subscribe(self) -> queue.Queue:
         event_queue = queue.Queue()
@@ -41,6 +42,26 @@ class EventBus:
         with self._lock:
             self._queues.discard(event_queue)
 
+    def clear_sensitive_state(self) -> None:
+        """Drop replayable alerts and queued event payloads on profile lock."""
+        with self._lock:
+            self._profile_locked = True
+            self._proactive_alerts.clear()
+            queues = tuple(self._queues)
+            for event_queue in queues:
+                while True:
+                    try:
+                        event_queue.get_nowait()
+                    except queue.Empty:
+                        break
+
+    def set_profile_locked(self, locked: bool) -> None:
+        """Gate event publication across a profile lock/unlock transition."""
+        with self._lock:
+            self._profile_locked = locked
+            if locked:
+                self._proactive_alerts.clear()
+
     def bind(self, event_queue: queue.Queue) -> None:
         self._local.queue = event_queue
 
@@ -51,21 +72,27 @@ class EventBus:
     def emit(self, event_type: str, data: dict) -> None:
         event = {"type": event_type, "data": data}
         target_queue = getattr(self._local, "queue", None)
-        if target_queue is not None:
-            target_queue.put(event)
+        with self._lock:
+            if not self._profile_locked and target_queue is not None:
+                target_queue.put(event)
 
     def emit_broadcast(self, event_type: str, data: dict) -> None:
         """Publish a process-wide event to every active SSE subscriber."""
         event = {"type": event_type, "data": data}
         with self._lock:
+            if self._profile_locked:
+                return
             alert_key = f"{data.get('type', 'unknown')}:{data.get('mountpoint', '')}"
             if event_type == "alerte_proactive":
                 self._proactive_alerts[alert_key] = event
             elif event_type == "alerte_proactive_resolue":
                 self._proactive_alerts.pop(alert_key, None)
             queues = tuple(self._queues)
-        for event_queue in queues:
-            event_queue.put(event)
+            # Queue insertion is part of the same critical section as the
+            # profile-lock check, so clear_sensitive_state cannot be followed
+            # by a late publication from an emitter that already passed it.
+            for event_queue in queues:
+                event_queue.put(event)
 
 
 # ---------------------------------------------------------------------------

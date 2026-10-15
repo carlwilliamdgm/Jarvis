@@ -17,8 +17,9 @@ class TestDesktopAwareness(unittest.TestCase):
     def test_envoyer_signal_multimedia_pause(self, mock_keybd):
         """Vérifie l'envoi du signal multimédia pause via Win32."""
         res = envoyer_signal_multimedia_global("pause")
-        self.assertIn("succès", res.lower())
+        self.assertIn("envoyée à windows", res.lower())
         self.assertTrue(mock_keybd.called)
+
 
     def test_signal_multimedia_action_inconnue(self):
         """Une action multimédia invalide retourne une erreur informative."""

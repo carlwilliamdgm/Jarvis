@@ -273,7 +273,14 @@ def _confirm_wake_word(score: float) -> bool:
     """
     if not _WAKE_CONFIRMATION_ENABLED:
         return True
-    
+
+    if os.environ.get("JARVIS_WAKE_CONFIRMATION", "").lower() in ("0", "false", "no"):
+        return True
+
+    immediate_threshold = float(os.environ.get("JARVIS_WAKE_IMMEDIATE_THRESHOLD", "0.85"))
+    if score >= immediate_threshold:
+        return True
+
     global _WAKE_DETECTION_TIMES
     now = time.monotonic()
     
@@ -371,6 +378,7 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
         if initial_pcm:
             collected_pcm.append(initial_pcm)
 
+        speech_frames_count = 0
         while time.monotonic() - started_at < TRANSCRIPTION_TIMEOUT_SECONDS:
             if pending:
                 raw = pending.pop(0)
@@ -399,6 +407,7 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 collected_pcm.append(raw)
             if speech:
                 had_speech = True
+                speech_frames_count += 1
                 last_speech_at = time.monotonic()
             if recognizer is not None:
                 if recognizer.AcceptWaveform(raw):
@@ -416,6 +425,7 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                             # moteur unique, lui, s'appuie exclusivement sur l'énergie.
                             if not has_vad:
                                 had_speech = True
+                                speech_frames_count += 1
                                 last_speech_at = time.monotonic()
                             prefix = " ".join(fragments)
                             _set_voice_transcript(f"{prefix} {partial}".strip())
@@ -434,6 +444,13 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 LOGGER.info("Timeout fenêtre 25s atteint dans transcrire_flux — sortie forcée")
                 break
 
+        # Rejet précoce si la parole cumulée est trop brève (clic de micro, bruit sec isolé)
+        if has_vad and had_speech and speech_frames_count < 2:
+            LOGGER.debug("Parole trop brève (%d trames) — faux positif VAD ignoré", speech_frames_count)
+            return None
+
+        from jarvis.hallucinations import est_hallucination, nettoyer_transcription
+
         # Groq est prioritaire; Vosk reste disponible comme repli local.
         if use_groq and collected_pcm and had_speech:
             try:
@@ -441,8 +458,14 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
                 full_pcm = b"".join(collected_pcm)
                 groq_result = transcrire_audio_groq(full_pcm)
                 if groq_result:
-                    _set_voice_transcript(groq_result)
-                    return groq_result
+                    if est_hallucination(groq_result):
+                        LOGGER.warning("[transcrire_flux] Groq hallucination rejetée : '%s'", groq_result)
+                    else:
+                        propre = nettoyer_transcription(groq_result)
+                        if propre and len(propre) >= 3:
+                            _set_voice_transcript(propre)
+                            return propre
+                        LOGGER.debug("[transcrire_flux] Résidu ou texte vide après nettoyage : '%s'", groq_result)
             except Exception as exc:
                 LOGGER.debug("[transcrire_flux] Bascule sur Vosk local après échec Groq: %s", exc)
 
@@ -460,14 +483,17 @@ def transcrire_flux(audio_stream: Any = None, initial_pcm: bytes | None = None) 
             fragments.append(final_text)
         result = " ".join(fragments).strip() or None
         
-        # Rejeter les résultats trop courts (probablement du bruit)
-        if result and len(result) < 3:
-            LOGGER.debug("Transcription trop courte (%d caractères) - ignorée", len(result))
-            return None
-        
         if result:
-            _set_voice_transcript(result)
-        return result
+            if est_hallucination(result):
+                LOGGER.warning("[transcrire_flux] Vosk hallucination rejetée : '%s'", result)
+                return None
+            propre = nettoyer_transcription(result)
+            if not propre or len(propre) < 3:
+                LOGGER.debug("Transcription Vosk trop courte ou résidu seul ('%s' -> '%s')", result, propre)
+                return None
+            _set_voice_transcript(propre)
+            return propre
+        return None
     except Exception:
         LOGGER.exception("Échec de transcription Vosk (stream mort ou micro débranché)")
         # Ne pas réarmer le timer : laisser le délai d'écoute de 25s expirer.
@@ -478,12 +504,16 @@ def transcrire_audio_pcm(pcm_data: bytes) -> str | None:
     """Transcrit un buffer PCM via Groq en préférence, puis Vosk local en repli."""
     if not pcm_data:
         return None
+    from jarvis.hallucinations import est_hallucination, nettoyer_transcription
+
     if os.getenv("JARVIS_USE_GROQ_WHISPER", "true").lower() in ("1", "true", "yes"):
         try:
             from jarvis.voice_transcription import transcrire_audio_groq
             transcript = transcrire_audio_groq(pcm_data)
-            if transcript:
-                return transcript
+            if transcript and not est_hallucination(transcript):
+                propre = nettoyer_transcription(transcript)
+                if propre and len(propre) >= 3:
+                    return propre
         except Exception:
             LOGGER.debug("Repli Groq Whisper indisponible; utilisation de Vosk local")
     try:
@@ -497,7 +527,11 @@ def transcrire_audio_pcm(pcm_data: bytes) -> str | None:
         if final_result:
             fragments.append(final_result)
         result = " ".join(fragments).strip()
-        return result if len(result) >= 3 else None
+        if result and not est_hallucination(result):
+            propre = nettoyer_transcription(result)
+            if propre and len(propre) >= 3:
+                return propre
+        return None
     except Exception:
         LOGGER.exception("Échec de transcription audio locale Vosk")
         return None
@@ -568,6 +602,10 @@ def transcrire_et_soumettre(audio_stream: Any, initial_pcm: bytes | None = None)
     text = transcrire_flux(audio_stream, initial_pcm=initial_pcm)
     if not text:
         LOGGER.info("Aucun énoncé transcrit — reste en écoute")
+        return None
+    from jarvis.hallucinations import est_commande_valide
+    if not est_commande_valide(text):
+        LOGGER.info("Énoncé rejeté (invalide, résidu seul ou hallucination) : '%s' — reste en écoute", text)
         return None
     _soumettre_au_pipeline(text)
     return text

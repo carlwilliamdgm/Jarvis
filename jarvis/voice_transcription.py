@@ -42,10 +42,9 @@ def transcrire_audio_groq(pcm_data: bytes, sample_rate: int = 16000) -> Optional
         wav_bytes = pcm_to_wav_bytes(pcm_data, sample_rate=sample_rate)
         audio_file = ("audio.wav", wav_bytes, "audio/wav")
         lang = os.getenv("JARVIS_VOICE_LANG", "fr").lower()
-        transcription_hints = ["Jarvis", "ordinateur", "code", "fenêtre", "exécuter"]
-        configured_user = os.getenv("JARVIS_USER", "").strip()
-        if configured_user:
-            transcription_hints.append(configured_user)
+        # Ne pas forcer des mots isolés ("Jarvis", "ordinateur") qui provoquent des
+        # hallucinations sur les bruits de fond ou le souffle du micro.
+        custom_prompt = os.getenv("JARVIS_WHISPER_PROMPT", "").strip() or None
 
         reponse = client.audio.transcriptions.create(
             file=audio_file,
@@ -53,14 +52,23 @@ def transcrire_audio_groq(pcm_data: bytes, sample_rate: int = 16000) -> Optional
             language=lang,
             response_format="text",
             temperature=0.0,
-            prompt=", ".join(transcription_hints),
+            prompt=custom_prompt,
         )
 
         texte = str(reponse).strip()
-        if texte and len(texte) >= 2:
-            LOGGER.info("[Groq Whisper] Transcription réussie : '%s'", texte)
-            return texte
-        return None
+        from jarvis.hallucinations import est_hallucination, nettoyer_transcription
+
+        if est_hallucination(texte):
+            LOGGER.warning("[Groq Whisper] Hallucination détectée et rejetée : '%s'", texte)
+            return None
+
+        texte_propre = nettoyer_transcription(texte)
+        if not texte_propre or len(texte_propre) < 2:
+            LOGGER.debug("[Groq Whisper] Énoncé vide ou résidu seul après nettoyage ('%s') -> ignoré", texte)
+            return None
+
+        LOGGER.info("[Groq Whisper] Transcription validée : '%s' (brut: '%s')", texte_propre, texte)
+        return texte_propre
     except Exception as exc:
         LOGGER.debug("[Groq Whisper] Indisponible (%s) -> bascule immédiate sur Vosk local", exc)
         return None

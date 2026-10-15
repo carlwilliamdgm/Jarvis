@@ -14,10 +14,16 @@ from tkinter import ttk, messagebox, simpledialog
 logger = logging.getLogger(__name__)
 
 # Force UTF-8 encoding to avoid charmap errors on Windows
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-if sys.stderr.encoding != 'utf-8':
-    sys.stderr.reconfigure(encoding='utf-8')
+if sys.stdout is not None and getattr(sys.stdout, 'encoding', None) != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr is not None and getattr(sys.stderr, 'encoding', None) != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 
 HEADER_BG = "#0a0a0f"

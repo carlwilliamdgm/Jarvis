@@ -85,6 +85,12 @@ def _set_voice_transcript(text: str) -> None:
         _voice_transcript = cleaned
         _voice_seq += 1
     _write_state_to_file()
+    if cleaned:
+        try:
+            from interface_morphique import hud_controller
+            hud_controller.dire_vous(cleaned)
+        except Exception:
+            pass
 
 
 def _set_voice_audio_input(status: dict[str, object]) -> None:
@@ -121,4 +127,20 @@ def _set_voice_state(state: VoiceState) -> bool:
         if state is not VoiceState.LISTENING:
             _voice_transcript = ""
     _write_state_to_file()
+    try:
+        from interface_morphique import hud_controller
+        etat_map = {
+            VoiceState.IDLE: "veille",
+            VoiceState.WAKING_UP: "ecoute",
+            VoiceState.LISTENING: "ecoute",
+            VoiceState.THINKING: "reflexion",
+            VoiceState.ACTION: "reflexion",
+            VoiceState.SPEAKING: "parole",
+            VoiceState.ERROR: "veille",
+        }
+        hud_controller.etat(etat_map.get(state, "veille"))
+        if state is VoiceState.WAKING_UP:
+            hud_controller.mettre_au_premier_plan()
+    except Exception:
+        pass
     return True

@@ -2,7 +2,7 @@ import queue
 import unittest
 import asyncio
 import threading
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, PropertyMock
 
 from jarvis.agent import EventBus
 import jarvis.agent as agent_module
@@ -107,7 +107,13 @@ class TestGreatOSBackgroundWiring(unittest.TestCase):
             return daemon
 
         async def exercise_lifespan():
+            from datashield.crypto import crypto_engine
+            server_module.WINDOWS_SESSION_LOCKED.clear()
+            from datashield.profile_gate import profile_execution_gate
+            profile_execution_gate.set_locked(False)
             with (
+                patch.object(server_module, "_windows_session_lifecycle_enabled", return_value=False),
+                patch.object(type(crypto_engine), "is_enabled", new_callable=PropertyMock, return_value=True),
                 patch.object(server_module, "initialiser", return_value={}),
                 patch.object(server_module, "get_llm_client", return_value=object()),
                 patch.object(server_module, "demarrer_agent_autonome", return_value=(object(), stop_event, None)),
@@ -119,6 +125,7 @@ class TestGreatOSBackgroundWiring(unittest.TestCase):
                 patch.object(server_module, "demarrer_ecoute_vocale"),
                 patch.object(server_module, "demarrer_ecoute_clap"),
                 patch.object(server_module, "_demarrer_cpu_sampler"),
+                patch.object(server_module, "_profile_workers_pending", return_value=False),
                 patch("interface_morphique.browser_overlay.start_browser_overlay", create=True),
             ):
                 async with server_module.lifespan(server_module.app):

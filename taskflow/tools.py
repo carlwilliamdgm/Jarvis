@@ -48,6 +48,7 @@ from progress_tracker.tools import (
     stats_objectifs_tool,
 )
 from syncsphere.tools import (
+    creer_snapshot_systeme_capability,
     creer_snapshot_systeme_tool,
     lister_snapshots_systeme_tool,
 )
@@ -691,14 +692,84 @@ def generer_rapport_conscience() -> str:
     return "\n".join(lignes)
 
 
-def analyser_insights() -> str:
-    """
-    Analyse et affiche les insights profonds basés sur la recherche sémantique.
-    
+def faire_briefing_quotidien() -> str:
+    """Génère le briefing quotidien de Jarvis : date/heure, événements, rappels, objectifs et état système.
+
     Returns:
-        Insights sur les connexions contextuelles et patterns profonds
+        Synthèse quotidienne formatée pour l'utilisateur ou la synthèse vocale.
     """
-    return analyser_insights()
+    decision = evaluate_capability(CapabilityRequest(
+        capability="system.daily_briefing",
+        risk=RiskLevel.READ,
+        resource="system",
+    ))
+    if decision.decision == SecurityDecision.DENY:
+        return resultat_erreur(decision.reason, categorie="defcon_blocked")
+
+    maintenant = datetime.now()
+    jours = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+    mois = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+    jour_nom = jours[maintenant.weekday()]
+    mois_nom = mois[maintenant.month - 1]
+
+    date_heure = (
+        f"Bonjour Sir. Il est {maintenant.strftime('%H:%M')}, "
+        f"nous sommes le {jour_nom} {maintenant.day} {mois_nom} {maintenant.year}."
+    )
+
+    lignes = [
+        "=== BRIEFING QUOTIDIEN ===",
+        date_heure,
+    ]
+
+    # 1. Événements du jour
+    lignes.append("\n--- ÉVÉNEMENTS DU JOUR ---")
+    try:
+        evts = evenements_aujourdhui()
+        if evts and str(evts).strip():
+            lignes.append(str(evts).strip())
+        else:
+            lignes.append("Aucun événement prévu aujourd'hui.")
+    except Exception as exc:
+        lignes.append(f"Événements indisponibles : {exc}")
+
+    # 2. Rappels calendrier imminents
+    lignes.append("\n--- RAPPELS CALENDRIER ---")
+    try:
+        rappels = rappels_calendrier()
+        if rappels and str(rappels).strip():
+            lignes.append(str(rappels).strip())
+        else:
+            lignes.append("Aucun rappel imminent.")
+    except Exception as exc:
+        lignes.append(f"Rappels indisponibles : {exc}")
+
+    # 3. Objectifs GreatOS
+    lignes.append("\n--- OBJECTIFS GREATOS ---")
+    try:
+        objectifs = lister_objectifs_tool()
+        if objectifs and str(objectifs).strip():
+            lignes.append(str(objectifs).strip())
+        else:
+            lignes.append("Aucun objectif actif.")
+    except Exception as exc:
+        lignes.append(f"Objectifs indisponibles : {exc}")
+
+    # 4. Rapport système
+    lignes.append("\n--- ÉTAT DU SYSTÈME ---")
+    try:
+        systeme = rapport_systeme()
+        if systeme and str(systeme).strip():
+            lignes.append(str(systeme).strip())
+        else:
+            lignes.append("Système nominal.")
+    except Exception as exc:
+        lignes.append(f"Rapport système indisponible : {exc}")
+
+    lignes.append("\n=== FIN DU BRIEFING ===")
+    return "\n".join(lignes)
+
+
 
 
 def enrichir_memoire() -> str:
@@ -1448,6 +1519,7 @@ OUTILS = LegacyToolRegistry({
     "rapport_performance": rapport_performance,
     "insights_apprentissage": insights_apprentissage,
     "generer_rapport_conscience": generer_rapport_conscience,
+    "faire_briefing_quotidien": faire_briefing_quotidien,
     "analyser_insights": analyser_insights,
     "enrichir_memoire": enrichir_memoire,
     "rechercher": rechercher,
@@ -1487,7 +1559,7 @@ OUTILS = LegacyToolRegistry({
     "lister_objectifs": lister_objectifs_tool,
     "mettre_a_jour_objectif": mettre_a_jour_objectif_tool,
     "stats_objectifs": stats_objectifs_tool,
-    "creer_snapshot_systeme": creer_snapshot_systeme_tool,
+    "creer_snapshot_systeme": creer_snapshot_systeme_capability,
     "lister_snapshots_systeme": lister_snapshots_systeme_tool,
     "consulter_etat_maison": consulter_etat_maison,
     "inspecter_architecture_greatos": inspecter_architecture_greatos,

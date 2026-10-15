@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 
 class RiskLevel(str, Enum):
@@ -69,6 +69,20 @@ class CapabilityResult:
     message: str
     data: dict[str, Any] = field(default_factory=dict)
     error_category: str | None = None
+    compensator: Callable[[], None] | None = field(default=None, repr=False, compare=False)
+    effect_status: str = "none"
+
+
+@dataclass(frozen=True)
+class CapabilityExecution:
+    """Internal result for a capability that can declare a safe compensation."""
+
+    message: str
+    status: CapabilityStatus = CapabilityStatus.SUCCESS
+    data: dict[str, Any] = field(default_factory=dict)
+    error_category: str | None = None
+    compensator: Callable[[], None] | None = field(default=None, repr=False, compare=False)
+    effect_status: str = "unknown"
 
 
 @dataclass(frozen=True)

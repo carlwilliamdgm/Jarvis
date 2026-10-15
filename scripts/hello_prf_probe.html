@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GreatOS — sonde WebAuthn PRF</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #10151c; color: #e9f0f8; }
+    body { max-width: 760px; margin: 8vh auto; padding: 0 24px; }
+    main { border: 1px solid #344354; border-radius: 16px; padding: 28px; background: #18212b; }
+    h1 { margin-top: 0; }
+    button { padding: 12px 18px; border: 0; border-radius: 8px; color: #07111a; background: #6fd3c1; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #output { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background: #0b1016; border-radius: 8px; min-height: 3em; }
+    .notice { color: #ffd68a; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sonde isolée Windows Hello / WebAuthn PRF</h1>
+  <p>Ce prototype crée un passkey temporaire sous l’origine locale <code>localhost</code>, puis demande deux signatures WebAuthn avec la même entrée PRF. Windows Hello peut demander une confirmation à chacune de ces étapes.</p>
+  <p class="notice"><strong>À savoir :</strong> le navigateur ne sait pas supprimer un passkey créé par cette page. Il restera associé à cette origine après le test; retire-le ensuite dans les paramètres Windows des passkeys si tu ne veux pas le conserver. Aucun secret PRF n’est affiché ni conservé par cette page.</p>
+  <button id="run">Créer le passkey et vérifier la PRF</button>
+  <h2>Résultat</h2>
+  <pre id="output" role="status" aria-live="polite">En attente. Clique pour lancer le probe.</pre>
+</main>
+<script>
+(() => {
+  "use strict";
+  const button = document.querySelector("#run");
+  const output = document.querySelector("#output");
+  const rpId = "localhost";
+  const text = (value) => { output.textContent = value; };
+  const randomBytes = (length) => crypto.getRandomValues(new Uint8Array(length));
+  const bytesEqual = (a, b) => {
+    if (a.byteLength !== b.byteLength) return false;
+    const left = new Uint8Array(a), right = new Uint8Array(b);
+    let diff = 0;
+    for (let i = 0; i < left.length; i++) diff |= left[i] ^ right[i];
+    return diff === 0;
+  };
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    let stage = "préparation";
+    try {
+      if (location.hostname !== rpId || !window.isSecureContext || !navigator.credentials?.create || !PublicKeyCredential) {
+        throw new Error("Ouvre cette page à http://localhost:8765/ dans un navigateur avec WebAuthn.");
+      }
+      stage = "création du passkey (RP ID localhost)";
+      text("Création du credential platform. Confirme Windows Hello si demandé…");
+      const salt = randomBytes(32);
+      const created = await navigator.credentials.create({ publicKey: {
+        challenge: randomBytes(32),
+        rp: { id: rpId, name: "GreatOS PRF Probe (local)" },
+        user: { id: randomBytes(32), name: "probe-local", displayName: "GreatOS PRF Probe" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "required", userVerification: "required" },
+        timeout: 120000,
+        extensions: { prf: { eval: { first: salt } } }
+      } });
+      if (!(created instanceof PublicKeyCredential)) throw new Error("Windows n’a retourné aucun credential.");
+      const creationPrf = created.getClientExtensionResults().prf;
+      if (creationPrf?.enabled !== true) {
+        throw new Error("Le credential a été créé, mais l’authenticator n’annonce pas la prise en charge PRF (prf.enabled absent ou faux). Le passkey créé reste dans Windows.");
+      }
+      const credentialId = created.rawId;
+      const request = async () => {
+        stage = "assertion Windows Hello avec extension PRF";
+        const assertion = await navigator.credentials.get({ publicKey: {
+          challenge: randomBytes(32), rpId, allowCredentials: [{ type: "public-key", id: credentialId }],
+          userVerification: "required", timeout: 120000,
+          extensions: { prf: { eval: { first: salt } } }
+        } });
+        const result = assertion?.getClientExtensionResults()?.prf?.results?.first;
+        if (!(result instanceof ArrayBuffer) || result.byteLength !== 32) {
+          throw new Error("La réponse WebAuthn ne contient pas de résultat PRF de 32 octets.");
+        }
+        return result;
+      };
+      let first;
+      let second;
+      try {
+        text("PRF annoncée. Signature Hello 1/2…");
+        first = await request();
+        text("Signature 1 reçue. Signature Hello 2/2…");
+        second = await request();
+        const equal = bytesEqual(first, second);
+        text([
+          equal ? "PASS : deux assertions Hello ont produit le même secret PRF." : "ÉCHEC : le secret PRF a changé entre deux assertions.",
+          `Credential PRF annoncé : ${creationPrf.enabled}`,
+          `Longueur résultat : ${first.byteLength} octets`,
+          "Le secret PRF n’a été ni affiché, ni dérivé en empreinte, ni écrit sur disque. Le passkey demeure dans Windows et doit être supprimé manuellement après le probe si tu ne veux pas le garder."
+        ].join("\n"));
+      } finally {
+        if (first) new Uint8Array(first).fill(0);
+        if (second) new Uint8Array(second).fill(0);
+      }
+    } catch (error) {
+      text(`ÉCHEC pendant ${stage} : ${error?.name || "Erreur"}: ${error?.message || String(error)}\nSi Windows a créé le passkey avant l’échec, il demeure enregistré et peut devoir être supprimé manuellement.`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>

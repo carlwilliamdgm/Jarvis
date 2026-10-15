@@ -53,6 +53,14 @@ GreatOS dispose d'un système d'amorçage dynamique **100% portable** (aucun che
 - **Statut du Système** : `python greatos.py status`
 - **Créer un Snapshot** : `python greatos.py snapshot`
 
+### Limite des snapshots
+
+SyncSphere chiffre et traite les snapshots en flux. La taille totale maximale
+est de **20 Gio par défaut**; configure-la au démarrage avec
+`GREATOS_MAX_SNAPSHOT_GIB` (entier positif), par exemple `30` pour 30 Gio.
+Les créations/restaurations refusent l'opération si l'espace disque disponible
+ne conserve pas la réserve de sécurité configurée par GreatOS.
+
 ---
 
 ## Vue d'ensemble détaillée
@@ -135,6 +143,10 @@ L'accès distant à Jarvis est intentionnel et doit passer par le réseau privé
 - L'API Jarvis ne doit jamais être exposée publiquement sur Internet.
 - Tailscale est le périmètre réseau attendu pour l'accès distant.
 - Une compromission du compte Tailscale autorisé doit être considérée comme une compromission de l'accès à Jarvis.
+- Toute écoute hors loopback exige un certificat TLS opérateur et sa clé privée. Le serveur refuse de démarrer si l'une des deux variables manque ou si les fichiers sont absents.
+- Le listener HTTPS impose TLS 1.3 minimum. Le certificat doit être approuvé par les clients et inclure `localhost` dans ses noms alternatifs pour le client desktop local.
+
+Configurer `GREATOS_TLS_CERT_FILE` et `GREATOS_TLS_KEY_FILE` dans `.env` avec les chemins PEM du certificat et de la clé provisionnés par l'opérateur. Le certificat doit être actuellement valide, correspondre à la clé privée et contenir `localhost` dans son SAN. Pour l'accès distant, provisionner aussi un SAN pour chaque nom ou IP que les clients utiliseront; `GREATOS_TLS_SERVER_NAME` permet de déclarer le nom DNS distant attendu. La chaîne doit être approuvée par Windows. Ne jamais ajouter la clé privée au dépôt ni la transmettre dans les journaux. Quand ces deux valeurs sont présentes, GreatOS et le client Electron utilisent HTTPS; sinon, seul un bind loopback est autorisé.
 
 ### Recommandations opérationnelles
 
@@ -159,7 +171,8 @@ Le Mode Stark est une fonctionnalité volontairement autonome :
 Le mécanisme de démarrage de référence est la tâche planifiée Windows `JarvisAgent` :
 
 - Elle s'exécute à l'ouverture de session avec les permissions du compte utilisateur.
-- Elle lance `uvicorn interface_morphique.server:app --host 0.0.0.0 --port 8000`.
+- Elle démarre `python -m interface_morphique.server`; l'adresse d'écoute est configurée par `JARVIS_API_HOST` et le port par `JARVIS_API_PORT`.
+- Un bind réseau requiert le certificat TLS opérateur décrit ci-dessus; un démarrage sans certificat est limité à loopback.
 - Le service Windows historique `JarvisService` est abandonné car ses permissions ne permettent pas le fonctionnement attendu de Jarvis.
 
 ## Capacités principales

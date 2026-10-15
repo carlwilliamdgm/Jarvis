@@ -3,6 +3,8 @@
 import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import datetime
+import importlib
+import importlib.util
 import json
 import os
 import threading
@@ -15,10 +17,24 @@ try:
 except ImportError:
     GroqClient = None
 
-try:
-    import ollama
-except ImportError:
-    ollama = None
+# Ollama construit son client HTTP/TLS dès son import. Ne charger le runtime
+# local qu'au moment du fallback, pour que le démarrage cloud-first ne dépende
+# ni de certificats Windows ni de la présence du service local.
+ollama = None
+_OLLAMA_LOAD_LOCK = threading.Lock()
+
+
+def _get_ollama():
+    global ollama
+    if ollama is not None:
+        return ollama
+    with _OLLAMA_LOAD_LOCK:
+        if ollama is not None:
+            return ollama
+        if importlib.util.find_spec("ollama") is None:
+            return None
+        ollama = importlib.import_module("ollama")
+        return ollama
 
 from context_engine.memory import (
     charger_memoire,
@@ -77,28 +93,38 @@ def get_modeles_openrouter() -> list[str]:
 
 
 def get_modele_local() -> str:
-    """Retourne le meilleur modèle Ollama disponible localement.
-    
-    Vérifie en priorité JARVIS_LOCAL_MODEL, puis cherche parmi les modèles
-    Ollama installés le plus performant disponible, avec repli prioritaire sur 3b/1.5b.
+    """Retourne le modèle local configuré sans contacter Ollama au démarrage.
+
+    L'auto-détection du daemon local se fait uniquement au moment où ce fallback
+    est utilisé; construire l'orchestrateur cloud ne doit pas initialiser Ollama.
     """
     pref = os.environ.get("JARVIS_LOCAL_MODEL")
     if pref:
         return pref
+    return MODELE_LOCAL
+
+
+def _detecter_modele_local_installe(ollama_module, fallback: str) -> str:
+    """Choisit un modèle déjà installé lors d'un usage explicite du fallback."""
+    if os.environ.get("JARVIS_LOCAL_MODEL"):
+        return fallback
     candidates = ["qwen2.5:3b", "qwen2.5:1.5b", "qwen2.5:0.5b", "jarvis-gc:latest", "qwen2.5:7b"]
     try:
-        if ollama is not None:
-            models_list = ollama.list()
-            raw = models_list.get("models", []) if isinstance(models_list, dict) else getattr(models_list, "models", [])
-            installed = [m.get("model", m.get("name", "")) if isinstance(m, dict) else getattr(m, "model", getattr(m, "name", "")) for m in raw]
-            installed = [m for m in installed if m]
-            for c in candidates:
-                for inst in installed:
-                    if c == inst or inst.startswith(c + ":") or inst == f"{c}:latest":
-                        return inst
+        models_list = ollama_module.list()
+        raw = models_list.get("models", []) if isinstance(models_list, dict) else getattr(models_list, "models", [])
+        installed = [
+            item.get("model", item.get("name", "")) if isinstance(item, dict)
+            else getattr(item, "model", getattr(item, "name", ""))
+            for item in raw
+        ]
+        installed = [name for name in installed if name]
+        for candidate in candidates:
+            for name in installed:
+                if name == candidate or name.startswith(candidate + ":") or name == f"{candidate}:latest":
+                    return name
     except Exception:
         pass
-    return MODELE_LOCAL
+    return fallback
 
 
 def prechauffer_modele_local(modele: Optional[str] = None) -> None:
@@ -107,8 +133,10 @@ def prechauffer_modele_local(modele: Optional[str] = None) -> None:
 
     def _worker():
         try:
-            if ollama is not None:
-                ollama.generate(model=nom, prompt="", keep_alive="5m")
+            ollama_module = _get_ollama()
+            if ollama_module is not None:
+                nom_installe = _detecter_modele_local_installe(ollama_module, nom)
+                ollama_module.generate(model=nom_installe, prompt="", keep_alive="5m")
         except Exception:
             pass
 
@@ -401,14 +429,14 @@ class OllamaProvider(BaseLLMProvider):
             modeles=[nom_modele],
             niveau="local",
         )
-        timeout_value = timeout if timeout is not None else os.environ.get("JARVIS_OLLAMA_TIMEOUT", "2.0")
+        timeout_value = timeout if timeout is not None else os.environ.get("JARVIS_OLLAMA_TIMEOUT", "15.0")
         try:
             self.timeout = max(0.1, float(timeout_value))
         except (TypeError, ValueError):
             self.timeout = 2.0
 
     def is_available(self) -> bool:
-        return ollama is not None
+        return importlib.util.find_spec("ollama") is not None
 
     def generate(
         self,
@@ -417,14 +445,16 @@ class OllamaProvider(BaseLLMProvider):
         config: Optional[LLMConfig] = None,
         **kwargs,
     ) -> LLMResponse:
-        if ollama is None:
+        ollama_module = _get_ollama()
+        if ollama_module is None:
             raise RuntimeError("Module ollama non disponible.")
+        modele = _detecter_modele_local_installe(ollama_module, modele)
         cfg = config or LLMConfig()
         options = {"think": False, "temperature": cfg.temperature}
         options.update(cfg.extra_options)
 
         def _call_ollama():
-            return ollama.chat(
+            return ollama_module.chat(
                 model=modele,
                 messages=messages,
                 options=options,
@@ -476,8 +506,6 @@ class JarvisGCProvider(BaseLLMProvider):
         self.default_timeout = float(os.environ.get("JARVIS_GC_TIMEOUT", timeout))
 
     def is_available(self, timeout: float = 1.5) -> bool:
-        if ollama is None:
-            return False
         try:
             req = urllib.request.Request(f"{self.host}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -493,7 +521,8 @@ class JarvisGCProvider(BaseLLMProvider):
         messages: list[dict],
         config: Optional[LLMConfig] = None,
     ) -> LLMResponse:
-        if ollama is None:
+        ollama_module = _get_ollama()
+        if ollama_module is None:
             raise RuntimeError("Module ollama non disponible pour Jarvis-GC.")
 
         cfg = config or LLMConfig(temperature=0.2)
@@ -526,7 +555,7 @@ class JarvisGCProvider(BaseLLMProvider):
         options.update(cfg.extra_options)
 
         def _do_chat():
-            client = ollama.Client(host=self.host) if hasattr(ollama, "Client") else ollama
+            client = ollama_module.Client(host=self.host) if hasattr(ollama_module, "Client") else ollama_module
             kwargs = {
                 "model": modele,
                 "messages": messages,

@@ -1,9 +1,14 @@
 """Tests d'intégration des 8 Modules du Cahier des Charges GreatOS."""
 
 import unittest
+import tempfile
+import threading
+from pathlib import Path
+from unittest.mock import patch
 
 # 1. Jarvis
 from core_intellect.intent_router import router_intention, IntentCategory
+from datashield.crypto import CryptoEngine
 
 # 2. Core Intellect
 from core_intellect.multi_criteria_decision import evaluer_decision, arbitrer_priorite_taches, PrioriteNiveau
@@ -61,7 +66,21 @@ class TestEightModulesCDC(unittest.TestCase):
 
     def test_module_5_progress_tracker_gamification(self):
         """Module 5 : Progress Tracker gère les points d'XP et les niveaux."""
-        res = attribuer_xp(50, raison="Test unitaire CDC")
+        import context_engine.user_profile as user_profile
+
+        temp_root = Path(__file__).resolve().parents[1] / ".pytest_temp"
+        temp_root.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=temp_root) as storage_dir:
+            original_profiles_dir = user_profile.PROFILES_DIR
+            user_profile.PROFILES_DIR = Path(storage_dir)
+            engine = CryptoEngine.__new__(CryptoEngine)
+            engine._passphrase = b"isolated-cdc-gamification-test-key"
+            engine._lock = threading.Lock()
+            try:
+                with patch.object(user_profile, "crypto_engine", engine), patch("datashield.crypto.PBKDF2_ITERATIONS", 1):
+                    res = attribuer_xp(50, raison="Test unitaire CDC", user_id="cdc_test")
+            finally:
+                user_profile.PROFILES_DIR = original_profiles_dir
         self.assertGreaterEqual(res["total_xp"], 50)
         self.assertIn("titre_rang", res)
 

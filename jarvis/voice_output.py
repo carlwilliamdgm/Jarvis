@@ -42,11 +42,47 @@ _PIPER_MODELS = {
 _PIPER_LOCK = threading.Lock()
 _PIPER_VOICE: Any | None = None
 _TTS_STOP_EVENT = threading.Event()
+_TTS_PLAYBACK_LOCK = threading.Lock()
+
+
+def _profile_is_locked() -> bool:
+    """Check the Windows session gate without importing the API at module load."""
+    try:
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        return WINDOWS_SESSION_LOCKED.is_set()
+    except Exception:
+        # Windows profile access must fail closed if the lifecycle gate cannot
+        # be inspected (for example during a partial server import).
+        return os.name == "nt"
+
+
+def _session_generation() -> int:
+    try:
+        from datashield.profile_gate import profile_execution_gate
+        return profile_execution_gate.generation
+    except Exception:
+        return -1 if os.name == "nt" else 0
 
 
 def demander_arret_tts() -> None:
     """Signalé par le listener unique lorsqu'une commande locale d'arrêt est entendue."""
     _TTS_STOP_EVENT.set()
+
+
+def arreter_toutes_sorties_tts() -> None:
+    """Atomically stop/purge both output backends for a Windows profile lock."""
+    _TTS_STOP_EVENT.set()
+    with _TTS_PLAYBACK_LOCK:
+        try:
+            import sounddevice as sd
+            sd.stop()
+        except Exception:
+            pass
+        try:
+            import winsound
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        except Exception:
+            pass
 
 
 def _piper_language() -> str:
@@ -98,7 +134,9 @@ def _synthesise(voice: Any, texte: str) -> tuple[np.ndarray, int]:
     return np.concatenate([chunk.audio_int16_array for chunk in chunks]), sample_rate
 
 
-def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
+def _lire_avec_interruption(
+    audio: np.ndarray, sample_rate: int, session_generation: int | None = None,
+) -> bool:
     """Joue le PCM Piper via sounddevice et interrompt sur commande stop locale.
 
     Pendant la lecture :
@@ -123,15 +161,22 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
     engine.set_mode(CaptureMode.SPEAKING)
 
     try:
-        sd.play(audio, sample_rate, blocking=False)
-        LOGGER.debug("Lecture audio démarrée")
+        with _TTS_PLAYBACK_LOCK:
+            generation_changed = (
+                session_generation is not None and _session_generation() != session_generation
+            )
+            if _TTS_STOP_EVENT.is_set() or _profile_is_locked() or generation_changed:
+                engine.set_mode(CaptureMode.NORMAL)
+                return False
+            sd.play(audio, sample_rate, blocking=False)
+            LOGGER.debug("Lecture audio démarrée")
     except Exception:
         LOGGER.exception("Erreur lors de la lecture audio")
         _TTS_STOP_EVENT.clear()
         engine.set_mode(CaptureMode.NORMAL)
         engine.drainer_et_ignorer_garde(350)
         _revenir_en_ecoute()
-        return
+        return False
 
     interrupted = False
     try:
@@ -176,6 +221,7 @@ def _lire_avec_interruption(audio: np.ndarray, sample_rate: int) -> None:
             LOGGER.info("Lecture interrompue - retour en écoute")
         else:
             LOGGER.info("Parole terminée - début écoute 25s")
+    return True
 
 def _nettoyer_markdown(texte: str) -> str:
     """Nettoie le texte pour la synthèse vocale en supprimant le markdown."""
@@ -193,23 +239,29 @@ def _nettoyer_markdown(texte: str) -> str:
 
 def _revenir_en_ecoute() -> None:
     """Parole/réflexion terminée → nouvelle fenêtre d'écoute de 25s."""
+    from jarvis.voice_state import VoiceState, _set_voice_state
+    if _profile_is_locked():
+        _set_voice_state(VoiceState.IDLE)
+        return
     from jarvis.voice_input import reset_listening_timer
 
     reset_listening_timer()
     _set_voice_state(VoiceState.LISTENING)
 
 
-def _speak_with_edge(texte: str) -> bool:
+def _speak_with_edge(texte: str, session_generation: int | None = None) -> bool:
     """Tente la synthèse cloud Edge-TTS; le pipeline Piper reste le repli local."""
     try:
         from jarvis.voice_output_edge import synthetiser_et_jouer
-        return bool(synthetiser_et_jouer(texte))
+        return bool(synthetiser_et_jouer(
+            texte, stop_event=_TTS_STOP_EVENT, session_generation=session_generation,
+        ))
     except Exception as exc:
         LOGGER.info("[voice_output] Bascule sur Piper local (%s)", type(exc).__name__)
     return False
 
 
-def parler_a_voix_haute(texte: str) -> None:
+def parler_a_voix_haute(texte: str, session_generation: int | None = None) -> None:
     """Lit ``texte`` avec Piper sans laisser une erreur TTS remonter au pipeline."""
     LOGGER.info(f"parler_a_voix_haute appelé avec texte: '{texte}', état actuel: {get_voice_state()}")
 
@@ -225,6 +277,11 @@ def parler_a_voix_haute(texte: str) -> None:
         return
 
     try:
+        if _profile_is_locked() or (
+            session_generation is not None and _session_generation() != session_generation
+        ):
+            _TTS_STOP_EVENT.set()
+            return
         # Un arrêt appartenant à une tentative précédente ne doit pas couper
         # cette nouvelle réponse. Les arrêts reçus pendant la synthèse restent
         # ensuite actifs jusqu'à la boucle de lecture.
@@ -234,9 +291,21 @@ def parler_a_voix_haute(texte: str) -> None:
 
         LOGGER.info("Transition THINKING -> SPEAKING")
         _set_voice_state(VoiceState.SPEAKING)
+        try:
+            from interface_morphique import hud_controller
+            hud_controller.dire_jarvis(texte_nettoye)
+        except Exception:
+            pass
+
+        # Recheck after the state transition to close the common lock/start race.
+        if _profile_is_locked() or (
+            session_generation is not None and _session_generation() != session_generation
+        ):
+            _TTS_STOP_EVENT.set()
+            return
 
         # 1. TTS cloud en préférence, avec Piper local comme repli.
-        played = _speak_with_edge(texte_nettoye)
+        played = _speak_with_edge(texte_nettoye, session_generation=session_generation)
 
         if played:
             # Edge-TTS joue via winsound et ne traverse pas la lecture Piper,
@@ -249,9 +318,11 @@ def parler_a_voix_haute(texte: str) -> None:
 
         # 2. Pipeline officiel Piper local si Edge-TTS non joué
         if not played:
+            if _TTS_STOP_EVENT.is_set() or _profile_is_locked():
+                return
             audio, sample_rate = _synthesise(get_piper_voice(), texte_nettoye)
             LOGGER.info("Audio synthétisé via Piper local, début lecture")
-            _lire_avec_interruption(audio, sample_rate)
+            _lire_avec_interruption(audio, sample_rate, session_generation=session_generation)
 
         if get_voice_state() is VoiceState.SPEAKING:
             _revenir_en_ecoute()

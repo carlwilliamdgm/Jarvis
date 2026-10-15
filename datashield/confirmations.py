@@ -96,6 +96,15 @@ class ConfirmationManager:
             pending.resolved.set()
             return "resolved"
 
+    def cancel_all(self) -> None:
+        """Deny and release every pending confirmation during a security lock."""
+        with self._lock:
+            pending_items = tuple(self._pending.values())
+            self._pending.clear()
+            for pending in pending_items:
+                pending.decision = False
+                pending.resolved.set()
+
     def _purge_expired_locked(self) -> None:
         now = datetime.now()
         expired = [

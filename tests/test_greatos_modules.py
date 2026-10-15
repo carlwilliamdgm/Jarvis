@@ -5,6 +5,8 @@ import unittest
 import tempfile
 from pathlib import Path
 import json
+import threading
+from unittest.mock import patch
 
 from greatos import GreatOSKernel
 from datashield.defcon import DefconManager, DefconLevel
@@ -134,7 +136,13 @@ class TestSyncSphereSnapshot(unittest.TestCase):
         self.tmp_dir.cleanup()
 
     def test_creer_et_lister_snapshot(self):
-        archive = self.snapshot_mgr.creer_snapshot(nom="test_snapshot.gos")
+        from datashield.crypto import CryptoEngine
+        engine = CryptoEngine.__new__(CryptoEngine)
+        engine._lock = threading.Lock()
+        engine._passphrase = b"unit-test-only-snapshot-key"
+        with patch("syncsphere.snapshot.crypto_engine", engine):
+            archive = self.snapshot_mgr.creer_snapshot(nom="test_snapshot.gos")
+            self.assertTrue(self.snapshot_mgr.est_chiffre(archive))
         self.assertTrue(archive.exists())
         self.assertTrue(archive.name.endswith(".gos"))
 
@@ -197,7 +205,9 @@ class TestSovereignModuleTools(unittest.TestCase):
         import syncsphere.tools as ss_tools
         self.assertTrue(callable(syncsphere.creer_snapshot_systeme_tool))
         self.assertTrue(callable(syncsphere.lister_snapshots_systeme_tool))
-        self.assertIs(OUTILS["creer_snapshot_systeme"], ss_tools.creer_snapshot_systeme_tool)
+        # The registry exposes the typed capability adapter; the public module
+        # export keeps the legacy string-returning compatibility function.
+        self.assertIs(OUTILS["creer_snapshot_systeme"], ss_tools.creer_snapshot_systeme_capability)
         self.assertIs(OUTILS["lister_snapshots_systeme"], ss_tools.lister_snapshots_systeme_tool)
 
     def test_interface_morphique_exports_and_identity(self):
@@ -219,6 +229,13 @@ class TestSovereignModuleTools(unittest.TestCase):
 
 class TestCapabilityOwnership(unittest.TestCase):
     """La façade historique doit exposer une propriété de module explicite."""
+
+    def setUp(self):
+        from datashield.profile_gate import profile_execution_gate
+        self._gate = profile_execution_gate
+        self._gate_was_locked = self._gate.locked
+        self._gate.set_locked(False)
+        self.addCleanup(self._gate.set_locked, self._gate_was_locked)
 
     def test_imported_domain_capabilities_keep_legacy_names_and_real_owners(self):
         owners = {
@@ -260,6 +277,21 @@ class TestCapabilityTraceability(unittest.TestCase):
     """Vérifie la traçabilité des CapabilityResult dans Context Engine (Étape 2)."""
 
     def setUp(self):
+        import tempfile
+        from context_engine import memory_store
+        from datashield.crypto import crypto_engine
+        test_temp_root = Path(__file__).resolve().parents[1] / ".pytest_temp"
+        test_temp_root.mkdir(exist_ok=True)
+        self._memory_temp = tempfile.TemporaryDirectory(dir=test_temp_root)
+        self.addCleanup(self._memory_temp.cleanup)
+        self._memory_path_patch = patch.object(memory_store, "MEMORY_PATH", Path(self._memory_temp.name) / "memory.json")
+        self._memory_path_patch.start()
+        self.addCleanup(self._memory_path_patch.stop)
+        self._previous_key = crypto_engine._passphrase
+        crypto_engine._set_passphrase("greatos-unit-test-key-not-for-production")
+        self.addCleanup(crypto_engine._set_passphrase, self._previous_key.decode("utf-8") if self._previous_key else "")
+        memory_store.reset_memory_stores()
+        self.addCleanup(memory_store.reset_memory_stores)
         self.backup = charger_memoire()
         sauvegarder_memoire({})
 

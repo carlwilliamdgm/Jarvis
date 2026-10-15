@@ -46,9 +46,13 @@ class FakePlayback:
 class VoiceOutputTests(unittest.TestCase):
     def setUp(self):
         _set_voice_state(VoiceState.IDLE)
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        WINDOWS_SESSION_LOCKED.clear()
 
     def tearDown(self):
         _set_voice_state(VoiceState.IDLE)
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        WINDOWS_SESSION_LOCKED.clear()
 
     def test_reads_text_and_returns_to_listening(self):
         voice = FakeEngine()

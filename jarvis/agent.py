@@ -3,7 +3,6 @@
 import concurrent.futures
 import json
 import logging
-import ollama
 import os
 import platform
 import queue
@@ -37,10 +36,16 @@ from rich.panel import Panel
 from rich.markup import escape
 
 # Force UTF-8 encoding to avoid charmap errors on Windows
-if sys.stdout.encoding != 'utf-8':
-    sys.stdout.reconfigure(encoding='utf-8')
-if sys.stderr.encoding != 'utf-8':
-    sys.stderr.reconfigure(encoding='utf-8')
+if sys.stdout is not None and getattr(sys.stdout, 'encoding', None) != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+if sys.stderr is not None and getattr(sys.stderr, 'encoding', None) != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 from datashield.error_classification import resultat_erreur
 from context_engine.memory import (
     charger_memoire,
@@ -92,6 +97,17 @@ register_global_bus(event_bus)
 # Une interaction modifie l'historique et peut appeler le LLM. Toutes les
 # surfaces (CLI, API et voix) passent donc par ce verrou process-level.
 INTERACTION_LOCK = threading.Lock()
+
+
+def _require_unlocked_profile() -> None:
+    """Reject new work while letting an already-admitted atomic action drain."""
+    try:
+        from interface_morphique.server import WINDOWS_SESSION_LOCKED
+        from datashield.profile_gate import profile_execution_gate
+    except ImportError:
+        return
+    if WINDOWS_SESSION_LOCKED.is_set() and not profile_execution_gate.current_action_admitted:
+        raise RuntimeError("Interaction interrompue : la session Windows est verrouillée.")
 
 # Verrou TTS : empêche deux lectures vocales simultanées sans bloquer le pipeline.
 # Acquis avec blocking=False — si le TTS est déjà en cours, la nouvelle synthèse
@@ -346,10 +362,18 @@ def arreter_daemon_proactif() -> None:
     global _proactive_daemon
     with _proactive_daemon_lock:
         daemon = _proactive_daemon
-        _proactive_daemon = None
     if daemon is not None:
         daemon.arreter()
         daemon.join(timeout=2.0)
+        if not daemon.is_alive():
+            with _proactive_daemon_lock:
+                if _proactive_daemon is daemon:
+                    _proactive_daemon = None
+
+
+def daemon_proactif_actif() -> bool:
+    with _proactive_daemon_lock:
+        return bool(_proactive_daemon is not None and _proactive_daemon.is_alive())
 
 
 def _confirmer_selon_confiance(capacite: str, description: str, user_id: str | None = None) -> bool:
@@ -1200,6 +1224,8 @@ def _formater_rapport_stark(objectif: str, rapports_segments: list[dict]) -> str
 
 def parler(message: str, historique: list, memoire: dict, user_id: str | None = None) -> tuple[str, bool]:
     global mode_action_force, ATTENTE_DETAILS_STARK
+    from datashield.profile_gate import profile_execution_gate
+    interaction_generation = profile_execution_gate.generation
 
     # ── Gestion commandes de mode ─────────────────────────────────────────────
     handled_autodestruct, reponse_autodestruct, action_autodestruct = _gerer_autodestruction(message)
@@ -1294,6 +1320,7 @@ def parler(message: str, historique: list, memoire: dict, user_id: str | None = 
     # Exécuter les actions retournées par Core Intellect
     resultats_outils = []
     for action in actions:
+        _require_unlocked_profile()
         outil = action.get("outil")
         args = action.get("args", {})
         if outil and outil not in OUTILS:
@@ -1322,67 +1349,79 @@ def parler(message: str, historique: list, memoire: dict, user_id: str | None = 
                 })
                 continue
             event_bus.emit("tool_started", {"outil": outil, "args": args, "mode": "normal"})
-            try:
-                resultat = execute_capability(OUTILS, outil, args)
-                contexte = "mode_action" if etait_mode_action_force else "conversation"
-                journaliser_resultat_capacite(resultat, arguments=args, contexte=contexte)
-                enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
-                _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
+            with profile_execution_gate.action_step(interaction_generation) as step_admitted:
+                if not step_admitted:
+                    break
+                try:
+                    resultat = execute_capability(OUTILS, outil, args)
+                    if profile_execution_gate.locked or profile_execution_gate.generation != interaction_generation:
+                        resultats_outils.append("Étape terminée; résultat masqué car la session Windows est verrouillée.")
+                        break
+                    contexte = "mode_action" if etait_mode_action_force else "conversation"
+                    journaliser_resultat_capacite(resultat, arguments=args, contexte=contexte)
+                    enregistrer_impact_capacite(resultat, goal_id=args.get("goal_id"))
+                    _journaliser_resultat_si_erreur(resultat, contexte, message, outil, args)
 
-                # ── REGISTRE D'AUTONOMIE PROGRESSIVE (Jalon 5) ────────────────────────
-                try:
-                    from context_engine.trust_registry import enregistrer_resultat_action
-                    enregistrer_resultat_action(outil, not resultat_est_erreur(resultat), user_id=user_id)
-                except Exception:
-                    pass
-                # ───────────────────────────────────────────────────────────────────────
+                    # ── REGISTRE D'AUTONOMIE PROGRESSIVE (Jalon 5) ────────────────────────
+                    try:
+                        from context_engine.trust_registry import enregistrer_resultat_action
+                        enregistrer_resultat_action(outil, not resultat_est_erreur(resultat), user_id=user_id)
+                    except Exception:
+                        pass
+                    # ───────────────────────────────────────────────────────────────────────
 
-                resultats_outils.append(resultat.message)
-                event_bus.emit(
-                    "tool_failed" if resultat_est_erreur(resultat) else "tool_completed",
-                    {
-                        "outil": outil,
-                        "args": args,
-                        "resultat": resultat.message,
-                        "capability": resultat.capability,
-                        "status": resultat.status.value if hasattr(resultat.status, "value") else str(resultat.status),
-                        "mode": "normal",
-                    },
-                )
-            except TypeError as e:
-                erreur = f"Erreur outil {outil} : {e}"
-                journaliser_erreur_systeme(
-                    resultat_erreur(erreur, categorie="erreur_technique_outil"),
-                    contexte="mode_action" if etait_mode_action_force else "conversation",
-                    objectif=message,
-                    outil=outil,
-                    args=args,
-                    resultat_brut=erreur,
-                )
-                try:
-                    from context_engine.trust_registry import enregistrer_resultat_action
-                    enregistrer_resultat_action(outil, False, user_id=user_id)
-                except Exception:
-                    pass
-                resultats_outils.append(erreur)
-                event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
-            except Exception as e:
-                erreur = f"Erreur outil {outil} : {e}"
-                journaliser_erreur_systeme(
-                    resultat_erreur(erreur, e),
-                    contexte="mode_action" if etait_mode_action_force else "conversation",
-                    objectif=message,
-                    outil=outil,
-                    args=args,
-                    resultat_brut=erreur,
-                )
-                try:
-                    from context_engine.trust_registry import enregistrer_resultat_action
-                    enregistrer_resultat_action(outil, False, user_id=user_id)
-                except Exception:
-                    pass
-                resultats_outils.append(erreur)
-                event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
+                    resultats_outils.append(resultat.message)
+                    event_bus.emit(
+                        "tool_failed" if resultat_est_erreur(resultat) else "tool_completed",
+                        {
+                            "outil": outil,
+                            "args": args,
+                            "resultat": resultat.message,
+                            "capability": resultat.capability,
+                            "status": resultat.status.value if hasattr(resultat.status, "value") else str(resultat.status),
+                            "mode": "normal",
+                        },
+                    )
+                except TypeError as e:
+                    if profile_execution_gate.locked or profile_execution_gate.generation != interaction_generation:
+                        resultats_outils.append("Étape interrompue; résultat masqué car la session Windows est verrouillée.")
+                        break
+                    erreur = f"Erreur outil {outil} : {e}"
+                    journaliser_erreur_systeme(
+                        resultat_erreur(erreur, categorie="erreur_technique_outil"),
+                        contexte="mode_action" if etait_mode_action_force else "conversation",
+                        objectif=message,
+                        outil=outil,
+                        args=args,
+                        resultat_brut=erreur,
+                    )
+                    try:
+                        from context_engine.trust_registry import enregistrer_resultat_action
+                        enregistrer_resultat_action(outil, False, user_id=user_id)
+                    except Exception:
+                        pass
+                    resultats_outils.append(erreur)
+                    event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
+                except Exception as e:
+                    if profile_execution_gate.locked or profile_execution_gate.generation != interaction_generation:
+                        resultats_outils.append("Étape interrompue; résultat masqué car la session Windows est verrouillée.")
+                        break
+                    erreur = f"Erreur outil {outil} : {e}"
+                    journaliser_erreur_systeme(
+                        resultat_erreur(erreur, e),
+                        contexte="mode_action" if etait_mode_action_force else "conversation",
+                        objectif=message,
+                        outil=outil,
+                        args=args,
+                        resultat_brut=erreur,
+                    )
+                    try:
+                        from context_engine.trust_registry import enregistrer_resultat_action
+                        enregistrer_resultat_action(outil, False, user_id=user_id)
+                    except Exception:
+                        pass
+                    resultats_outils.append(erreur)
+                    event_bus.emit("tool_failed", {"outil": outil, "args": args, "resultat": erreur, "mode": "normal"})
 
     if resultats_outils:
         reponse_finale = f"{reponse_naturelle}\n\n" + "\n".join(resultats_outils)
@@ -1407,6 +1446,7 @@ def orchestrer_plan(
     plan: ExecutionPlan,
     memoire: dict,
     on_event: Callable[[str, dict], None] | None = None,
+    expected_generation: int | None = None,
 ) -> list[CapabilityResult]:
     """Orchestre un plan d'exécution sans logique métier.
 
@@ -1437,8 +1477,35 @@ def orchestrer_plan(
     resultats: list[CapabilityResult] = []
     etapes_reussies: set[str] = set()
     etapes_echouees: set[str] = set()
+    compensations: list[tuple[str, Callable[[], None]]] = []
+    etapes_sans_compensateur: list[dict[str, str]] = []
+    effets_partiels: list[dict[str, str]] = []
+    etape_en_echec: str | None = None
+    etapes_traitees: set[str] = set()
 
+    from datashield.profile_gate import profile_execution_gate
+    plan_generation = (
+        profile_execution_gate.generation
+        if expected_generation is None
+        else expected_generation
+    )
     for step in plan.steps:
+        if profile_execution_gate.locked or profile_execution_gate.generation != plan_generation:
+            break
+        etapes_traitees.add(step.id)
+        try:
+            _require_unlocked_profile()
+        except RuntimeError as exc:
+            aborted = CapabilityResult(
+                capability=step.capability,
+                status=CapabilityStatus.FAILED,
+                message=str(exc),
+                error_category="profil_verrouille",
+            )
+            resultats.append(aborted)
+            etapes_echouees.add(step.id)
+            etape_en_echec = step.id
+            break
         # Vérification des dépendances
         dependances_manquantes = [dep for dep in step.dependencies if dep not in etapes_reussies]
         if dependances_manquantes:
@@ -1451,6 +1518,7 @@ def orchestrer_plan(
             )
             resultats.append(res_dep)
             etapes_echouees.add(step.id)
+            etape_en_echec = step.id
             emitter(
                 "step_failed",
                 {
@@ -1460,7 +1528,7 @@ def orchestrer_plan(
                     "status": "failed",
                 },
             )
-            continue
+            break
 
         emitter(
             "step_started",
@@ -1501,6 +1569,7 @@ def orchestrer_plan(
             enregistrer_impact_capacite(res_deny, goal_id=step.arguments.get("goal_id"))
             resultats.append(res_deny)
             etapes_echouees.add(step.id)
+            etape_en_echec = step.id
             emitter(
                 "step_failed",
                 {
@@ -1510,7 +1579,7 @@ def orchestrer_plan(
                     "status": "denied",
                 },
             )
-            continue
+            break
 
         confirmation_deja_obtenue = False
         if policy_decision.decision == SecurityDecision.CONFIRM and not est_mode_stark_actif():
@@ -1525,6 +1594,7 @@ def orchestrer_plan(
                 journaliser_resultat_capacite(res_cancel, arguments=step.arguments, contexte="orchestrateur_plan")
                 resultats.append(res_cancel)
                 etapes_echouees.add(step.id)
+                etape_en_echec = step.id
                 emitter(
                     "step_failed",
                     {
@@ -1534,7 +1604,7 @@ def orchestrer_plan(
                         "status": "cancelled",
                     },
                 )
-                continue
+                break
             confirmation_deja_obtenue = True
 
         if not confirmation_deja_obtenue and not est_mode_stark_actif() and not _confirmer_selon_confiance(
@@ -1551,74 +1621,163 @@ def orchestrer_plan(
             journaliser_resultat_capacite(res_cancel, arguments=step.arguments, contexte="orchestrateur_plan")
             resultats.append(res_cancel)
             etapes_echouees.add(step.id)
+            etape_en_echec = step.id
             emitter("step_failed", {
                 "step_id": step.id,
                 "capability": step.capability,
                 "resultat": res_cancel.message,
                 "status": "cancelled",
             })
-            continue
+            break
 
-        # Exécution souveraine via dispatcher
-        emitter(
-            "tool_started",
-            {
-                "outil": step.capability,
-                "args": step.arguments,
-                "step_id": step.id,
-                "mode": "plan",
-            },
-        )
-        res_exec = execute_capability(OUTILS, step.capability, step.arguments)
-        journaliser_resultat_capacite(res_exec, arguments=step.arguments, contexte="orchestrateur_plan")
-        enregistrer_impact_capacite(res_exec, goal_id=step.arguments.get("goal_id"))
-        if res_exec.error_category == "capacite_manquante":
+        with profile_execution_gate.action_step(plan_generation) as step_admitted:
+            if not step_admitted:
+                break
+            # Exécution souveraine via dispatcher
+            emitter(
+                "tool_started",
+                {
+                    "outil": step.capability,
+                    "args": step.arguments,
+                    "step_id": step.id,
+                    "mode": "plan",
+                },
+            )
+            res_exec = execute_capability(OUTILS, step.capability, step.arguments)
+            if profile_execution_gate.locked or profile_execution_gate.generation != plan_generation:
+                # The admitted capability has drained. Do not persist or
+                # publish its potentially sensitive result after lock.
+                resultats.append(CapabilityResult(
+                    capability=step.capability,
+                    status=CapabilityStatus.FAILED,
+                    message="Étape terminée; résultat masqué car la session Windows est verrouillée.",
+                    error_category="profil_verrouille",
+                ))
+                break
+            journaliser_resultat_capacite(res_exec, arguments=step.arguments, contexte="orchestrateur_plan")
+            enregistrer_impact_capacite(res_exec, goal_id=step.arguments.get("goal_id"))
+            if res_exec.error_category == "capacite_manquante":
+                try:
+                    from learning.capability_proposals import proposer_nouvelle_capacite
+                    proposal = proposer_nouvelle_capacite(
+                        step.capability,
+                        f"Étape de planification demandée : {step.description or plan.goal}",
+                    )
+                    emitter("capability_proposal", {
+                        "proposal_id": proposal["id"],
+                        "capability": proposal["capability_requested"],
+                        "status": proposal["status"],
+                    })
+                except Exception as exc:
+                    logger.warning("Could not record missing planned capability: %s", exc)
             try:
-                from learning.capability_proposals import proposer_nouvelle_capacite
-                proposal = proposer_nouvelle_capacite(
+                from context_engine.trust_registry import enregistrer_resultat_action
+                enregistrer_resultat_action(
                     step.capability,
-                    f"Étape de planification demandée : {step.description or plan.goal}",
+                    res_exec.status == CapabilityStatus.SUCCESS,
+                    user_id=memoire.get("user_id"),
                 )
-                emitter("capability_proposal", {
-                    "proposal_id": proposal["id"],
-                    "capability": proposal["capability_requested"],
-                    "status": proposal["status"],
-                })
             except Exception as exc:
-                logger.warning("Could not record missing planned capability: %s", exc)
-        try:
-            from context_engine.trust_registry import enregistrer_resultat_action
-            enregistrer_resultat_action(
-                step.capability,
-                res_exec.status == CapabilityStatus.SUCCESS,
-                user_id=memoire.get("user_id"),
-            )
-        except Exception as exc:
-            logger.warning("Could not update trust registry for %s: %s", step.capability, exc)
-        resultats.append(res_exec)
+                logger.warning("Could not update trust registry for %s: %s", step.capability, exc)
+            resultats.append(res_exec)
 
-        if res_exec.status == CapabilityStatus.SUCCESS:
-            etapes_reussies.add(step.id)
-            emitter(
-                "step_completed",
-                {
-                    "step_id": step.id,
-                    "capability": step.capability,
-                    "resultat": res_exec.message,
-                    "status": "success",
-                },
-            )
-        else:
-            etapes_echouees.add(step.id)
-            emitter(
-                "step_failed",
-                {
-                    "step_id": step.id,
-                    "capability": step.capability,
-                    "resultat": res_exec.message,
-                    "status": res_exec.status.value,
-                },
-            )
+            if res_exec.status == CapabilityStatus.SUCCESS:
+                etapes_reussies.add(step.id)
+                if res_exec.compensator is not None:
+                    compensations.append((step.id, res_exec.compensator))
+                elif res_exec.effect_status != "none":
+                    etapes_sans_compensateur.append({
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "status": "aucun compensateur sûr déclaré; un effet peut persister",
+                    })
+                emitter(
+                    "step_completed",
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "resultat": res_exec.message,
+                        "status": "success",
+                    },
+                )
+            else:
+                etapes_echouees.add(step.id)
+                etape_en_echec = step.id
+                if res_exec.effect_status != "none":
+                    effets_partiels.append({
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "details": f"État de l’effet après échec : {res_exec.effect_status}. {res_exec.message}",
+                    })
+                for effect in res_exec.data.get("uncompensated_effects", []):
+                    if isinstance(effect, dict):
+                        effets_partiels.append({
+                            "step_id": step.id,
+                            "capability": step.capability,
+                            "details": str(effect.get("details") or effect),
+                        })
+                emitter(
+                    "step_failed",
+                    {
+                        "step_id": step.id,
+                        "capability": step.capability,
+                        "resultat": res_exec.message,
+                        "status": res_exec.status.value,
+                    },
+                )
+
+                break
+
+    # A failure aborts further execution. Still report all pending steps whose
+    # dependencies can no longer be satisfied, including transitive dependents.
+    # Independent pending steps remain unexecuted and are covered by the plan's
+    # interrupted status rather than being mislabeled as dependency failures.
+    for pending_step in plan.steps:
+        if pending_step.id in etapes_traitees:
+            continue
+        failed_dependencies = [dep for dep in pending_step.dependencies if dep in etapes_echouees]
+        if not failed_dependencies:
+            continue
+        message = (
+            f"Dépendances non satisfaites pour {pending_step.id} : "
+            f"{', '.join(failed_dependencies)}"
+        )
+        resultats.append(CapabilityResult(
+            capability=pending_step.capability,
+            status=CapabilityStatus.FAILED,
+            message=message,
+            error_category="dependance_non_satisfaite",
+        ))
+        etapes_echouees.add(pending_step.id)
+        emitter("step_failed", {
+            "step_id": pending_step.id,
+            "capability": pending_step.capability,
+            "resultat": message,
+            "status": "failed",
+        })
+
+    rollback_steps: list[dict[str, str]] = []
+    rollback_status = "not_required"
+    if etape_en_echec is not None:
+        for step_id, compensate in reversed(compensations):
+            emitter("step_rollback_started", {"step_id": step_id, "status": "running"})
+            try:
+                compensate()
+                rollback_steps.append({"step_id": step_id, "status": "completed"})
+                emitter("step_rollback_completed", {"step_id": step_id, "status": "success"})
+            except Exception as exc:
+                details = f"{type(exc).__name__}: {exc}"
+                rollback_steps.append({"step_id": step_id, "status": "failed", "details": details})
+                effets_partiels.append({
+                    "step_id": step_id,
+                    "capability": "compensation",
+                    "details": details,
+                })
+                emitter("step_rollback_failed", {"step_id": step_id, "status": "failed", "resultat": details})
+        if effets_partiels or etapes_sans_compensateur or any(item["status"] == "failed" for item in rollback_steps):
+            rollback_status = "partial"
+        elif rollback_steps:
+            rollback_status = "completed"
 
     succes_global = len(etapes_echouees) == 0 and len(resultats) == len(plan.steps)
     emitter(
@@ -1629,6 +1788,13 @@ def orchestrer_plan(
             "steps_succeeded": len(etapes_reussies),
             "steps_failed": len(etapes_echouees),
             "status": "completed" if succes_global else "interrupted",
+            "rollback": {
+                "status": rollback_status,
+                "failed_step_id": etape_en_echec,
+                "steps": rollback_steps,
+                "steps_without_compensator": etapes_sans_compensateur,
+                "effects_not_reverted": effets_partiels,
+            },
         },
     )
 
@@ -1684,13 +1850,17 @@ def executer_interaction_utilisateur(
     Le TTS est lancé dans un thread daemon après la libération de INTERACTION_LOCK,
     de sorte que le pipeline n'est plus sérialisé par la durée de la lecture audio.
     """
+    from datashield.profile_gate import profile_execution_gate
+    session_generation = profile_execution_gate.generation
     acquired = INTERACTION_LOCK.acquire(blocking=not ignorer_si_occupe)
     if not acquired:
         return None
     result: tuple[str, bool]
     try:
+        _require_unlocked_profile()
         message_prepare = preparer_message_utilisateur(message)
         reponse, intention_action = executer_agent(message_prepare, historique, memoire)
+        _require_unlocked_profile()
         texte = reponse if isinstance(reponse, str) else str(reponse)
         execute_capability(
             OUTILS,
@@ -1709,7 +1879,7 @@ def executer_interaction_utilisateur(
         # Décharger la synthèse vocale dans un thread daemon pour ne pas bloquer
         # le pipeline principal. _TTS_LOCK (non-bloquant) empêche les lectures
         # simultanées : si une lecture est en cours, la nouvelle est ignorée.
-        def _tts_worker(texte_a_lire: str) -> None:
+        def _tts_worker(texte_a_lire: str, expected_generation: int) -> None:
             from jarvis.voice_output import parler_a_voix_haute
             acquired_tts = _TTS_LOCK.acquire(blocking=False)
             if not acquired_tts:
@@ -1718,13 +1888,13 @@ def executer_interaction_utilisateur(
             try:
                 # Toujours appeler parler_a_voix_haute, même avec texte vide
                 # pour gérer la transition THINKING -> LISTENING
-                parler_a_voix_haute(texte_a_lire or "")
+                parler_a_voix_haute(texte_a_lire or "", session_generation=expected_generation)
             finally:
                 _TTS_LOCK.release()
 
         threading.Thread(
             target=_tts_worker,
-            args=(result[0],),
+            args=(result[0], session_generation),
             name="tts-worker",
             daemon=True,
         ).start()
@@ -1890,6 +2060,7 @@ class AutonomousAgent:
         executed_actions = []
         path_keys = {"chemin", "path", "dossier", "fichier"}
         for action in actions:
+            _require_unlocked_profile()
             outil = action.get("outil")
             args = action.get("args", {})
             if outil not in self.outils or not isinstance(args, dict):

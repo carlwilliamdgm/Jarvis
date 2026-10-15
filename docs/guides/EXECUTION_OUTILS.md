@@ -329,6 +329,7 @@ La liste reelle est dynamique. Utiliser `lire_capacites()` ou `core_intellect.to
 
 - `rapport_systeme()` - Génère un rapport complet de l'état système.
 - `tendances_systeme(heures=24)` - Analyse les tendances système sur une période donnée.
+- `faire_briefing_quotidien()` - Génère le briefing quotidien complet : heure/date, événements du jour, rappels calendrier, objectifs actifs et état système. Idéal pour le démarrage de journée ("Hey Jarvis, brief du matin").
 
 ### Réseau & Tailscale
 

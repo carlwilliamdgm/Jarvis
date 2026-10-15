@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from context_engine.encrypted_user_store import append_encrypted_jsonl, load_encrypted_json, save_encrypted_json
 from context_engine.trust_registry import PROFILES_DIR
-from context_engine.user_profile import charger_profil, resoudre_utilisateur_actif, sauvegarder_profil
+from context_engine.user_profile import resoudre_utilisateur_actif, transaction_profil
 
 
 def consolider_apprentissages(user_id: str | None = None, maintenant: datetime | None = None) -> dict:
@@ -49,9 +49,8 @@ def consolider_apprentissages(user_id: str | None = None, maintenant: datetime |
         "domaines_observes": tendances,
     }
 
-    profile = charger_profil(user)
-    profile["apprentissages_consolides"] = snapshot
-    sauvegarder_profil(profile, user)
+    with transaction_profil(user) as profile:
+        profile["apprentissages_consolides"] = snapshot
 
     log_path = PROFILES_DIR / user / "consolidation.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)

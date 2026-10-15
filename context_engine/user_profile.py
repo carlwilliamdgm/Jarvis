@@ -8,9 +8,12 @@ une API pour résoudre, charger et sauvegarder les profils utilisateur.
 """
 
 import getpass
+from contextlib import contextmanager
+from functools import wraps
 import json
 import os
 import re
+import threading
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +26,25 @@ from datashield.crypto import crypto_engine
 # Chemin du dossier des profils
 PROFILES_DIR = JARVIS_DIR / "learning" / "profiles"
 _ENCRYPTED_PROFILE_KEY = "__greatos_encrypted_profile_v1__"
+_PROFILE_IO_LOCK = threading.RLock()
+
+
+def _synchronized_profile_io(function):
+    @wraps(function)
+    def synchronized(*args, **kwargs):
+        with _PROFILE_IO_LOCK:
+            return function(*args, **kwargs)
+    return synchronized
+
+
+@contextmanager
+def transaction_profil(user_id: str | None = None):
+    """Sérialise une modification read/modify/write du profil chiffré."""
+    resolved_user_id = resoudre_utilisateur_actif(user_id)
+    with _PROFILE_IO_LOCK:
+        profile = charger_profil(resolved_user_id)
+        yield profile
+        sauvegarder_profil(profile, resolved_user_id)
 
 
 def _slug_user_id(user_id: str) -> str:
@@ -126,6 +148,7 @@ def _chemin_profil(user_id: str) -> Path:
     return PROFILES_DIR / user_id / "profile.json"
 
 
+@_synchronized_profile_io
 def charger_profil(user_id: str | None = None) -> dict:
     """
     Charge le profil d'un utilisateur depuis le disque.
@@ -174,6 +197,7 @@ def charger_profil(user_id: str | None = None) -> dict:
     return profil
 
 
+@_synchronized_profile_io
 def sauvegarder_profil(profil: dict, user_id: str | None = None) -> None:
     """
     Sauvegarde le profil d'un utilisateur sur le disque.
@@ -227,18 +251,14 @@ def mettre_a_jour_directive_profil(cle: str, valeur: str, user_id: str | None = 
         valeur: La valeur/contenu de la directive.
         user_id: Identifiant utilisateur optionnel. Si None, résolu dynamiquement.
     """
-    profil = charger_profil(user_id)
-    
-    if "directives_personnelles" not in profil:
-        profil["directives_personnelles"] = {}
-    
-    profil["directives_personnelles"][cle] = valeur
-    
-    # Incrémenter le compteur d'interactions
-    if "rythme_activite" in profil:
-        profil["rythme_activite"]["nombre_interactions"] = profil["rythme_activite"].get("nombre_interactions", 0) + 1
-    
-    sauvegarder_profil(profil, user_id)
+    with transaction_profil(user_id) as profil:
+        if "directives_personnelles" not in profil:
+            profil["directives_personnelles"] = {}
+        profil["directives_personnelles"][cle] = valeur
+
+        # Incrémenter le compteur d'interactions
+        if "rythme_activite" in profil:
+            profil["rythme_activite"]["nombre_interactions"] = profil["rythme_activite"].get("nombre_interactions", 0) + 1
 
 
 def obtenir_contexte_profil_compact(user_id: str | None = None) -> str:

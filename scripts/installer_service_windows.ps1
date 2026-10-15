@@ -14,13 +14,30 @@ $taskName    = "JarvisAgent"
 $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 
 function Test-GreatOSReady {
+    $apiScheme = "http"
+    $tlsCert = $null
+    $tlsKey = $null
+    $envFile = Join-Path $projectRoot ".env"
+    if (Test-Path $envFile) {
+        foreach ($line in Get-Content $envFile) {
+            if ($line -match '^\s*GREATOS_TLS_CERT_FILE\s*=\s*(.+)$') { $tlsCert = $Matches[1].Trim().Trim('"') }
+            if ($line -match '^\s*GREATOS_TLS_KEY_FILE\s*=\s*(.+)$') { $tlsKey = $Matches[1].Trim().Trim('"') }
+        }
+    }
+    if ($tlsCert -and $tlsKey) { $apiScheme = "https" }
     try {
         $response = Invoke-WebRequest `
-            -Uri "http://127.0.0.1:8000/jarvis/status" `
+            -Uri "$($apiScheme)://localhost:8000/openapi.json" `
             -UseBasicParsing `
             -TimeoutSec 1 `
             -ErrorAction Stop
-        return $response.StatusCode -eq 200
+        if ($response.StatusCode -ne 200) { return $false }
+        $paths = ($response.Content | ConvertFrom-Json).paths
+        return ($null -ne $paths) `
+            -and ($null -ne $paths.PSObject.Properties['/jarvis/onboarding']) `
+            -and ($null -ne $paths.PSObject.Properties['/jarvis/security/hello/enrollment/key-confirm']) `
+            -and ($null -ne $paths.PSObject.Properties['/jarvis/security/unlock/hello/verify']) `
+            -and ($null -ne $paths.PSObject.Properties['/jarvis/security/unlock/dpapi'])
     } catch {
         return $false
     }
@@ -109,9 +126,9 @@ if (Test-Path $updateScript) {
             -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$updateScript`"" `
             -WorkingDirectory $projectRoot
 
-        # Déclencheur : Quotidien à 04:00, répété toutes les 12 heures (04:00 et 16:00)
-        $updateTrigger = New-ScheduledTaskTrigger -Daily -At 4am
-        $updateTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At 4am -RepetitionInterval (New-TimeSpan -Hours 12) -RepetitionDuration (New-TimeSpan -Days 1)).Repetition
+        # Déclencheur : Répétition toutes les 12 heures indéfiniment
+        $updateTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Hours 12)
+        $updateTrigger.Repetition.Duration = ""
 
         $updateSettings = New-ScheduledTaskSettingsSet `
             -AllowStartIfOnBatteries `
@@ -127,10 +144,10 @@ if (Test-Path $updateScript) {
             -Trigger $updateTrigger `
             -Settings $updateSettings `
             -Principal $updatePrincipal `
-            -Description "Mise à jour automatique de GreatOS 2 fois par jour (toutes les 12 heures)." `
+            -Description "Recherche et application des mises à jour de GreatOS toutes les 12 heures." `
             | Out-Null
 
-        Write-Host "[OK] Tâche de mise à jour automatique '$updateTaskName' configurée (2 fois par jour / 12h)." -ForegroundColor Green
+        Write-Host "[OK] Tâche de mise à jour automatique '$updateTaskName' configurée (toutes les 12 heures)." -ForegroundColor Green
     } catch {
         Write-Host "[AVERTISSEMENT] Impossible de créer la tâche '$updateTaskName' : $_" -ForegroundColor Yellow
     }
@@ -154,7 +171,7 @@ if ($DemarrerImmediatement) {
         $startupLog = Join-Path $projectRoot "logs\uvicorn.err.log"
         throw "GreatOS API did not become ready within 30 seconds. Check $startupLog"
     }
-    Write-Host "[OK] GreatOS API répond sur http://127.0.0.1:8000/jarvis/status." -ForegroundColor Green
+    Write-Host "[OK] GreatOS API courant confirmé par son contrat OpenAPI." -ForegroundColor Green
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan

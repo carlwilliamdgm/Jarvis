@@ -10,6 +10,7 @@ Permet à GreatOS de tourner silencieusement en tâche de fond comme une vraie s
 from __future__ import annotations
 
 import os
+import json
 import signal
 import subprocess
 import sys
@@ -41,8 +42,12 @@ def trouver_processus_sur_port(port: int = PORT_SERVICE) -> int | None:
     return None
 
 
-def tester_reponse_http(port: int = PORT_SERVICE, timeout: float = 1.0) -> bool:
-    """Vérifie que l'API GreatOS répond réellement sur son endpoint de statut."""
+def tester_reponse_http(port: int = PORT_SERVICE, timeout: float = 10.0) -> bool:
+    """Vérifie que le serveur GreatOS répond correctement sur /jarvis/status.
+
+    Note : le serveur peut mettre jusqu'à 7-10 s pour répondre au premier
+    appel (chargement des modèles IA). Le timeout par défaut est donc de 10 s.
+    """
     try:
         url = f"http://127.0.0.1:{port}/jarvis/status"
         with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -58,11 +63,14 @@ def _est_processus_jarvis(pid: int) -> bool:
     try:
         processus = psutil.Process(pid)
         ligne_commande = processus.cmdline()
-        dossier = Path(processus.cwd()).resolve()
-        return (
-            "interface_morphique.server:app" in ligne_commande
-            and dossier == RACINE.resolve()
-        )
+        cmd_str = " ".join(ligne_commande)
+        if "interface_morphique.server:app" not in cmd_str:
+            return False
+        try:
+            dossier = Path(processus.cwd()).resolve()
+            return dossier == RACINE.resolve()
+        except (psutil.AccessDenied, OSError):
+            return True
     except (psutil.Error, OSError):
         return False
 
@@ -116,13 +124,15 @@ def demarrer_service(silencieux: bool = True) -> bool:
         print(f"[ERREUR] GreatOS n'est pas prêt. Consultez {RUNTIME_DIR / 'service.log'}.")
         return False
 
-    interp = str(VENV_PYTHON)
-    if not VENV_PYTHON.is_file():
-        print(f"[ERREUR] Python de l'environnement GreatOS introuvable : {VENV_PYTHON}")
+    interp = str(VENV_PYTHONW if (silencieux and VENV_PYTHONW.is_file()) else VENV_PYTHON)
+    if not Path(interp).is_file():
+        interp = str(VENV_PYTHON)
+    if not Path(interp).is_file():
+        print(f"[ERREUR] Python de l'environnement GreatOS introuvable : {interp}")
         return False
 
-    # CREATE_NO_WINDOW (0x08000000) + DETACHED_PROCESS (0x00000008)
-    flags = (0x08000000 | 0x00000008) if sys.platform == "win32" and silencieux else 0
+    # CREATE_NEW_PROCESS_GROUP (0x00000200) pour détacher le groupe de processus sous Windows
+    flags = 0x00000200 if sys.platform == "win32" else 0
 
     cmd = [
         interp,
@@ -130,13 +140,14 @@ def demarrer_service(silencieux: bool = True) -> bool:
         "interface_morphique.server:app",
         "--host", "127.0.0.1",
         "--port", str(PORT_SERVICE),
-        "--log-level", "warning",
+        "--log-level", "info",
     ]
 
     # Le service lancé par l'utilisateur doit activer l'écoute vocale dès son
     # démarrage. L'API démarre également le HUD et le moteur voice_input officiel.
     env = os.environ.copy()
     env["GREATOS_DISABLE_VOICE"] = "0"
+    env["PYTHONUNBUFFERED"] = "1"
 
     log_path = RUNTIME_DIR / "service.log"
     try:

@@ -29,49 +29,84 @@ class TestWakeWordConfirmation:
         """Réinitialise l'état de confirmation avant chaque test."""
         _reset_wake_confirmation()
 
+    def test_confirmation_desactivee_toujours_vraie(self):
+        """Quand désactivée (JARVIS_WAKE_CONFIRMATION=0), retourne toujours True."""
+        import jarvis.voice_input as vi
+        original = vi._WAKE_CONFIRMATION_ENABLED
+        try:
+            vi._WAKE_CONFIRMATION_ENABLED = False
+            _reset_wake_confirmation()
+            # Même une première détection doit retourner True immédiatement
+            assert _confirm_wake_word(0.7)
+            assert _confirm_wake_word(0.5)
+        finally:
+            vi._WAKE_CONFIRMATION_ENABLED = original
+
     def test_confirmation_requiert_plusieurs_detections(self):
-        """La confirmation nécessite plusieurs détections dans la fenêtre."""
-        _reset_wake_confirmation()
+        """Quand activée, la confirmation nécessite plusieurs détections dans la fenêtre."""
+        import os
+        from unittest.mock import patch
+        import jarvis.voice_input as vi
+        original = vi._WAKE_CONFIRMATION_ENABLED
+        try:
+            vi._WAKE_CONFIRMATION_ENABLED = True
+            _reset_wake_confirmation()
+            # Neutraliser JARVIS_WAKE_CONFIRMATION=0 et JARVIS_WAKE_IMMEDIATE_THRESHOLD=2
+            with patch.dict(os.environ, {"JARVIS_WAKE_CONFIRMATION": "1",
+                                         "JARVIS_WAKE_IMMEDIATE_THRESHOLD": "2.0"}):
+                # Première détection - ne devrait pas confirmer
+                assert not _confirm_wake_word(0.7)
 
-        # Première détection - ne devrait pas confirmer
-        assert not _confirm_wake_word(0.7)
+                # Attendre l'intervalle minimum entre deux détections (MIN_INTERVAL = 0.25s)
+                time.sleep(0.3)
 
-        # Attendre l'intervalle minimum entre deux détections (MIN_INTERVAL = 0.25s)
-        time.sleep(0.3)
-
-        # Deuxième détection - devrait confirmer
-        assert _confirm_wake_word(0.75)
+                # Deuxième détection - devrait confirmer
+                assert _confirm_wake_word(0.75)
+        finally:
+            vi._WAKE_CONFIRMATION_ENABLED = original
 
     def test_confirmation_avec_delai(self):
-        """Les détections espacées ne confirment pas."""
-        _reset_wake_confirmation()
-        
-        # Première détection
-        assert not _confirm_wake_word(0.7)
-        
-        # Attendre plus que la fenêtre de confirmation
-        time.sleep(_WAKE_CONFIRMATION_WINDOW + 0.1)
-        
-        # Deuxième détection - ne devrait pas confirmer (trop tard)
-        assert not _confirm_wake_word(0.75)
+        """Quand activée, les détections espacées ne confirment pas."""
+        import os
+        from unittest.mock import patch
+        import jarvis.voice_input as vi
+        original = vi._WAKE_CONFIRMATION_ENABLED
+        try:
+            vi._WAKE_CONFIRMATION_ENABLED = True
+            _reset_wake_confirmation()
+            with patch.dict(os.environ, {"JARVIS_WAKE_CONFIRMATION": "1",
+                                         "JARVIS_WAKE_IMMEDIATE_THRESHOLD": "2.0"}):
+                # Première détection
+                assert not _confirm_wake_word(0.7)
+
+                # Attendre plus que la fenêtre de confirmation
+                time.sleep(_WAKE_CONFIRMATION_WINDOW + 0.1)
+
+                # Deuxième détection - ne devrait pas confirmer (trop tard)
+                assert not _confirm_wake_word(0.75)
+        finally:
+            vi._WAKE_CONFIRMATION_ENABLED = original
 
     def test_confirmation_reset_apres_success(self):
-        """L'état est reset après une confirmation réussie."""
-        _reset_wake_confirmation()
-        
-        # Confirmer avec 2 détections
-        _confirm_wake_word(0.7)
-        _confirm_wake_word(0.75)
-        
-        # Nouvelle détection isolée - ne devrait pas confirmer
-        assert not _confirm_wake_word(0.8)
+        """Quand activée, l'état est reset après une confirmation réussie."""
+        import os
+        from unittest.mock import patch
+        import jarvis.voice_input as vi
+        original = vi._WAKE_CONFIRMATION_ENABLED
+        try:
+            vi._WAKE_CONFIRMATION_ENABLED = True
+            _reset_wake_confirmation()
+            with patch.dict(os.environ, {"JARVIS_WAKE_CONFIRMATION": "1",
+                                         "JARVIS_WAKE_IMMEDIATE_THRESHOLD": "2.0"}):
+                # Confirmer avec 2 détections
+                _confirm_wake_word(0.7)
+                time.sleep(0.3)
+                _confirm_wake_word(0.75)
 
-    def test_confirmation_desactivee_toujours_vraie(self):
-        """Quand désactivée, la confirmation retourne toujours True."""
-        # Ce test est sauté car la modification de la variable globale
-        # ne fonctionne pas comme prévu dans le contexte du module
-        # La fonctionnalité est testée indirectement par les autres tests
-        pytest.skip("Modification de variable globale non applicable dans ce contexte")
+                # Nouvelle détection isolée - ne devrait pas confirmer (état réinitialisé)
+                assert not _confirm_wake_word(0.8)
+        finally:
+            vi._WAKE_CONFIRMATION_ENABLED = original
 
 
 class TestAdaptiveVAD:

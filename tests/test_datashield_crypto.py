@@ -32,6 +32,7 @@ from datashield.crypto import (
     encrypt_bytes,
     encrypt_str,
     crypto_engine,
+    _plaintext_env_key_allowed,
 )
 from datashield.tools import (
     chiffrer_valeur,
@@ -124,6 +125,12 @@ class TestEncryptDecryptStr:
 # ─── Tests CryptoEngine ───────────────────────────────────────────────────────
 
 class TestCryptoEngine:
+    def test_plaintext_env_key_is_denied_only_for_production_windows(self):
+        assert not _plaintext_env_key_allowed("nt", "production")
+        assert not _plaintext_env_key_allowed("nt", " Production ")
+        assert _plaintext_env_key_allowed("nt", "development")
+        assert _plaintext_env_key_allowed("posix", "production")
+
     def test_encrypt_decrypt_round_trip(self, engine_with_key):
         original = "données sensibles de Carl"
         encrypted = engine_with_key.encrypt(original)
@@ -156,13 +163,13 @@ class TestCryptoEngine:
         assert status["key_size_bits"] == 256
         assert "passphrase" not in str(status)  # Aucune clé exposée
 
-    def test_set_passphrase(self):
+    def test_internal_set_passphrase(self):
         engine = CryptoEngine.__new__(CryptoEngine)
         import threading
         engine._lock = threading.Lock()
         engine._passphrase = None
         assert engine.is_enabled is False
-        engine.set_passphrase("nouvelle-cle")
+        engine._set_passphrase("nouvelle-cle")
         assert engine.is_enabled is True
 
     def test_encrypt_bytes_round_trip(self, engine_with_key):

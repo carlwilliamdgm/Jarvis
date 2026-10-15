@@ -12,6 +12,7 @@ from pathlib import Path
 # Import the real modules - no global sys.modules mutations
 import interface_morphique.server
 from interface_morphique.server import traiter_message, stream_jarvis
+from datashield.profile_gate import profile_execution_gate
 
 
 class APIStateConsistencyTests(unittest.TestCase):
@@ -19,6 +20,8 @@ class APIStateConsistencyTests(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures with real modules but mocked dependencies."""
+        interface_morphique.server.WINDOWS_SESSION_LOCKED.clear()
+        profile_execution_gate.set_locked(False)
         # Create mock global state
         interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
         interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
@@ -29,6 +32,8 @@ class APIStateConsistencyTests(unittest.TestCase):
         
     def tearDown(self):
         """Clean up test state."""
+        interface_morphique.server.WINDOWS_SESSION_LOCKED.clear()
+        profile_execution_gate.set_locked(False)
         # Reset global state
         interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
         interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
@@ -139,11 +144,15 @@ class EventBusCleanupTests(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures for event bus tests."""
+        interface_morphique.server.WINDOWS_SESSION_LOCKED.clear()
+        interface_morphique.server.event_bus.set_profile_locked(False)
         interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
         interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
     
     def tearDown(self):
         """Clean up test state."""
+        interface_morphique.server.WINDOWS_SESSION_LOCKED.clear()
+        interface_morphique.server.event_bus.set_profile_locked(False)
         interface_morphique.server.historique = [{"role": "system", "content": "System prompt"}]
         interface_morphique.server.memoire = {"utilisateur": {"nom": "Test"}, "notes": []}
     

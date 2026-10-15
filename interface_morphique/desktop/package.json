@@ -1,0 +1,53 @@
+{
+  "name": "greatos-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client desktop GreatOS J.A.R.V.I.S pour Windows",
+  "author": "GreatOS",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "server": "cd ..\\.. && .venv\\Scripts\\python.exe -m interface_morphique.server",
+    "test": "node --test",
+    "desktop:open": "electron .",
+    "build": "tsc --noEmit && vite build",
+    "desktop:dev": "concurrently -k \"npm:server\" \"vite\" \"wait-on tcp:8000 tcp:5173 && electron .\"",
+    "desktop:build": "npm run build && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.17.0",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.greatos.jarvis",
+    "productName": "GreatOS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}
