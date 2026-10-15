@@ -7,6 +7,13 @@ const apiScheme = resolveApiScheme({ packaged: app.isPackaged, configuredScheme:
 process.env.GREATOS_API_SCHEME = apiScheme;
 const { ensureBackendAvailable } = require('./backend.cjs');
 const desktopUrl = process.env.GREATOS_DESKTOP_URL || `${apiScheme}://localhost:8000/desktop/`;
+const startupPage = `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GreatOS — J.A.R.V.I.S</title><style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#080d16;color:#e6edf8;font:15px/1.5 "Segoe UI",sans-serif}
+main{width:min(560px,calc(100% - 40px));padding:36px;border:1px solid #26354c;border-radius:16px;background:#101a29}
+.brand{color:#79b8ff;font-size:12px;letter-spacing:.16em;font-weight:700}h1{margin:20px 0 8px;font-size:24px}p{color:#aab8cc}
+</style></head><body><main><div class="brand">GREATOS · J.A.R.V.I.S</div><h1>Démarrage de GreatOS…</h1><p>Connexion au service local en cours. Cette fenêtre restera ouverte pendant le démarrage.</p></main></body></html>`)}`;
 
 function isAllowedNavigation(url) {
   try {

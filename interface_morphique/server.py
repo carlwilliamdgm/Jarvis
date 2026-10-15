@@ -2358,8 +2358,10 @@ def serve_api(host: str, port: int) -> None:
 
 if __name__ == "__main__":
     ts_info = obtenir_infos_tailscale()
-    # Si Tailscale est actif, écoute sur 0.0.0.0 pour faciliter la connexion des appareils distants
-    default_host = "0.0.0.0" if ts_info.get("disponible") else "127.0.0.1"
+    cert_file = os.environ.get("GREATOS_TLS_CERT_FILE", "").strip()
+    # Si Tailscale est actif ET qu'un certificat TLS opérateur est présent, écoute sur 0.0.0.0
+    # Sinon, restreindre obligatoirement sur loopback 127.0.0.1 pour respecter la sécurité DataShield
+    default_host = "0.0.0.0" if (ts_info.get("disponible") and cert_file) else "127.0.0.1"
     host = os.environ.get("JARVIS_API_HOST", default_host)
     port = int(os.environ.get("JARVIS_API_PORT", "8000"))
 

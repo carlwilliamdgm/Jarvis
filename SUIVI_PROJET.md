@@ -8,6 +8,25 @@
 
 ## Journal récent
 
+### 2026-10-15T14:56:10.555771+00:00 — Desktop & Server Specialist — completed
+
+Correction de deux erreurs de lancement : startupPage non defini dans main.cjs et restriction automatique a loopback 127.0.0.1 dans server.py en l absence de certificat TLS sous Tailscale
+
+**Décisions**
+- Aucun élément signalé.
+
+**Changements**
+- interface_morphique/desktop/electron/main.cjs, desktop/electron/main.cjs, interface_morphique/server.py
+
+**Vérification**
+- npm test 10/10 OK, server.py AST parse OK, _is_loopback_bind OK
+
+**Blocages**
+- Aucun élément signalé.
+
+**À suivre**
+- npm run desktop:dev fonctionnel
+
 ### 2026-10-15T14:31:43.922438+00:00 — Desktop & Docs Specialist — completed
 
 Mise a jour complete de l application Electron (desktop/ et interface_morphique/desktop), integration du bouton HUD Arc et des indicateurs vocaux/MAJ 12h, et mise a niveau de la documentation (README.md, INSTALLATION_MACHINE_VIERGE.md)
@@ -178,22 +197,3 @@ Accomplissement complet P1-P6 : démarrage automatique fiable, scheduler taskflo
 
 **À suivre**
 - Tester l interaction vocale directe Hey Jarvis sur le micro physique et enrichir les routines proactives
-
-### 2026-10-15T06:19:14.329805+00:00 — Antigravity CEO — in_progress
-
-Session war room GreatOS : correction CI (114 tests OK), Trust Matrix, cancel_all, fix binding Tailscale. Test serveur Jarvis confirme 200 OK sur /jarvis/status via uvicorn direct. Probleme de demarrage isole a greatos_service.py (tester_reponse_http routes obsoletes), pas au code serveur.
-
-**Décisions**
-- Aucun élément signalé.
-
-**Changements**
-- tests/conftest.py, context_engine/trust_registry.py, interface_morphique/server.py, update_scheduled_task.ps1
-
-**Vérification**
-- 114/114 tests OK, uvicorn 200 OK sur port 8000
-
-**Blocages**
-- Aucun élément signalé.
-
-**À suivre**
-- 1. Mettre a jour tester_reponse_http dans greatos_service.py avec les routes actuelles. 2. Tester wake word et TTS. 3. Finaliser Lots 2 et 3 experience Jarvis.
